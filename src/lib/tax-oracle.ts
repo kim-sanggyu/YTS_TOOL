@@ -703,6 +703,16 @@ export async function insertJavaRows(
   return inserts.length
 }
 
+// ── 원본 Java 소스 텍스트 조회 ───────────────────────────────
+
+export async function getJavaSourceText(year: number, userId: number): Promise<string | null> {
+  const rows = await yttsDb.query<Record<string, unknown>>(
+    `SELECT JAVA_DATA FROM MLAY_JAVA_FILE WHERE YEAR = :1 AND USER_ID = :2`,
+    [year, userId]
+  )
+  return rows.length ? ((rows[0].JAVA_DATA as string) ?? null) : null
+}
+
 // ── 레코드별 편집 초기화 (MLAY_JAVA_EDIT 삭제) ───────────────
 
 export async function resetJavaEdits(year: number, userId: number, record: string): Promise<number> {

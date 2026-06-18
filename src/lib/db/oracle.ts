@@ -2,6 +2,13 @@ import oracledb from "oracledb"
 
 type PoolAlias = "yts" | "ytts"
 
+// CLOB 컬럼을 모듈 로드 시점에 JS 문자열로 자동 변환 설정
+// initClient() 호출 여부와 무관하게 항상 적용됨
+try {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(oracledb as any).fetchAsString = [(oracledb as any).CLOB ?? 2006]
+} catch { /* Oracle 클라이언트 미초기화 상태에서는 나중에 재설정 */ }
+
 // HMR 재실행 시에도 초기화 상태를 유지하기 위해 globalThis 사용
 declare global {
   var __oracleClientReady: boolean | undefined
@@ -9,13 +16,19 @@ declare global {
 }
 
 function initClient() {
-  if (globalThis.__oracleClientReady) return
-  const libDir = process.env.ORACLE_CLIENT_PATH
-  oracledb.initOracleClient(libDir ? { libDir } : undefined)
-  globalThis.__oracleClientReady = true
+  if (!globalThis.__oracleClientReady) {
+    const libDir = process.env.ORACLE_CLIENT_PATH
+    oracledb.initOracleClient(libDir ? { libDir } : undefined)
+    globalThis.__oracleClientReady = true
+  }
+  // Oracle 클라이언트 초기화 후 fetchAsString 재설정 (모듈 로드 시 try-catch로 실패했을 경우 대비)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(oracledb as any).fetchAsString = [(oracledb as any).CLOB ?? 2006]
 }
 
 async function initPool(alias: PoolAlias) {
+  // fetchAsString은 풀 존재 여부와 무관하게 항상 보장
+  initClient()
   // 풀이 이미 존재하면 재사용
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   try { (oracledb as any).getPool(alias); return } catch { /* 없으면 아래서 생성 */ }
@@ -25,8 +38,6 @@ async function initPool(alias: PoolAlias) {
     await globalThis.__oraclePoolCreating.get(alias)
     return
   }
-
-  initClient()
 
   if (!globalThis.__oraclePoolCreating) globalThis.__oraclePoolCreating = new Map()
 

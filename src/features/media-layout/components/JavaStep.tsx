@@ -86,17 +86,20 @@ function JavaSectInfo({ rows }: { rows: JavaRow[] }) {
 // ── makeStr 열 맞춤 ───────────────────────────────────────────
 
 function alignMakeStrs(raws: (string | undefined)[]): string[] {
+  // ) 앞 공백 제거 — 원본 소스의 내부 정렬 공백이 arg 길이를 부풀리는 것을 방지
+  const norm = (s: string) => s.replace(/\s+\)/g, ")")
   const parsed = raws.map(raw => {
     if (!raw) return null
     const m = /^makeStr\("([9xX])",\s*(\d+),\s*([\s\S]+)\)$/.exec(raw)
     if (!m) return null
-    return { type: m[1], len: m[2], arg: m[3].trimEnd() }
+    return { type: m[1], len: m[2], arg: norm(m[3].trimEnd()) }
   })
-  const maxLen = Math.max(...parsed.map(p => p ? p.len.length : 0), 0)
+  const maxLen = Math.max(...parsed.map(p => p?.len.length ?? 0), 0)
+  const maxArg = Math.max(...parsed.map(p => p?.arg.length ?? 0), 0)
   return raws.map((raw, i) => {
     const p = parsed[i]
     if (!p || !raw) return raw ?? ""
-    return `makeStr("${p.type}", ${p.len.padStart(maxLen)}, ${p.arg})`
+    return `makeStr("${p.type}", ${p.len.padStart(maxLen)}, ${p.arg.padEnd(maxArg)})`
   })
 }
 

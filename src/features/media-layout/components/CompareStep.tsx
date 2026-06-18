@@ -42,6 +42,14 @@ function applySectConfig(
   })
 }
 
+// ── makeStr 정규화 ────────────────────────────────────────────
+
+function canonicalize(s: string): string {
+  const m = /^makeStr\s*\(\s*"([9xX])"\s*,\s*(\d+)\s*,\s*([\s\S]+)\)\s*$/.exec(s.trim())
+  if (!m) return s.trim()
+  return `makeStr("${m[1]}", ${m[2]}, ${m[3].replace(/\s+\)/g, ")").trimEnd()})`
+}
+
 // ── makeStr 열 맞춤 ───────────────────────────────────────────
 
 function alignMakeStrs(strs: string[]): string[] {
@@ -98,7 +106,7 @@ export function CompareStep() {
       setJavaSlots(rows.map(r => ({
         field:     r.java,
         cmd:       (r.cmd === "D" || r.cmd === "I") ? r.cmd : null,
-        editedRaw: r.editedRaw ?? r.java?.raw ?? "",
+        editedRaw: canonicalize(r.editedRaw ?? r.java?.raw ?? ""),
       })))
     } finally {
       setLoading(false)
@@ -268,7 +276,7 @@ export function CompareStep() {
                 const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "" }
                 const isD  = slot.cmd === "D"
                 const isI  = slot.cmd === "I" && slot.field === null
-                const isM  = !isD && !isI && !!slot.field && slot.editedRaw !== slot.field.raw
+                const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
 
                 const typeMismatch   = !isD && !isI && !!tax && !!slot.field && tax.타입 !== slot.field.dtype
                 const lengthMismatch = !isD && !isI && !!tax && !!slot.field && tax.길이 !== slot.field.len

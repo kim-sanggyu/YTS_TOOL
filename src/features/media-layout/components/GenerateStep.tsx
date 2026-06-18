@@ -1,111 +1,282 @@
 "use client"
 
-import { useState } from "react"
-import dynamic from "next/dynamic"
+import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Download, Play } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { SectionBox } from "./SectionBox"
+import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false })
+const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
-const RECORD_TYPES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K"]
+type PreviewSection = { sect: string; label: string; lines: string[] }
+type CachedRecord   = { sections: PreviewSection[]; code: string; bytes: number; lines: number }
 
 export function GenerateStep() {
-  const [recordType, setRecordType] = useState("C")
-  const [code, setCode] = useState("")
-  const [stats, setStats] = useState<{ lines: number; bytes: number } | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
+  const [hwpFile,   setHwpFile]   = useState<HwpFileRow | null>(null)
+  const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
+  const [taxBytes,  setTaxBytes]  = useState<Record<string, number>>({})
+  const [javaBytes, setJavaBytes] = useState<Record<string, number>>({})
+  const [allSectConfigs, setAllSectConfigs] = useState<Record<string, TaxSectConfigRow>>({})
+  const [checking,  setChecking]  = useState(false)
 
-  async function generate() {
-    setLoading(true)
+  const [activeRec,  setActiveRec]  = useState("A")
+  const [sections,   setSections]   = useState<PreviewSection[]>([])
+  const [code,       setCode]       = useState("")
+  const [stats,      setStats]      = useState<{ lines: number; bytes: number } | null>(null)
+  const [generating, setGenerating] = useState(false)
+  const [genCache,   setGenCache]   = useState<Record<string, CachedRecord>>({})
+  const [patching,   setPatching]   = useState(false)
+  const [patchStats, setPatchStats] = useState<{ editCount: number; linesBefore: number; linesAfter: number } | null>(null)
+
+  const recList = RECORD_TYPES.filter(r => taxBytes[r] || javaBytes[r])
+
+  // ── 요약 로드 ──────────────────────────────────────────────
+
+  const loadSummary = useCallback(async (y: number) => {
+    setChecking(true)
     try {
-      const res = await fetch("/api/tools/media-layout/generate", {
+      const res  = await fetch(`/api/tools/media-layout/summary?year=${y}`)
+      const data = await res.json()
+      setHwpFile(data.hwpFile ?? null)
+      setJavaFile(data.javaFile ?? null)
+      setTaxBytes(data.taxBytes ?? {})
+      setJavaBytes(data.javaBytes ?? {})
+      setAllSectConfigs(data.sectConfigs ?? {})
+    } finally { setChecking(false) }
+  }, [])
+
+  // ── 레코드 생성 (캐시 없을 때만 API 호출) ──────────────────
+
+  const generateRecord = useCallback(async (y: number, rec: string) => {
+    setGenerating(true)
+    try {
+      const res  = await fetch("/api/tools/media-layout/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ record: recordType }),
+        body: JSON.stringify({ record: rec, year: y }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      setCode(data.code)
-      setStats({ lines: data.lines, bytes: data.bytes })
-    } catch (err) {
-      alert(`오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`)
-    } finally {
-      setLoading(false)
+      const cached: CachedRecord = {
+        sections: data.sections ?? [],
+        code:     data.code     ?? "",
+        bytes:    data.bytes    ?? 0,
+        lines:    data.lines    ?? 0,
+      }
+      setGenCache(prev => ({ ...prev, [rec]: cached }))
+      setSections(cached.sections)
+      setCode(cached.code)
+      setStats({ lines: cached.lines, bytes: cached.bytes })
+    } catch {
+      setSections([]); setCode(""); setStats(null)
+    } finally { setGenerating(false) }
+  }, [])
+
+  // ── 탭 전환: 캐시 우선, 없으면 생성 ───────────────────────
+
+  useEffect(() => {
+    const cached = genCache[activeRec]
+    if (cached) {
+      setSections(cached.sections); setCode(cached.code)
+      setStats({ lines: cached.lines, bytes: cached.bytes })
+    } else {
+      generateRecord(year, activeRec)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRec])
+
+  useEffect(() => {
+    loadSummary(year)
+    setGenCache({})
+    generateRecord(year, activeRec)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, loadSummary])
+
+  // ── 원본 소스 패치 다운로드 ────────────────────────────────
+
+  async function handlePatch() {
+    setPatching(true); setPatchStats(null)
+    try {
+      const res  = await fetch("/api/tools/media-layout/patch-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year }),
+      })
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try { data = JSON.parse(text) } catch {
+        throw new Error(`서버 응답 파싱 실패 (HTTP ${res.status}): ${text.slice(0, 200)}`)
+      }
+      if (!res.ok) throw new Error((data.message as string) ?? `HTTP ${res.status}`)
+      setPatchStats({
+        editCount:   data.editCount   as number,
+        linesBefore: data.linesBefore as number,
+        linesAfter:  data.linesAfter  as number,
+      })
+      // 즉시 다운로드
+      const blob = new Blob([data.code as string], { type: "text/plain;charset=utf-8" })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement("a")
+      a.href = url; a.download = `patched_${data.year as number}.java`; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "패치 오류")
+    } finally { setPatching(false) }
   }
 
-  function download() {
+  // ── makeStr 신규 생성 다운로드 ─────────────────────────────
+
+  function handleDownload() {
+    if (!code) return
     const blob = new Blob([code], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${recordType}_record_generated.java`
-    a.click()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href = url; a.download = `${activeRec}_record.java`; a.click()
     URL.revokeObjectURL(url)
   }
 
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Java 소스 생성</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center gap-3">
-          <Select value={recordType} onValueChange={(v) => { if (v !== null) setRecordType(v) }}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RECORD_TYPES.map((r) => (
-                <SelectItem key={r} value={r}>{r}-레코드</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={generate} disabled={loading}>
-            <Play className="h-4 w-4 mr-1" />
-            {loading ? "생성 중..." : "소스 생성"}
-          </Button>
-          {code && (
-            <Button variant="outline" onClick={download}>
-              <Download className="h-4 w-4 mr-1" />
-              다운로드
-            </Button>
-          )}
-          {stats && (
-            <div className="flex gap-2 ml-2">
-              <Badge variant="secondary">{stats.lines}줄</Badge>
-              <Badge variant="secondary">{stats.bytes.toLocaleString()} byte</Badge>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+  // ── JSX ───────────────────────────────────────────────────
 
-      <div className="rounded-md border overflow-hidden" style={{ height: "60vh" }}>
-        <MonacoEditor
-          language="java"
-          value={code || "// ① 파일 업로드 → ② 비교·검증 후 여기서 Java 소스를 생성하세요."}
-          theme="vs"
-          options={{
-            readOnly: false,
-            minimap: { enabled: false },
-            fontSize: 12,
-            fontFamily: "D2Coding, Consolas, monospace",
-            lineNumbers: "on",
-            scrollBeyondLastLine: false,
-            wordWrap: "on",
-          }}
-          onChange={(v) => setCode(v ?? "")}
-        />
+  return (
+    <div className="flex flex-col flex-1 min-h-0 gap-4">
+
+      {/* 상태 바 */}
+      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+          className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
+          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
+            <option key={y} value={y}>{y}년</option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-orange-50">
+          {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+           : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+           : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
+          <span className="text-xs text-orange-800 font-medium shrink-0">HWP</span>
+          <span className="text-xs truncate text-muted-foreground">
+            {hwpFile ? `${hwpFile.hwpFileName} · ${hwpFile.rowCount.toLocaleString()}행` : "미업로드"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-blue-50">
+          {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+           : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+           : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
+          <span className="text-xs text-blue-800 font-medium shrink-0">Java</span>
+          <span className="text-xs truncate text-muted-foreground">
+            {javaFile ? `${javaFile.javaFileName} · ${javaFile.rowCount.toLocaleString()}행` : "미업로드"}
+          </span>
+        </div>
+
+        <Button variant="outline" size="sm" className="shrink-0 h-8"
+          onClick={() => { loadSummary(year); setGenCache({}); generateRecord(year, activeRec) }}
+          disabled={checking || generating}>
+          <RefreshCw className={cn("h-3 w-3 mr-1", (checking || generating) && "animate-spin")} />
+          새로고침
+        </Button>
+
+        {/* 원본 소스 패치 */}
+        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
+          <Button variant="outline" size="sm" className="shrink-0 h-8 text-xs"
+            onClick={handlePatch} disabled={patching || !javaFile}>
+            {patching
+              ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />패치 중...</>
+              : <><FileDiff className="h-3 w-3 mr-1" />원본 소스 패치 다운로드</>}
+          </Button>
+          {patchStats && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              편집 {patchStats.editCount}건 적용 · {patchStats.linesBefore}→{patchStats.linesAfter}행
+            </span>
+          )}
+        </div>
       </div>
+
+      {/* 레코드별 바이트 */}
+      {recList.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
+          <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트:</span>
+          {recList.map(r => {
+            const t = taxBytes[r] ?? 0, j = javaBytes[r] ?? 0
+            const ok = t > 0 && j > 0 && t === j
+            const none = !t && !j
+            return (
+              <span key={r} className={cn(
+                "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
+                none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+              )}>{r}:{t||"?"}↔{j||"?"}</span>
+            )
+          })}
+        </div>
+      )}
+
+      {/* 탭 + 섹션 박스 */}
+      {recList.length > 0 && (
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="flex items-end border-b border-border gap-0.5">
+            <div className="flex items-end gap-0.5 min-w-0">
+              {recList.map(r => {
+                const isActive = r === activeRec
+                const isHbf   = allSectConfigs[r]?.sectMode === "hbf"
+                const baseBg  = isHbf ? "bg-purple-100 text-purple-700" : "bg-sky-50 text-sky-700"
+                const hoverBg = isHbf ? "hover:bg-purple-200" : "hover:bg-sky-100"
+                const topLine = isHbf ? "border-t-[3px] border-t-purple-500" : "border-t-[3px] border-t-sky-500"
+                const borderB = isHbf ? "border-b-purple-100" : "border-b-sky-50"
+                return (
+                  <button key={r} type="button" onClick={() => setActiveRec(r)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors shrink min-w-[36px] truncate max-w-[80px]",
+                      baseBg,
+                      isActive ? cn("font-semibold border border-border -mb-px relative z-10", topLine, borderB) : hoverBg
+                    )}>
+                    {r}-레코드
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="ml-auto flex items-center gap-2 pb-0.5 shrink-0">
+              {stats && (
+                <>
+                  <span className="text-xs text-muted-foreground tabular-nums">{stats.lines}줄</span>
+                  <span className="text-xs font-mono text-muted-foreground tabular-nums">{stats.bytes.toLocaleString()} byte</span>
+                </>
+              )}
+              <Button size="sm" variant="outline" className="h-7 text-xs"
+                onClick={handleDownload} disabled={!code || generating}>
+                <Download className="h-3 w-3 mr-1" />다운로드
+              </Button>
+            </div>
+          </div>
+
+          <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
+            <div className="overflow-auto flex-1 p-3 space-y-3 bg-gray-50">
+              {generating ? (
+                <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />생성 중...
+                </div>
+              ) : sections.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-2 text-muted-foreground text-sm">
+                  <Code2 className="h-8 w-8 opacity-30" />
+                  HWP 파일과 Java 소스를 먼저 업로드하세요.
+                </div>
+              ) : (
+                sections.map((sec, si) => (
+                  <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {recList.length === 0 && !checking && (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+          HWP 파일과 Java 소스를 먼저 업로드하세요.
+        </div>
+      )}
     </div>
   )
 }

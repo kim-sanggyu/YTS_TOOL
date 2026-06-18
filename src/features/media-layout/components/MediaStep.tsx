@@ -3,7 +3,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X, Copy, Check } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X } from "lucide-react"
+import { SectionBox, sectColors, sectionLineCount } from "./SectionBox"
 import { cn } from "@/lib/utils"
 import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 import type { TaxLayoutRow, JavaField, CompareRow } from "../types"
@@ -23,38 +24,6 @@ function taxSectBg(sect: string) {
 
 // ── 섹션 구분선 ───────────────────────────────────────────────
 
-// ── 미리보기 섹션 박스 (복사 버튼 포함) ──────────────────────
-
-function SectionBox({ boxBg, hdrCls, label, lineCount, lines }: {
-  boxBg: string; hdrCls: string; label: string; lineCount: string; lines: string[]
-}) {
-  const [copied, setCopied] = useState(false)
-  function handleCopy() {
-    navigator.clipboard.writeText(lines.join("\n")).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
-  return (
-    <div className={cn("rounded-md border overflow-hidden shadow-sm", boxBg)}>
-      <div className={cn("px-3 py-1.5 text-[11px] font-semibold flex items-center gap-2 select-none", hdrCls)}>
-        <span>▸ {label}</span>
-        <span className="font-normal opacity-70">{lineCount}</span>
-        <button
-          onClick={handleCopy}
-          className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium opacity-70 hover:opacity-100 transition-opacity"
-        >
-          {copied
-            ? <><Check className="h-3 w-3" />복사됨</>
-            : <><Copy className="h-3 w-3" />복사</>}
-        </button>
-      </div>
-      <pre className={cn("px-3 py-2 text-[11px] font-mono overflow-x-auto leading-5", boxBg)}>
-        {lines.join("\n")}
-      </pre>
-    </div>
-  )
-}
 
 function SectSep({ sect, colSpan }: { sect: string; colSpan: number }) {
   const num  = bodyIdx(sect)
@@ -80,12 +49,20 @@ function parseMakeStr(raw: string): { dtype: string; len: number } | null {
   return { dtype: m[1].toLowerCase(), len: parseInt(m[2]) }
 }
 
+function canonicalize(s: string): string {
+  const norm = (x: string) => x.replace(/\s+\)/g, ")")
+  const m = /^makeStr\s*\(\s*"([9xX])"\s*,\s*(\d+)\s*,\s*([\s\S]+)\)\s*$/.exec(s.trim())
+  if (!m) return s.trim()
+  return `makeStr("${m[1]}", ${m[2]}, ${norm(m[3].trimEnd())})`
+}
+
 // ── makeStr 정렬 ─────────────────────────────────────────────
 
 function alignMakeStrs(strs: string[]): string[] {
+  const norm = (s: string) => s.replace(/\s+\)/g, ")")
   const parsed = strs.map(s => {
     const m = /^makeStr\("([9xX])",\s*(\d+),\s*([\s\S]+)\)$/.exec(s)
-    return m ? { type: m[1], len: m[2], arg: m[3].trimEnd() } : null
+    return m ? { type: m[1], len: m[2], arg: norm(m[3].trimEnd()) } : null
   })
   const maxLen = Math.max(...parsed.map(p => p ? p.len.length : 0), 0)
   const maxArg = Math.max(...parsed.map(p => p ? p.arg.length : 0), 0)
@@ -125,7 +102,7 @@ function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: 
   const info = analyzeFromItems(items)
   if (items.length === 0) return null
 
-  // 오류 통계
+  // 오류 통계 (행 기준 — 한 행이 두 오류여도 1행으로 카운트)
   const maxLen = Math.max(items.length, slots.length)
   let itemDiff = 0, typeDiff = 0
   for (let i = 0; i < maxLen; i++) {
@@ -135,16 +112,23 @@ function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: 
     if (tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')) itemDiff++
     if (tax.타입 !== slot.field.dtype || tax.길이 !== slot.field.len) typeDiff++
   }
-  const totalErr = itemDiff + typeDiff
 
-  const errBadge = totalErr > 0 ? (
-    <span className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
-      <span className="text-red-600 font-medium">오류 {totalErr}행</span>
-      {itemDiff > 0 && <span className="text-orange-600">서식항목 {itemDiff}</span>}
-      {typeDiff > 0 && <span className="text-red-500">데이터타입 {typeDiff}</span>}
+  // 0이어도 항상 뱃지 표시 — 검증 완료 여부를 한눈에 확인
+  const errBadge = maxLen > 0 ? (
+    <span className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
+      <span className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
+        itemDiff > 0 ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
+      )}>
+        서식항목 {itemDiff}
+      </span>
+      <span className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
+        typeDiff > 0 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+      )}>
+        데이터타입 {typeDiff}
+      </span>
     </span>
-  ) : totalErr === 0 && maxLen > 0 ? (
-    <span className="ml-2 pl-2 border-l border-border text-green-600 font-medium">오류 없음</span>
   ) : null
 
   if (!info.isHbf) {
@@ -245,7 +229,7 @@ export function MediaStep() {
       javaSlots: rows.map(r => ({
         field:     r.java,
         cmd:       (r.cmd === "D" || r.cmd === "I") ? r.cmd as "D" | "I" : null,
-        editedRaw: r.editedRaw ?? r.java?.raw ?? "",
+        editedRaw: canonicalize(r.editedRaw ?? r.java?.raw ?? ""),
         fromDB:    r.cmd === "D" || r.cmd === "I",
       })),
       sectConfig: cfg,
@@ -396,8 +380,8 @@ export function MediaStep() {
       const y = year
       const taxItemUpdates = Array.from(dirtyTax.entries()).map(([code, item]) => ({ code, item }))
       const javaCodeUpdates = javaSlots
-        .filter(s => s.field && s.editedRaw !== s.field.raw && s.cmd !== "D" && s.cmd !== "I")
-        .map(s => ({ lineNo: s.field!.lineNo, javaCode: s.editedRaw }))
+        .filter(s => s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw) && s.cmd !== "D" && s.cmd !== "I")
+        .map(s => ({ lineNo: s.field!.lineNo, javaCode: canonicalize(s.editedRaw) }))
       const dUpdates = javaSlots
         .filter(s => s.cmd === "D" && s.field && !s.fromDB)
         .map(s => ({ lineNo: s.field!.lineNo, bodyIter: s.field!.bodyIter ?? null }))
@@ -553,7 +537,7 @@ export function MediaStep() {
         </select>
 
         {/* HWP 상태 */}
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-orange-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[400px] bg-orange-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -564,7 +548,7 @@ export function MediaStep() {
         </div>
 
         {/* Java 상태 */}
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-blue-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[400px] bg-blue-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -678,22 +662,34 @@ export function MediaStep() {
           <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
             <TaxSectInfo items={taxItems} slots={javaSlots} />
             <div ref={scrollDivRef} className="overflow-auto flex-1 text-xs">
-              <table className="w-full border-collapse">
+              <table className="w-full border-collapse table-fixed">
+                <colgroup>
+                  <col className="w-16" />          {/* HWP 코드 */}
+                  <col className="w-[400px]" />     {/* HWP 서식항목 ─┐ 동일 폭 */}
+                  <col className="w-20" />           {/* HWP 데이터타입 */}
+                  <col className="w-12" />           {/* HWP 누적 */}
+                  <col className="w-14" />           {/* D·I·M */}
+                  <col className="w-[400px]" />     {/* Java 서식항목 ─┘ 동일 폭 */}
+                  <col />                            {/* makeStr — 나머지 공간 */}
+                  <col className="w-[76px]" />      {/* Java 데이터타입 */}
+                  <col className="w-10" />           {/* Java 행 */}
+                  <col className="w-12" />           {/* Java 누적 */}
+                </colgroup>
                 <thead className="sticky top-0 z-10">
                   <tr>
                     {/* HWP */}
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-16">코드</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left min-w-[160px]">서식항목</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-20 whitespace-nowrap">데이터타입</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center w-12">누적</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center">코드</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center whitespace-nowrap">데이터타입</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center">누적</th>
                     {/* D·I·M */}
-                    <th className="px-1 py-1.5 border-b border-r bg-muted text-center w-14">D·I·M</th>
+                    <th className="px-1 py-1.5 border-b border-r bg-muted text-center">D·I·M</th>
                     {/* Java */}
-                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left min-w-[160px]">서식항목</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left min-w-[360px] whitespace-nowrap">makeStr</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center w-18 whitespace-nowrap">데이터타입</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center w-10">행</th>
-                    <th className="px-2 py-1.5 border-b bg-blue-100 text-blue-800 text-center w-12">누적</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left">서식항목</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left whitespace-nowrap">makeStr</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center whitespace-nowrap">데이터타입</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center">행</th>
+                    <th className="px-2 py-1.5 border-b bg-blue-100 text-blue-800 text-center">누적</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -711,7 +707,7 @@ export function MediaStep() {
                       const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "" }
                       const isD  = slot.cmd === "D"
                       const isI  = slot.cmd === "I" && slot.field === null
-                      const isM  = !isD && !isI && !!slot.field && slot.editedRaw !== slot.field.raw
+                      const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
                       const parsedMake   = parsedSlots[i]
                       const makeValid    = !slot.editedRaw || parsedMake !== null
                       const effDtype     = parsedMake?.dtype ?? slot.field?.dtype ?? ""
@@ -729,7 +725,7 @@ export function MediaStep() {
                         <tr key={i} className={cn("border-b hover:brightness-[0.97] transition-colors", rowBg)}>
                           {/* HWP */}
                           <td className="px-2 py-1 border-r font-mono font-semibold text-center">{tax?.코드 ?? ""}</td>
-                          <td className={cn("px-1 py-0.5 border-r min-w-[160px]", itemMismatch && "bg-orange-50")}>
+                          <td className={cn("px-1 py-0.5 border-r", itemMismatch && "bg-orange-50")}>
                             {tax ? (
                               <input
                                 value={tax.항목 ?? ""}
@@ -761,7 +757,7 @@ export function MediaStep() {
                           </td>
                           {/* Java */}
                           {/* Java 서식항목 */}
-                          <td className={cn("px-2 py-0.5 border-r text-xs min-w-[160px] break-keep", itemMismatch && "text-orange-600 font-medium")}>{slot.field?.name ?? ""}</td>
+                          <td className={cn("px-2 py-0.5 border-r text-xs break-keep overflow-hidden", itemMismatch && "text-orange-600 font-medium")}>{slot.field?.name ?? ""}</td>
                           {/* makeStr */}
                           <td className="px-2 py-1 border-r font-mono whitespace-nowrap">
                             {isD ? (
@@ -843,28 +839,9 @@ export function MediaStep() {
 
             {/* ── 섹션별 코드 박스 ── */}
             <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 bg-gray-50">
-              {previewSections.map((sec, si) => {
-                const isHeader  = sec.sect === "header"
-                const isFooter  = sec.sect === "footer"
-                const isBodySum = sec.sect === "body_sum"
-                const bodyNum   = sec.sect.match(/^body_(\d+)$/)?.[1]
-                const BODY_BG   = ["bg-purple-50","bg-violet-50","bg-indigo-50","bg-blue-50"]
-                const BODY_HDR  = ["bg-purple-200 text-purple-800","bg-violet-200 text-violet-800","bg-indigo-200 text-indigo-800","bg-blue-200 text-blue-800"]
-                const boxBg  = isHeader  ? "bg-gray-50"
-                             : isFooter  ? "bg-teal-50"
-                             : isBodySum ? "bg-amber-50"
-                             : BODY_BG[(parseInt(bodyNum ?? "1") - 1) % BODY_BG.length]
-                const hdrCls = isHeader  ? "bg-gray-200 text-gray-700"
-                             : isFooter  ? "bg-teal-200 text-teal-800"
-                             : isBodySum ? "bg-amber-200 text-amber-800"
-                             : BODY_HDR[(parseInt(bodyNum ?? "1") - 1) % BODY_HDR.length]
-                const lineCount = isBodySum
-                  ? `${sec.lines.filter(l => !l.includes('+ "\\n"')).length}그룹`
-                  : `${sec.lines.filter(l => !l.includes('+ "\\n"')).length}행`
-                return (
-                  <SectionBox key={si} boxBg={boxBg} hdrCls={hdrCls} label={sec.label} lineCount={lineCount} lines={sec.lines} />
-                )
-              })}
+              {previewSections.map((sec, si) => (
+                <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} />
+              ))}
             </div>
 
             {/* ── 리사이즈 핸들 (8방향) ── */}
