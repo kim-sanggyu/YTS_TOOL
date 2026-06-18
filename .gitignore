@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# 로컬 데이터 (JSON 스토어 — Oracle 전환 전 임시 저장소)
+/data/
+
 # dependencies
 /node_modules
 /.pnp
@@ -39,3 +42,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 로컬 참조/테스트 파일
+*.hwp
+*.java
+*.png
+dev-err.txt
+dev-out.txt
+/참조자료/
