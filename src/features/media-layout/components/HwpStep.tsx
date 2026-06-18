@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils"
 import type { TaxRow, HwpFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
-const SECT_OPTIONS  = ["header","body_1","body_2","body_3","footer"]
 
 // ── 일괄 섹션 적용 ─────────────────────────────────────────────
 
@@ -31,21 +30,23 @@ function applyBulk(rows: TaxRow[], cfg: BulkConfig): TaxRow[] {
 const BODY_BG = ["bg-purple-50", "bg-violet-50", "bg-indigo-50", "bg-blue-50"]
 function bodyIdx(sect: string) { const m = sect.match(/^body_(\d+)$/); return m ? parseInt(m[1]) : 0 }
 function sectRowBg(sect: string): string {
-  if (sect === "header" || sect === "HEAD" || sect === "HEADER") return "bg-gray-50"
-  if (sect === "footer" || sect === "FOOT" || sect === "FOOTER") return "bg-teal-50"
+  if (sect === "header") return "bg-gray-50"
+  if (sect === "footer") return "bg-teal-50"
   if (sect.startsWith("body_")) return BODY_BG[(bodyIdx(sect) - 1) % BODY_BG.length]
   return ""
 }
 
 // ── 섹션 구분선 ───────────────────────────────────────────────
 
-function SectSep({ sect }: { sect: string }) {
-  const isHead = sect === "header" || sect === "HEAD" || sect === "HEADER"
-  const isFoot = sect === "footer" || sect === "FOOT" || sect === "FOOTER"
-  const num   = bodyIdx(sect)
-  const bg    = isHead ? "bg-gray-200"  : isFoot ? "bg-teal-100"  : BODY_BG[(num - 1) % BODY_BG.length]
-  const txt   = isHead ? "text-gray-600": isFoot ? "text-teal-700": "text-purple-700"
-  const label = isHead ? "▸ Header"     : isFoot ? "▸ Footer"     : `▸ Body-${num}`
+function SectSep({ sect, maxBody }: { sect: string; maxBody: number }) {
+  const isHead = sect === "header"
+  const isFoot = sect === "footer"
+  const num    = bodyIdx(sect)
+  // body_1만 있을 때(maxBody===1)는 Header로 표시
+  const treatAsHead = isHead || (num === 1 && maxBody === 1)
+  const bg    = treatAsHead ? "bg-gray-200"  : isFoot ? "bg-teal-100"  : BODY_BG[(num - 1) % BODY_BG.length]
+  const txt   = treatAsHead ? "text-gray-600": isFoot ? "text-teal-700": "text-purple-700"
+  const label = treatAsHead ? "▸ Header"     : isFoot ? "▸ Footer"     : `▸ Body-${num}`
   return (
     <tr className={`${bg} border-y`}>
       <td colSpan={6} className={`px-3 py-0.5 text-[11px] font-semibold ${txt} select-none`}>
@@ -117,7 +118,7 @@ function BulkSectPanel({ totalRows, recFields, applying, msg, config, onApply }:
       <span className="text-muted-foreground shrink-0">구조설정:</span>
       <label className="flex items-center gap-1 cursor-pointer shrink-0">
         <input type="radio" checked={mode === "body"} onChange={() => setMode("body")} className="w-3 h-3" />
-        <span className={mode === "body" ? "text-sky-700 font-medium" : ""}>전체 Body 구조</span>
+        <span className={mode === "body" ? "text-sky-700 font-medium" : ""}>Header 구조</span>
       </label>
       <label className="flex items-center gap-1 cursor-pointer shrink-0">
         <input type="radio" checked={mode === "hbf"} onChange={() => setMode("hbf")} className="w-3 h-3" />
@@ -338,7 +339,7 @@ export function HwpStep() {
 
   async function handleSectApply(rec: string, cfg: BulkConfig | null) {
     const rows    = byRecord[rec] ?? []
-    const newRows = cfg ? applyBulk(rows, cfg) : rows.map(r => ({ ...r, sect: "body_1" }))
+    const newRows = cfg ? applyBulk(rows, cfg) : rows.map(r => ({ ...r, sect: "header" }))
     setByRecord(prev => ({ ...prev, [rec]: newRows }))
 
     setSectApplying(true)
@@ -411,9 +412,10 @@ export function HwpStep() {
     let prevSect  = ""
     let prevGubun = ""
     let cumBytes  = 0
+    const maxBody = rows.reduce((m, r) => Math.max(m, bodyIdx(r.sect)), 0)
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
-      if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} />); prevSect = r.sect }
+      if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
       const curGubun = r.gubun ?? ""
       if (curGubun && curGubun !== prevGubun) {
         nodes.push(

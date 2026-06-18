@@ -1,13 +1,14 @@
 import { auth } from "@/auth"
 import Link from "next/link"
-import { FileText, FileSearch, FileCode, Database, Calculator, GitCompare, FileOutput } from "lucide-react"
+import { FileText, FileSearch, FileCode, Database, Calculator, GitCompare, FileOutput, Code2 } from "lucide-react"
 import { QuoteWidget } from "@/features/dashboard/components/QuoteWidget"
 import { DateTimeWidget } from "@/features/dashboard/components/DateTimeWidget"
 
 const tools = [
   { id: "hwp-layout",   name: ".hwp파일 업로드",      href: "/tools/hwp-layout",    icon: FileSearch, status: "active" as const },
   { id: "java-layout",  name: ".java소스 업로드",     href: "/tools/java-layout",   icon: FileCode,   status: "active" as const },
-  { id: "media-layout", name: "전산매체 Java소스 생성", href: "/tools/media-layout",  icon: FileText,   status: "active" as const },
+  { id: "media-layout",   name: "전산매체 비교·검증",  href: "/tools/media-layout",   icon: GitCompare, status: "active" as const },
+  { id: "media-generate", name: "전산매체 소스 생성",  href: "/tools/media-generate", icon: Code2,      status: "active" as const },
   { id: "data-verify",  name: "데이터 검증",          href: "/tools/data-verify",   icon: Database,   status: "coming" as const },
   { id: "tax-calc",     name: "공제 계산기",          href: "/tools/tax-calc",      icon: Calculator, status: "coming" as const },
   { id: "diff-checker", name: "전년도 비교",          href: "/tools/diff-checker",  icon: GitCompare, status: "coming" as const },

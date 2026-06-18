@@ -47,6 +47,7 @@ next-env.d.ts
 *.hwp
 *.java
 *.png
+/.screenshots/
 dev-err.txt
 dev-out.txt
 /참조자료/

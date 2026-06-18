@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   LayoutDashboard, FileText, FileCode, Database, Calculator,
-  GitCompare, FileOutput, Settings, LogOut, ChevronsUpDown, ChevronDown, FileSearch,
+  GitCompare, FileOutput, Settings, LogOut, ChevronsUpDown, ChevronDown, FileSearch, Code2,
 } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader,
@@ -38,10 +38,11 @@ const navGroups: NavGroup[] = [
   {
     label: "전산매체",
     children: [
-      { title: ".hwp파일 업로드",       href: "/tools/hwp-layout",   icon: FileSearch },
-      { title: ".java소스 업로드",    href: "/tools/java-layout",  icon: FileCode },
-      { title: "전산매체 Java소스 생성", href: "/tools/media-layout", icon: FileText },
-      { title: "신고 데이터 검증", href: "/tools/data-verify",   icon: Database,  disabled: true },
+      { title: ".hwp파일 업로드",    href: "/tools/hwp-layout",    icon: FileSearch },
+      { title: ".java소스 업로드",   href: "/tools/java-layout",   icon: FileCode },
+      { title: "전산매체 비교·검증", href: "/tools/media-layout",  icon: GitCompare },
+      { title: "전산매체 소스 생성", href: "/tools/media-generate", icon: Code2 },
+      { title: "신고 데이터 검증",   href: "/tools/data-verify",   icon: Database,  disabled: true },
     ],
   },
   {

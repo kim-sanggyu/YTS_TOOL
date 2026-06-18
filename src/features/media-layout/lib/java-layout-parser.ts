@@ -85,7 +85,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
       for (const blk of blocks) {
         for (const rf of blk.rawFields) {
           cumByRecord[rec] = (cumByRecord[rec] ?? 0) + rf.len
-          allFields.push({ ...rf, cum: cumByRecord[rec], sect: "HEAD" })
+          allFields.push({ ...rf, cum: cumByRecord[rec], sect: "header" })
         }
       }
     } else {
@@ -102,7 +102,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
       // HEAD 필드 (×1)
       for (const rf of (headBlock?.rawFields ?? [])) {
         cumByRecord[rec] = (cumByRecord[rec] ?? 0) + rf.len
-        allFields.push({ ...rf, cum: cumByRecord[rec], sect: "HEAD" })
+        allFields.push({ ...rf, cum: cumByRecord[rec], sect: "header" })
       }
 
       // BODY 필드 (×repeat) — BODY_1, BODY_2, ... 섹션으로 표기
@@ -110,7 +110,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
         for (const blk of bodyBlocks) {
           for (const rf of blk.rawFields) {
             cumByRecord[rec] = (cumByRecord[rec] ?? 0) + rf.len
-            allFields.push({ ...rf, cum: cumByRecord[rec], sect: `BODY_${iter}`, bodyIter: iter })
+            allFields.push({ ...rf, cum: cumByRecord[rec], sect: `body_${iter}`, bodyIter: iter })
           }
         }
       }
@@ -119,7 +119,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
       for (const blk of footerBlocks) {
         for (const rf of blk.rawFields) {
           cumByRecord[rec] = (cumByRecord[rec] ?? 0) + rf.len
-          allFields.push({ ...rf, cum: cumByRecord[rec], sect: "FOOTER" })
+          allFields.push({ ...rf, cum: cumByRecord[rec], sect: "footer" })
         }
       }
     }

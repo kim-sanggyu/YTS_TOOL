@@ -1,440 +1,374 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, FileCode, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { JavaField } from "../types"
+import type { JavaRow, JavaFileRow } from "@/lib/tax-oracle"
 
-const RECORD_TYPES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K"]
+const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
-// ── 섹션 설정 ─────────────────────────────────────────────────
+// ── 섹션 배경색 ───────────────────────────────────────────────
 
-interface BulkConfig {
-  bodyStart: number
-  bodyEnd: number
-  divideBy: number
-}
-
-function applyBulkSect(fields: JavaField[], bodyStart: number, bodyEnd: number, divideBy: number): JavaField[] {
-  const totalLen = Math.max(1, bodyEnd - bodyStart + 1)
-  const unitLen  = Math.max(1, Math.floor(totalLen / divideBy))
-  return fields.map((f, i) => {
-    const rowNum = i + 1
-    if (rowNum < bodyStart) return { ...f, sect: "header" }
-    if (rowNum > bodyEnd)   return { ...f, sect: "footer" }
-    const offset  = rowNum - bodyStart
-    const bodyNum = Math.min(divideBy, Math.floor(offset / unitLen) + 1)
-    return { ...f, sect: `body_${bodyNum}` }
-  })
-}
-
-// ── 배경색 / 구분선 ───────────────────────────────────────────
-
-const BODY_BG = ["bg-purple-50", "bg-violet-50", "bg-indigo-50", "bg-blue-50"]
-
+const BODY_BG = ["bg-purple-50","bg-violet-50","bg-indigo-50","bg-blue-50"]
 function bodyNum(sect: string) { const m = sect.match(/^body_(\d+)$/); return m ? parseInt(m[1]) : 0 }
-
 function sectRowBg(sect: string): string {
-  if (sect === "header" || sect === "HEAD") return "bg-gray-50"
-  if (sect === "footer" || sect === "FOOTER") return "bg-teal-50"
+  if (sect === "header") return "bg-gray-50"
+  if (sect === "footer") return "bg-teal-50"
   if (sect.startsWith("body_")) return BODY_BG[(bodyNum(sect) - 1) % BODY_BG.length]
   return ""
 }
 
-function SectSep({ sect, totalBody }: { sect: string; totalBody: number }) {
-  const isHead = sect === "header" || sect === "HEAD"
-  const isFoot = sect === "footer" || sect === "FOOTER"
-  const isBody = sect.startsWith("body_") || sect.startsWith("BODY_")
-  const num    = isBody ? bodyNum(sect) : 0
-  const bg     = isHead ? "bg-gray-200" : isFoot ? "bg-teal-100" : BODY_BG[(num - 1) % BODY_BG.length]
-  const text   = isHead ? "text-gray-600" : isFoot ? "text-teal-700" : "text-purple-700"
-  const label  = isHead ? "▸ HEADER" : isFoot ? "▸ FOOTER" : `▸ BODY ${totalBody > 1 ? `${num}/${totalBody}` : ""}`
+// ── 섹션 구분선 ───────────────────────────────────────────────
+
+function SectSep({ sect, maxBody }: { sect: string; maxBody: number }) {
+  const isHead = sect === "header"
+  const isFoot = sect === "footer"
+  const num   = bodyNum(sect)
+  const treatAsHead = isHead || (num === 1 && maxBody === 1)
+  const bg    = treatAsHead ? "bg-gray-200" : isFoot ? "bg-teal-100" : BODY_BG[(num - 1) % BODY_BG.length]
+  const txt   = treatAsHead ? "text-gray-600" : isFoot ? "text-teal-700" : "text-purple-700"
+  const label = treatAsHead ? "▸ Header" : isFoot ? "▸ Footer" : `▸ Body-${num}${maxBody > 1 ? `/${maxBody}` : ""}`
   return (
     <tr className={`${bg} border-y`}>
-      <td colSpan={8} className={`px-3 py-0.5 text-[11px] font-semibold ${text} select-none`}>{label}</td>
+      <td colSpan={6} className={`px-3 py-0.5 text-[11px] font-semibold ${txt} select-none`}>{label}</td>
     </tr>
   )
 }
 
-// ── 순서 검증 ─────────────────────────────────────────────────
+// ── 구조 분석 ─────────────────────────────────────────────────
 
-const _FP = /^([A-K])([0-9]+)([ⓐ-ⓩ]?)$/
-const _SF = "ⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ"
-function seqOk(prev: string, curr: string): boolean {
-  const pm = _FP.exec(prev), cm = _FP.exec(curr)
-  if (!pm || !cm) return true
-  const [, pL, pNs, pS] = pm, [, cL, cNs, cS] = cm
-  const pN = parseInt(pNs), cN = parseInt(cNs)
-  if (pL !== cL) return true
-  if (pS === "" && cS === "") return cN === pN + 1
-  if (pS === "" && cS !== "") return (cN === pN || cN === pN + 1) && cS === "ⓐ"
-  if (pS !== "" && cS === "") return cN === pN + 1
-  if (cN === pN) { const pi = _SF.indexOf(pS), ci = _SF.indexOf(cS); return pi >= 0 && ci === pi + 1 }
-  return cN === pN + 1 && cS === "ⓐ"
+function analyzeStruct(rows: JavaRow[]) {
+  const maxBody   = rows.reduce((m, r) => Math.max(m, bodyNum(r.sect)), 0)
+  const hasFooter = rows.some(r => r.sect === "footer")
+  const isHbf     = maxBody > 1 || hasFooter
+  if (!isHbf) return { isHbf: false as const, total: rows.length }
+  const headRows   = rows.filter(r => r.sect === "header")
+  const body1Rows  = rows.filter(r => r.sect === "body_1")
+  const footRows   = rows.filter(r => r.sect === "footer")
+  const bodyStart  = body1Rows[0]?.code ?? ""
+  const bodyEnd    = body1Rows.at(-1)?.code ?? ""
+  return { isHbf: true as const, maxBody, headRows: headRows.length, body1Rows: body1Rows.length, footRows: footRows.length, bodyStart, bodyEnd, total: rows.length }
 }
 
-// ── BulkSectPanel ─────────────────────────────────────────────
+// ── 구조 표시 (읽기전용) ──────────────────────────────────────
 
-function BulkSectPanel({ totalRows, config, recFields, onApply }: {
-  totalRows: number
-  config: BulkConfig
-  recFields: JavaField[]
-  onApply: (cfg: BulkConfig | null) => void
-}) {
-  const recLetter = recFields[0]?.record ?? ""
-  function rowToNum(row: number) {
-    const no = recFields[row - 1]?.no ?? ""; return no.startsWith(recLetter) ? no.slice(recLetter.length) : no
+function JavaSectInfo({ rows }: { rows: JavaRow[] }) {
+  const info = analyzeStruct(rows)
+  if (!info.isHbf) {
+    return (
+      <div className="flex items-center gap-3 text-xs bg-muted/30 px-3 py-2 border-b text-muted-foreground">
+        <span className="font-medium text-sky-700">Header 구조</span>
+        <span>· 전체 {info.total}행</span>
+      </div>
+    )
   }
-  function numToRow(num: string): number | null {
-    const idx = recFields.findIndex(f => f.no === recLetter + num.trim()); return idx >= 0 ? idx + 1 : null
-  }
-
-  const [mode, setMode]         = useState<"body" | "hbf">(config.bodyStart === 1 && config.bodyEnd <= 1 ? "body" : "hbf")
-  const [cfg,  setCfg]          = useState<BulkConfig>(config)
-  const [startNum, setStartNum] = useState(() => rowToNum(config.bodyStart))
-  const [endNum,   setEndNum]   = useState(() => rowToNum(config.bodyEnd))
-  const [startErr, setStartErr] = useState(false)
-  const [endErr,   setEndErr]   = useState(false)
-
-  function handleStart(val: string) { setStartNum(val); const r = numToRow(val); if (r) { setStartErr(false); setCfg(p => ({ ...p, bodyStart: r })) } else setStartErr(true) }
-  function handleEnd(val: string)   { setEndNum(val);   const r = numToRow(val); if (r) { setEndErr(false);   setCfg(p => ({ ...p, bodyEnd: r }))   } else setEndErr(true) }
-
-  const totalBodyLen = Math.max(0, cfg.bodyEnd - cfg.bodyStart + 1)
-  const unitLen      = cfg.divideBy > 0 ? Math.floor(totalBodyLen / cfg.divideBy) : 0
-  const headRows     = cfg.bodyStart - 1
-  const footRows     = Math.max(0, totalRows - cfg.bodyEnd)
-  const hasErr       = startErr || endErr
-
+  const recLetter = rows[0]?.code[0] ?? ""
+  const toNum = (code: string) => code.startsWith(recLetter) ? code.slice(recLetter.length) : code
   return (
-    <div className="flex items-center gap-3 text-xs flex-wrap bg-muted/30 px-3 py-2 border-b">
-      <label className="flex items-center gap-1 cursor-pointer shrink-0">
-        <input type="radio" name="java-bulk-mode" checked={mode === "body"} onChange={() => setMode("body")} className="w-3 h-3" />
-        HEADER 구조
-      </label>
-      <label className="flex items-center gap-1 cursor-pointer shrink-0">
-        <input type="radio" name="java-bulk-mode" checked={mode === "hbf"} onChange={() => setMode("hbf")} className="w-3 h-3" />
-        <span className={mode === "hbf" ? "text-purple-700 font-medium" : ""}>HEADER / BODY / FOOTER 구조</span>
-      </label>
-
-      {mode === "hbf" && (
-        <>
-          <span className="text-muted-foreground shrink-0 ml-2">BODY 구간</span>
-          <div className="flex items-center">
-            <span className="font-mono text-sm font-semibold text-muted-foreground pr-0.5">{recLetter}</span>
-            <input type="text" value={startNum} onChange={e => handleStart(e.target.value)}
-              className={cn("w-16 h-6 border rounded px-1 text-center bg-background font-mono", startErr && "border-red-400 text-red-600")} />
-          </div>
-          <span className="text-muted-foreground">~</span>
-          <div className="flex items-center">
-            <span className="font-mono text-sm font-semibold text-muted-foreground pr-0.5">{recLetter}</span>
-            <input type="text" value={endNum} onChange={e => handleEnd(e.target.value)}
-              className={cn("w-16 h-6 border rounded px-1 text-center bg-background font-mono", endErr && "border-red-400 text-red-600")} />
-          </div>
-          <span className="text-muted-foreground shrink-0">분할</span>
-          <input type="number" min={1} value={cfg.divideBy}
-            onChange={e => setCfg(p => ({ ...p, divideBy: Math.max(1, +e.target.value) }))}
-            className="w-14 h-6 border rounded px-1 text-center bg-background" />
-          {!hasErr && totalRows > 0 && (
-            <span className="text-muted-foreground tabular-nums">
-              전체 {totalRows}행
-              {headRows > 0 && <> · <span className="text-gray-600">HEADER {headRows}행</span></>}
-              {totalBodyLen > 0 && <> · <span className="text-purple-600">BODY {totalBodyLen}행 ÷ {cfg.divideBy} = {unitLen}행×{cfg.divideBy}</span></>}
-              {footRows > 0 && <> · <span className="text-teal-600">FOOTER {footRows}행</span></>}
-            </span>
-          )}
-          {hasErr && <span className="text-red-500">{recLetter}? — 항목 번호를 찾을 수 없습니다</span>}
-        </>
-      )}
-
-      <Button size="sm" className="h-6 text-xs px-3" disabled={mode === "hbf" && hasErr}
-        onClick={() => onApply(mode === "hbf" ? cfg : null)}>
-        적용
-      </Button>
+    <div className="flex items-center gap-3 text-xs bg-muted/30 px-3 py-2 border-b text-muted-foreground flex-wrap">
+      <span className="font-medium text-purple-700">Header/Body/Footer 구조</span>
+      <span className="text-gray-600">Header {info.headRows}행</span>
+      <span>·</span>
+      <span className="text-purple-600">
+        Body <span className="font-mono">{recLetter}{toNum(info.bodyStart)}</span>
+        {" ~ "}
+        <span className="font-mono">{recLetter}{toNum(info.bodyEnd)}</span>
+        {" "}({info.body1Rows}행 × {info.maxBody}회)
+      </span>
+      {info.footRows > 0 && <><span>·</span><span className="text-teal-600">Footer {info.footRows}행</span></>}
+      <span>· 전체 {info.total}행</span>
     </div>
   )
 }
 
 // ── makeStr 열 맞춤 ───────────────────────────────────────────
 
-function alignMakeStrs(raws: string[]): string[] {
+function alignMakeStrs(raws: (string | undefined)[]): string[] {
   const parsed = raws.map(raw => {
+    if (!raw) return null
     const m = /^makeStr\("([9xX])",\s*(\d+),\s*([\s\S]+)\)$/.exec(raw)
     if (!m) return null
     return { type: m[1], len: m[2], arg: m[3].trimEnd() }
   })
   const maxLen = Math.max(...parsed.map(p => p ? p.len.length : 0), 0)
-  const maxArg = Math.max(...parsed.map(p => p ? p.arg.length : 0), 0)
   return raws.map((raw, i) => {
     const p = parsed[i]
-    if (!p) return raw
-    return `makeStr("${p.type}", ${p.len.padStart(maxLen)}, ${p.arg.padEnd(maxArg)})`
+    if (!p || !raw) return raw ?? ""
+    return `makeStr("${p.type}", ${p.len.padStart(maxLen)}, ${p.arg})`
   })
-}
-
-// ── JavaFieldTable ────────────────────────────────────────────
-
-function JavaFieldTable({ recFields }: { recFields: JavaField[] }) {
-  const boundaries = new Set<number>()
-  let prevSect = "", maxBody = 0
-  for (let i = 0; i < recFields.length; i++) {
-    const s = recFields[i].sect
-    if (s !== prevSect) { boundaries.add(i); prevSect = s }
-    if (s.startsWith("body_")) maxBody = Math.max(maxBody, bodyNum(s))
-  }
-
-  const alignedRaws = alignMakeStrs(recFields.map(f => f.raw))
-
-  let lastRealNo: string | null = null
-  const seqBreak = recFields.map(f => {
-    if (f.no.includes("(")) return false
-    const broken = lastRealNo !== null && !seqOk(lastRealNo, f.no)
-    lastRealNo = f.no
-    return broken
-  })
-
-  return (
-    <div className="overflow-auto max-h-[65vh] text-xs">
-      <table className="w-full border-collapse">
-        <thead className="sticky top-0 z-10 bg-muted">
-          <tr>
-            <th className="px-1 py-1.5 border-b border-r text-center w-8">#</th>
-            <th className="px-2 py-1.5 border-b border-r text-center w-20">번호</th>
-            <th className="px-2 py-1.5 border-b border-r text-left">makeStr</th>
-            <th className="px-2 py-1.5 border-b border-r text-left">항목명</th>
-            <th className="px-2 py-1.5 border-b border-r text-center w-16">타입</th>
-            <th className="px-2 py-1.5 border-b border-r text-center w-12">길이</th>
-            <th className="px-2 py-1.5 border-b border-r text-center w-16">누적</th>
-            <th className="px-2 py-1.5 border-b text-center w-16 text-muted-foreground">소스행</th>
-          </tr>
-        </thead>
-        <tbody>
-          {recFields.map((f, idx) => (
-            <>
-              {boundaries.has(idx) && (
-                <SectSep key={`sep-${idx}`} sect={f.sect} totalBody={maxBody} />
-              )}
-              <tr key={idx} className={`border-b hover:brightness-95 transition-colors ${
-                seqBreak[idx]        ? "bg-red-100"
-                : f.no.includes("(") ? "bg-amber-50"
-                : sectRowBg(f.sect)
-              }`}>
-                <td className="px-1 py-1 border-r text-center text-muted-foreground">{idx + 1}</td>
-                <td className={`px-2 py-1 border-r font-mono font-semibold text-center ${
-                  seqBreak[idx] ? "text-red-600" : f.no.includes("(") ? "text-amber-600" : ""
-                }`}>{f.no}</td>
-                <td className="px-2 py-1 border-r font-mono text-[11px] whitespace-pre">{alignedRaws[idx]}</td>
-                <td className="px-2 py-1 border-r">{f.name}</td>
-                <td className="px-2 py-1 border-r text-center font-mono">{f.dtype}</td>
-                <td className="px-2 py-1 border-r text-right font-mono">{f.len}</td>
-                <td className="px-2 py-1 border-r text-right font-mono tabular-nums">{f.cum}</td>
-                <td className="px-2 py-1 text-center text-muted-foreground/60 tabular-nums">{f.lineNo}</td>
-              </tr>
-            </>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
 }
 
 // ── JavaStep ──────────────────────────────────────────────────
 
-type ParseResult = {
-  total: number
-  skipped: number
-  records: string[]
-  byRecord: Record<string, JavaField[]>
-}
-
 export function JavaStep() {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [file,    setFile]    = useState<File | null>(null)
-  const [status,  setStatus]  = useState<"idle" | "loading" | "ok" | "error">("idle")
-  const [errMsg,  setErrMsg]  = useState("")
-  const [result,  setResult]  = useState<ParseResult | null>(null)
-  const [fields,  setFields]  = useState<Record<string, JavaField[]>>({})
+  const scrollDivRef = useRef<HTMLDivElement>(null)
+  const scrollPosRef = useRef<Record<string, number>>({})
+
+  const [file,      setFile]      = useState<File | null>(null)
+  const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState("")
+  const [checking,  setChecking]  = useState(false)
+  const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
+  const [byRecord,  setByRecord]  = useState<Record<string, JavaRow[]>>({})
   const [activeRec, setActiveRec] = useState("A")
-  const [bulkCfg, setBulkCfg]    = useState<Record<string, BulkConfig>>({})
+  const [deleting,  setDeleting]  = useState(false)
 
-  const [year,    setYear]    = useState(() => new Date().getFullYear() - 1)
-  const [saving,  setSaving]  = useState(false)
-  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const hasRows = Object.keys(byRecord).length > 0
+  const recList = RECORD_TYPES.filter(r => byRecord[r]?.length)
 
-  async function handleSave() {
-    if (!file || !result) return
-    setSaving(true); setSaveMsg(null)
-    try {
-      const form = new FormData()
-      form.append("year", String(year))
-      form.append("java", file)
-      const res  = await fetch("/api/tools/media-layout/upload", { method: "POST", body: form })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message)
-      setSaveMsg({ ok: true, text: `${year}년 저장 완료 (${data.javaRows?.toLocaleString()}행)` })
-    } catch (err) {
-      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "저장 오류" })
-    } finally { setSaving(false) }
+  // ── 탭 스크롤 위치 복원 ──────────────────────────────────────
+
+  function handleTabChange(rec: string) {
+    if (scrollDivRef.current) scrollPosRef.current[activeRec] = scrollDivRef.current.scrollTop
+    setActiveRec(rec)
+    setTimeout(() => { if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0 }, 0)
   }
+
+  // ── 로드 ─────────────────────────────────────────────────────
+
+  const loadRows = useCallback(async (y: number) => {
+    setChecking(true)
+    try {
+      const res  = await fetch(`/api/tools/java-layout?year=${y}`)
+      const data = await res.json()
+      setJavaFile(data.upload ?? null)
+      const all: JavaRow[] = data.rows ?? []
+      const grouped: Record<string, JavaRow[]> = {}
+      for (const row of all) {
+        if (!grouped[row.recordType]) grouped[row.recordType] = []
+        grouped[row.recordType].push(row)
+      }
+      setByRecord(grouped)
+      if (Object.keys(grouped).length > 0) setActiveRec(Object.keys(grouped).sort()[0])
+    } finally { setChecking(false) }
+  }, [])
+
+  useEffect(() => { loadRows(year) }, [year, loadRows])
+
+  // ── 파일 선택 ────────────────────────────────────────────────
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if (!f) return
-    if (!f.name.match(/\.(java|txt)$/i)) {
-      setStatus("error"); setErrMsg("java 또는 txt 파일만 허용됩니다."); return
-    }
-    setFile(f); setStatus("idle"); setResult(null)
+    if (!f.name.match(/\.(java|txt)$/i)) { setUploadErr(".java 또는 .txt 파일만 허용됩니다."); return }
+    setFile(f); setUploadErr("")
   }
 
-  async function handleParse() {
+  // ── 업로드 ───────────────────────────────────────────────────
+
+  async function handleUpload() {
     if (!file) return
-    setStatus("loading")
+    if (javaFile) {
+      const ok = confirm(
+        `이미 ${year}년 데이터가 존재합니다.\n\n` +
+        `현재 파일: ${javaFile.javaFileName} (${javaFile.rowCount.toLocaleString()}행)\n` +
+        `새 파일:   ${file.name}\n\n` +
+        `기존 데이터를 모두 삭제하고 새 파일로 덮어쓰시겠습니까?`
+      )
+      if (!ok) return
+    }
+    setUploading(true); setUploadErr("")
     try {
       const form = new FormData()
+      form.append("year", String(year))
       form.append("java", file)
       const res  = await fetch("/api/tools/java-layout", { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      setResult(data)
-      setFields(JSON.parse(JSON.stringify(data.byRecord)))
-      setActiveRec(data.records[0] ?? "A")
-      setStatus("ok")
+      setByRecord({}); setFile(null)
+      if (fileRef.current) fileRef.current.value = ""
+      await loadRows(year)
     } catch (err) {
-      setErrMsg(err instanceof Error ? err.message : "파싱 오류")
-      setStatus("error")
+      setUploadErr(err instanceof Error ? err.message : "업로드 오류")
+    } finally { setUploading(false) }
+  }
+
+  // ── 삭제 ─────────────────────────────────────────────────────
+
+  async function handleDelete() {
+    if (!confirm(`${year}년 Java 소스 데이터를 삭제하시겠습니까?\n(MLAY_JAVA 전체 삭제)`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/tools/java-layout?year=${year}`, { method: "DELETE" })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message) }
+      setJavaFile(null); setByRecord({}); setFile(null)
+      if (fileRef.current) fileRef.current.value = ""
+    } catch (err) {
+      alert(`삭제 오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`)
+    } finally { setDeleting(false) }
+  }
+
+  // ── 테이블 렌더 ──────────────────────────────────────────────
+
+  function renderTable(rows: JavaRow[]) {
+    const nodes: React.ReactNode[] = []
+    let prevSect = ""
+    let cumBytes = 0
+    let maxBody  = 0
+    for (const r of rows) { const n = bodyNum(r.sect); if (n > maxBody) maxBody = n }
+
+    const aligned = alignMakeStrs(rows.map(r => r.javaCode))
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
+      cumBytes += r.fieldLen ?? 0
+      nodes.push(
+        <tr key={r.seq} className={cn("border-b hover:brightness-95 transition-colors", sectRowBg(r.sect))}>
+          {/* 번호 */}
+          <td className="px-2 py-1 border-r font-mono font-semibold text-xs text-center">{r.code}</td>
+          {/* 항목명 */}
+          <td className="px-2 py-0.5 border-r text-xs">{r.item}</td>
+          {/* makeStr */}
+          <td className="px-2 py-1 border-r font-mono text-[11px] whitespace-pre text-sky-800">{aligned[i]}</td>
+          {/* 타입 */}
+          <td className="px-2 py-1 border-r text-center font-mono text-xs">{r.fieldType ?? ""}</td>
+          {/* 길이 */}
+          <td className="px-2 py-1 border-r text-right font-mono text-xs">{r.fieldLen ?? ""}</td>
+          {/* 누적 */}
+          <td className="px-2 py-1 text-right font-mono text-xs tabular-nums text-muted-foreground/60">{cumBytes > 0 ? cumBytes : ""}</td>
+        </tr>
+      )
     }
+    return nodes
   }
 
-  function handleBulkApply(rec: string, cfg: BulkConfig | null) {
-    if (!cfg) {
-      setFields(prev => ({ ...prev, [rec]: (prev[rec] ?? []).map(f => ({ ...f, sect: "header" })) }))
-      return
-    }
-    setBulkCfg(prev => ({ ...prev, [rec]: cfg }))
-    setFields(prev => ({ ...prev, [rec]: applyBulkSect(prev[rec] ?? [], cfg.bodyStart, cfg.bodyEnd, cfg.divideBy) }))
-  }
-
-  function getBulkCfg(rec: string): BulkConfig {
-    return bulkCfg[rec] ?? { bodyStart: 1, bodyEnd: 1, divideBy: 1 }
-  }
-
-  const recList = result?.records ?? []
+  // ── JSX ───────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col flex-1 min-h-0 gap-4">
 
-      {/* 파일 업로드 */}
-      <div className="flex items-start gap-4">
+      {/* 업로드 한 줄 */}
+      <div className="flex items-center gap-2 shrink-0">
+
+        {/* 귀속연도 */}
+        <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+          className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
+          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
+            <option key={y} value={y}>{y}년</option>
+          ))}
+        </select>
+
+        {/* 파일 상태 */}
         <div onClick={() => fileRef.current?.click()}
-          className="flex-1 cursor-pointer rounded-lg border-2 border-dashed p-6 text-center hover:border-primary/50 hover:bg-muted/40 transition-colors">
-          {status === "ok" ? (
-            <div className="flex flex-col items-center gap-2">
-              <CheckCircle2 className="h-8 w-8 text-green-500" />
-              <p className="text-sm font-medium text-green-600">{file?.name}</p>
-              <p className="text-xs text-muted-foreground">총 {result?.total.toLocaleString()}개 필드 파싱 완료{result?.skipped ? ` (주석 없는 makeStr ${result.skipped}행 제외)` : ""}</p>
-            </div>
-          ) : status === "error" ? (
-            <div className="flex flex-col items-center gap-2">
-              <AlertCircle className="h-8 w-8 text-destructive" />
-              <p className="text-sm text-destructive">{errMsg}</p>
-            </div>
-          ) : file ? (
-            <div className="flex flex-col items-center gap-2">
-              <FileCode className="h-8 w-8 text-primary" />
-              <p className="text-sm font-medium">{file.name}</p>
-              <p className="text-xs text-muted-foreground">아래 [파싱 시작] 버튼을 클릭하세요</p>
-            </div>
+          className="flex-1 flex items-center gap-2 h-8 px-3 border rounded cursor-pointer hover:bg-muted/50 transition-colors text-sm min-w-0">
+          {file ? (
+            <><FileCode className="h-4 w-4 text-primary shrink-0" /><span className="truncate font-medium">{file.name}</span></>
+          ) : checking ? (
+            <><Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" /><span className="text-muted-foreground">확인 중...</span></>
+          ) : javaFile ? (
+            <><CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" /><span className="truncate text-green-700">{javaFile.javaFileName}</span>
+              <span className="text-xs text-muted-foreground shrink-0 ml-auto pl-2">
+                {javaFile.rowCount.toLocaleString()}행 · {(() => { const d = new Date(javaFile.uploadedAt); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}` })()}
+              </span>
+            </>
           ) : (
-            <div className="flex flex-col items-center gap-2">
-              <Upload className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">전산매체 생성 Java 소스 파일 선택 (.java / .txt)</p>
-            </div>
+            <span className="text-muted-foreground text-xs">파일 없음 — 클릭하여 선택</span>
           )}
-          <input ref={fileRef} type="file" accept=".java,.txt" className="hidden" onChange={handleFile} />
         </div>
+        <input ref={fileRef} type="file" accept=".java,.txt" className="hidden" onChange={handleFile} />
 
-        <div className="flex flex-col gap-2 mt-2">
-          <Button onClick={handleParse} disabled={!file || status === "loading"} size="lg">
-            {status === "loading" ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />파싱 중...</> : "파싱 시작"}
+        {/* 버튼 */}
+        <Button onClick={handleUpload} disabled={!file || uploading} size="sm" className="shrink-0">
+          {uploading ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />저장 중...</> : "업로드"}
+        </Button>
+        {javaFile && (
+          <Button onClick={handleDelete} disabled={deleting} variant="destructive" size="sm" className="shrink-0">
+            {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
           </Button>
-
-          {result && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium shrink-0">귀속연도</span>
-              <input
-                type="number" value={year} min={2020} max={2099}
-                onChange={e => setYear(parseInt(e.target.value) || year)}
-                className="w-20 h-9 border rounded px-2 text-center font-mono text-sm bg-background"
-              />
-              <Button onClick={handleSave} disabled={saving} variant="default">
-                {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />저장 중...</> : "Oracle 저장"}
-              </Button>
-              {saveMsg && (
-                <span className={`text-xs ${saveMsg.ok ? "text-green-600" : "text-destructive"}`}>
-                  {saveMsg.text}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* 파싱 결과 */}
-      {result && (
-        <div className="space-y-2">
+      {uploadErr && (
+        <div className="flex items-center gap-2 text-sm text-destructive shrink-0">
+          <AlertCircle className="h-4 w-4" />{uploadErr}
+        </div>
+      )}
+
+      {/* 리스트 */}
+      {hasRows && (
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
 
           {/* 총 바이트 검증 */}
-          {(() => {
-            const totals = recList.map(r => {
-              const recs = result.byRecord[r] ?? []
-              return { r, total: recs.length > 0 ? recs[recs.length - 1].cum : 0 }
-            })
-            const base = totals[0]?.total ?? 0
-            return (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-muted-foreground font-medium">총 바이트 검증 (기준 {base} byte):</span>
-                {totals.map(({ r, total }) => {
-                  const ok = total === base
+          <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
+            {(() => {
+              const totals = recList.map(r => ({
+                r, bytes: byRecord[r]?.reduce((s, row) => s + (row.fieldLen ?? 0), 0) ?? 0,
+              }))
+              const base = totals[0]?.bytes ?? 0
+              return (
+                <>
+                  <span className="text-muted-foreground font-medium shrink-0">총 바이트 검증 (기준 {base} byte):</span>
+                  {totals.map(({ r, bytes }) => {
+                    const ok = bytes === base
+                    return (
+                      <span key={r} className={`inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {r}:{bytes}
+                      </span>
+                    )
+                  })}
+                </>
+              )
+            })()}
+          </div>
+
+          {/* 탭 + 테이블 */}
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-end border-b border-border gap-0.5">
+              <div className="flex items-end gap-0.5 min-w-0">
+                {recList.map(r => {
+                  const isActive = r === activeRec
+                  const info     = analyzeStruct(byRecord[r] ?? [])
+                  const isHbf    = info.isHbf
+                  const baseBg   = isHbf ? "bg-purple-100 text-purple-700" : "bg-sky-50 text-sky-700"
+                  const hoverBg  = isHbf ? "hover:bg-purple-200" : "hover:bg-sky-100"
+                  const topLine  = isHbf ? "border-t-[3px] border-t-purple-500" : "border-t-[3px] border-t-sky-500"
+                  const borderB  = isHbf ? "border-b-purple-100" : "border-b-sky-50"
                   return (
-                    <span key={r} title={`${r}레코드: ${total} byte${ok ? " ✓" : ` — 기준(${base})과 불일치`}`}
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono font-semibold ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                      {r}: {total}{ok ? " ✓" : " ✗"}
-                    </span>
+                    <button key={r} type="button" onClick={() => handleTabChange(r)}
+                      className={cn(
+                        "px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors shrink min-w-[36px] truncate max-w-[80px]",
+                        baseBg,
+                        isActive
+                          ? cn("font-semibold border border-border -mb-px relative z-10", topLine, borderB)
+                          : hoverBg
+                      )}>
+                      {r}-레코드
+                    </button>
                   )
                 })}
               </div>
-            )
-          })()}
-
-          {/* 브라우저 탭 */}
-          <div>
-            <div className="flex items-end border-b border-border gap-0.5">
-              {RECORD_TYPES.filter(r => recList.includes(r)).map(r => (
-                <button key={r} type="button" onClick={() => setActiveRec(r)}
-                  className={cn(
-                    "px-4 py-1.5 text-xs font-medium rounded-t-md transition-colors",
-                    r === activeRec
-                      ? "bg-white text-blue-600 font-semibold border border-border border-b-0 -mb-px relative z-10"
-                      : "bg-gray-100 text-muted-foreground hover:bg-gray-200"
-                  )}>
-                  {r}-레코드
-                </button>
-              ))}
+              <div className="ml-auto flex items-center gap-2 pb-0.5 shrink-0">
+                <Badge variant="outline" className="text-xs">
+                  {byRecord[activeRec]?.length ?? 0}행
+                </Badge>
+              </div>
             </div>
 
-            {RECORD_TYPES.filter(r => recList.includes(r)).map(r =>
-              r === activeRec ? (
-                <div key={r} className="border border-t-0 border-border rounded-b bg-white">
-                  <BulkSectPanel
-                    totalRows={fields[r]?.length ?? 0}
-                    config={getBulkCfg(r)}
-                    recFields={fields[r] ?? []}
-                    onApply={cfg => handleBulkApply(r, cfg)}
-                  />
-                  <JavaFieldTable recFields={fields[r] ?? []} />
-                </div>
-              ) : null
-            )}
+            <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
+              <JavaSectInfo rows={byRecord[activeRec] ?? []} />
+              <div ref={scrollDivRef} className="overflow-auto flex-1 text-xs">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-10 bg-muted">
+                    <tr>
+                      <th className="px-2 py-1.5 border-b border-r text-center w-20">번호</th>
+                      <th className="px-2 py-1.5 border-b border-r text-left min-w-[120px]">항목명</th>
+                      <th className="px-2 py-1.5 border-b border-r text-left">makeStr</th>
+                      <th className="px-1 py-1.5 border-b border-r text-center w-10">타입</th>
+                      <th className="px-1 py-1.5 border-b border-r text-center w-10">길이</th>
+                      <th className="px-1 py-1.5 border-b text-center w-16 whitespace-nowrap">누적(계산)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renderTable(byRecord[activeRec] ?? [])}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
         </div>
