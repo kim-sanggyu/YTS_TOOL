@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
+import { Toaster } from "sonner"
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -19,6 +20,7 @@ export default async function PortalLayout({ children }: { children: React.React
           {children}
         </main>
       </SidebarInset>
+      <Toaster position="top-center" richColors closeButton duration={6000} />
     </SidebarProvider>
   )
 }

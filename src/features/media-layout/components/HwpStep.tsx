@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FileText, CheckCircle2, AlertCircle, Loader2, Save, Trash2, RotateCcw } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { TaxRow, HwpFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 
@@ -318,7 +319,7 @@ export function HwpStep() {
       setFile(null)
       if (fileRef.current) fileRef.current.value = ""
     } catch (err) {
-      alert(`삭제 오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`)
+      toast.error(err instanceof Error ? err.message : "삭제 중 오류가 발생했습니다.")
     } finally { setDeleting(false) }
   }
 
@@ -377,8 +378,7 @@ export function HwpStep() {
       setSectMsg({ ok: true, text: "구조 설정 저장됨" })
       setTimeout(() => setSectMsg(null), 2000)
     } catch (err) {
-      setSectMsg({ ok: false, text: err instanceof Error ? err.message : "저장 오류" })
-      setTimeout(() => setSectMsg(null), 3000)
+      toast.error(err instanceof Error ? err.message : "구조 설정 저장 중 오류가 발생했습니다.")
     } finally {
       setSectApplying(false)
     }
@@ -405,7 +405,7 @@ export function HwpStep() {
       setDirty(new Map())
       await loadRows(year)
     } catch (err) {
-      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "저장 오류" })
+      toast.error(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.")
     } finally { setSaving(false) }
   }
 

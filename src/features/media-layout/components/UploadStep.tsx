@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, FileText, FileCode, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react"
+import { toast } from "sonner"
 import type { TaxLayoutRow } from "../types"
 import type { HwpFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 
@@ -156,7 +157,7 @@ export function UploadStep({ initialYear, initialUpload }: Props = {}) {
 
       await checkExisting(year)
     } catch (err) {
-      alert(`오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`)
+      toast.error(err instanceof Error ? err.message : "업로드 중 오류가 발생했습니다.")
     } finally { setLoading(false) }
   }
 

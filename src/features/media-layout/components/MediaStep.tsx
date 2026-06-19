@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X } from "lucide-react"
+import { toast } from "sonner"
 import { SectionBox, sectColors, sectionLineCount } from "./SectionBox"
 import { cn } from "@/lib/utils"
 import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
@@ -378,7 +379,7 @@ export function MediaStep() {
     // I 슬롯 유효성 검사 — 비어 있거나 makeStr 형식이 아니면 저장 차단
     const badI = javaSlots.filter(s => s.cmd === "I" && (!s.editedRaw.trim() || !parseMakeStr(s.editedRaw)))
     if (badI.length > 0) {
-      setSaveMsg({ ok: false, text: `I 행 ${badI.length}건: makeStr 입력이 없거나 형식이 올바르지 않습니다.` })
+      toast.error(`I 행 ${badI.length}건: makeStr 입력이 없거나 형식이 올바르지 않습니다.`)
       return
     }
     setSaving(true); setSaveMsg(null)
@@ -430,14 +431,14 @@ export function MediaStep() {
       await loadCompare(y, activeRec)
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
-      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "저장 오류" })
+      toast.error(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.")
     } finally { setSaving(false) }
   }
 
   // ── 편집 초기화 ───────────────────────────────────────────────
 
   async function handleReset() {
-    if (!confirm(`${activeRec}-레코드의 D/I/M 편집 내역을 모두 초기화하시겠습니까?\n(MLAY_JAVA_EDIT에서 해당 레코드 항목 삭제)`)) return
+    if (!confirm(`${activeRec}-레코드의 D/I/M 편집 내역을 모두 초기화하시겠습니까?`)) return
     setSaving(true); setSaveMsg(null)
     try {
       const res  = await fetch(`/api/tools/media-layout/compare?record=${activeRec}&year=${year}`, { method: "DELETE" })
@@ -447,7 +448,7 @@ export function MediaStep() {
       await loadCompare(year, activeRec)
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
-      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "초기화 오류" })
+      toast.error(err instanceof Error ? err.message : "초기화 중 오류가 발생했습니다.")
     } finally { setSaving(false) }
   }
 
@@ -484,7 +485,7 @@ export function MediaStep() {
       setPreviewCode(data.code)
       setPreviewRec(activeRec)
     } catch (err) {
-      alert(err instanceof Error ? err.message : "생성 오류")
+      toast.error(err instanceof Error ? err.message : "소스 생성 중 오류가 발생했습니다.")
     } finally { setGenerating(false) }
   }
 

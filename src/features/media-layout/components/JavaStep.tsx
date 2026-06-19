@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { JavaRow, JavaFileRow } from "@/lib/tax-oracle"
 
@@ -202,7 +203,7 @@ export function JavaStep() {
       setJavaFile(null); setByRecord({}); setFile(null)
       if (fileRef.current) fileRef.current.value = ""
     } catch (err) {
-      alert(`삭제 오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`)
+      toast.error(err instanceof Error ? err.message : "삭제 중 오류가 발생했습니다.")
     } finally { setDeleting(false) }
   }
 

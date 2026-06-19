@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff } from "lucide-react"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { SectionBox } from "./SectionBox"
 import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
@@ -122,7 +123,7 @@ export function GenerateStep() {
       a.href = url; a.download = `patched_${data.year as number}.java`; a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      alert(err instanceof Error ? err.message : "패치 오류")
+      toast.error(err instanceof Error ? err.message : "소스 패치 중 오류가 발생했습니다.")
     } finally { setPatching(false) }
   }
 
