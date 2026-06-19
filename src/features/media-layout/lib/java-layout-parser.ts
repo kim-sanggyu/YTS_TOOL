@@ -36,10 +36,19 @@ function extractMakeStr(line: string): string {
   return line.slice(start)
 }
 
+// makeStr 인자 구분 , 다음 공백을 1개로 정규화하고, 인자 앞뒤 불필요한 공백 제거
+// " " 등 문자열 리터럴 내부 공백은 보존
+function normalizeMakeStr(s: string): string {
+  const m = /^makeStr\s*\(\s*"([9xX])"\s*,\s*(\d+)\s*,\s*([\s\S]+)\)\s*$/.exec(s)
+  if (!m) return s
+  const arg = m[3].replace(/\s+\)/g, ")").trimEnd()
+  return `makeStr("${m[1]}", ${m[2]}, ${arg})`
+}
+
 // ── 파서 ─────────────────────────────────────────────────────
 
 interface RawField {
-  no: string; record: string; name: string; dtype: string; len: number; lineNo: number; raw: string
+  seq: number; no: string; record: string; name: string; dtype: string; len: number; lineNo: number; raw: string
 }
 
 interface BwBlock {
@@ -209,7 +218,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
       const record = no[0]
       const dtype  = makeM[1].toLowerCase()
       const len    = parseInt(makeM[2])
-      blockRawFields.push({ no, record, name, dtype, len, lineNo, raw: extractMakeStr(trimmed) })
+      blockRawFields.push({ seq: 0, no, record, name, dtype, len, lineNo, raw: normalizeMakeStr(extractMakeStr(trimmed)) })
     } else if (makeM) {
       skipped++
     }

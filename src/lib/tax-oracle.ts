@@ -22,14 +22,16 @@ export interface JavaRow {
 export interface TaxRow {
   seq:        number
   recordType: string
-  code:       string   // 항목코드 (A1, C5 …)
-  item:       string   // 항목명
-  val:        string   // 원본 표현 (X(10), 9(13))
-  fieldType?: string   // x | 9
+  code:       string    // NVL(E.CODE, T.CODE)
+  item:       string    // NVL(E.ITEM, T.ITEM)
+  원본코드?:  string    // MLAY_TAX_EDIT로 덮어쓴 경우의 원본 MLAY_TAX.CODE
+  원본항목?:  string    // MLAY_TAX_EDIT로 덮어쓴 경우의 원본 MLAY_TAX.ITEM
+  val:        string    // 원본 표현 (X(10), 9(13))
+  fieldType?: string    // x | 9
   fieldLen?:  number
-  hwpCum?:    number   // HWP 문서상 누적값 (계산누적과 다르면 오타 의심)
-  gubun?:     string   // 구분 레이블 (예: 【자료관리번호】)
-  sect:       string   // HEAD | BODY_N | FOOT
+  hwpCum?:    number    // HWP 문서상 누적값 (계산누적과 다르면 오타 의심)
+  gubun?:     string    // 구분 레이블 (예: 【자료관리번호】)
+  sect:       string    // HEAD | BODY_N | FOOT
 }
 
 export interface HwpFileRow {
@@ -140,6 +142,16 @@ export async function saveHwpFile(
       `DELETE FROM MLAY_COMPARE WHERE YEAR = :1 AND USER_ID = :2`,
       [year, userId]
     )
+    // MAP 삭제 — Tax SEQ가 바뀌므로 기존 MAP은 무효
+    await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
+      [year, userId]
+    )
+    // 사용자 삽입 Java 행(LINE_NO=0) 삭제 — HWP 재업로드 시 정합성 초기화
+    await conn.execute(
+      `DELETE FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 AND LINE_NO = 0`,
+      [year, userId]
+    )
     // MLAY_SECT_CONFIG (TAX) 삭제
     await conn.execute(
       `DELETE FROM MLAY_SECT_CONFIG WHERE YEAR = :1 AND USER_ID = :2 AND TARGET = 'TAX'`,
@@ -197,7 +209,7 @@ export async function saveJavaFile(
   fields:   JavaField[],
 ): Promise<void> {
   await withConnection("ytts", async (conn) => {
-    // 기존 데이터 삭제 (MLAY_JAVA CASCADE) + 편집 레이어 초기화
+    // 기존 데이터 삭제 (MLAY_JAVA CASCADE) + 편집·MAP 레이어 초기화
     await conn.execute(
       `DELETE FROM MLAY_JAVA_FILE WHERE YEAR = :1 AND USER_ID = :2`,
       [year, userId]
@@ -207,7 +219,11 @@ export async function saveJavaFile(
       [year, userId]
     )
     await conn.execute(
-      `DELETE FROM MLAY_JAVA_EDIT WHERE YEAR = :1 AND USER_ID = :2`,
+      `DELETE FROM MLAY_JAVA_CODE_EDIT WHERE YEAR = :1 AND USER_ID = :2`,
+      [year, userId]
+    )
+    await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
       [year, userId]
     )
 
@@ -267,27 +283,53 @@ export async function getAllJavaRows(year: number, userId: number): Promise<Java
 // ── MLAY_TAX 조회 ─────────────────────────────────────────────
 
 export async function getTaxRows(year: number, userId: number, record?: string): Promise<TaxLayoutRow[]> {
-  const [sql, params] = record
-    ? [
-        `SELECT GUBUN, CODE, ITEM, VAL, FIELD_TYPE, FIELD_LEN, SECT
-         FROM MLAY_TAX WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 ORDER BY SEQ`,
-        [year, userId, record],
-      ]
-    : [
-        `SELECT GUBUN, CODE, ITEM, VAL, FIELD_TYPE, FIELD_LEN, SECT
-         FROM MLAY_TAX WHERE YEAR = :1 AND USER_ID = :2 ORDER BY SEQ`,
-        [year, userId],
-      ]
-  const rows = await yttsDb.query<Record<string, unknown>>(sql, params)
-  return rows.map(r => ({
-    구분:  (r.GUBUN      as string) ?? "",
-    코드:  (r.CODE       as string) ?? "",
-    항목:  (r.ITEM       as string) ?? "",
-    값:    (r.VAL        as string) ?? "",
-    타입:  (r.FIELD_TYPE as string) || undefined,
-    길이:  (r.FIELD_LEN  as number) || undefined,
-    sect:  (r.SECT       as string) ?? "header",
-  }))
+  const mapper = (r: Record<string, unknown>, hasEdit: boolean) => ({
+    seq:      r.SEQ        as number,
+    구분:    (r.GUBUN      as string) ?? "",
+    코드:    (r.CODE       as string) ?? "",
+    항목:    (r.ITEM       as string) ?? "",
+    원본코드: hasEdit ? ((r.ORG_CODE as string) || undefined) : undefined,
+    원본항목: hasEdit ? ((r.ORG_ITEM as string) || undefined) : undefined,
+    값:      (r.VAL        as string) ?? "",
+    타입:    (r.FIELD_TYPE as string) || undefined,
+    길이:    (r.FIELD_LEN  as number) || undefined,
+    sect:    (r.SECT       as string) ?? "header",
+  })
+
+  const joinSql = (filter: string) =>
+    `SELECT T.SEQ, T.GUBUN,
+            NVL(CE.CODE, T.CODE) AS CODE,
+            NVL(IE.ITEM, T.ITEM) AS ITEM,
+            CASE WHEN CE.SEQ IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
+            CASE WHEN IE.SEQ IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
+            T.VAL, T.FIELD_TYPE, T.FIELD_LEN, T.SECT
+     FROM MLAY_TAX T
+     LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.SEQ = T.SEQ
+     LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.SEQ = T.SEQ
+     WHERE ${filter} ORDER BY T.SEQ`
+
+  const plainSql = (filter: string) =>
+    `SELECT SEQ, GUBUN, CODE, NULL AS ORG_CODE, ITEM, NULL AS ORG_ITEM, VAL, FIELD_TYPE, FIELD_LEN, SECT
+     FROM MLAY_TAX WHERE ${filter} ORDER BY SEQ`
+
+  const [joinFilter, plainFilter, params] = record
+    ? ["T.YEAR = :1 AND T.USER_ID = :2 AND T.RECORD_TYPE = :3",
+       "YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3",
+       [year, userId, record]]
+    : ["T.YEAR = :1 AND T.USER_ID = :2",
+       "YEAR = :1 AND USER_ID = :2",
+       [year, userId]]
+
+  try {
+    const rows = await yttsDb.query<Record<string, unknown>>(joinSql(joinFilter), params)
+    return rows.map(r => mapper(r, true))
+  } catch (err: unknown) {
+    const oraErr = err as { errorNum?: number; message?: string }
+    if (oraErr?.errorNum !== 942) console.error("[getTaxRows] JOIN 오류:", oraErr?.message ?? err)
+    else console.warn("[getTaxRows] MLAY_TAX_CODE/ITEM_EDIT 없음 — DDL 실행 필요")
+    const rows = await yttsDb.query<Record<string, unknown>>(plainSql(plainFilter), params)
+    return rows.map(r => mapper(r, false))
+  }
 }
 
 // ── MLAY_JAVA 조회 ────────────────────────────────────────────
@@ -295,84 +337,57 @@ export async function getTaxRows(year: number, userId: number, record?: string):
 export async function getJavaRows(year: number, userId: number, record?: string): Promise<JavaField[]> {
   const [sql, params] = record
     ? [
-        `SELECT RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER
+        `SELECT SEQ, RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER
          FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 ORDER BY SEQ`,
         [year, userId, record],
       ]
     : [
-        `SELECT RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER
+        `SELECT SEQ, RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER
          FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 ORDER BY SEQ`,
         [year, userId],
       ]
   const rows = await yttsDb.query<Record<string, unknown>>(sql, params)
   return rows.map(r => ({
-    record:   (r.RECORD_TYPE as string) ?? "",
-    no:       (r.CODE        as string) ?? "",
-    name:     (r.ITEM        as string) ?? "",
-    dtype:    (r.FIELD_TYPE  as string) ?? "x",
-    len:      (r.FIELD_LEN   as number) ?? 0,
+    seq:      (r.SEQ          as number) ?? 0,
+    record:   (r.RECORD_TYPE  as string) ?? "",
+    no:       (r.CODE         as string) ?? "",
+    name:     (r.ITEM         as string) ?? "",
+    dtype:    (r.FIELD_TYPE   as string) ?? "x",
+    len:      (r.FIELD_LEN    as number) ?? 0,
     cum:      0,
-    lineNo:   (r.LINE_NO     as number) ?? 0,
-    raw:      (r.JAVA_CODE   as string) ?? "",
-    sect:     (r.SECT        as string) ?? "header",
-    bodyIter: (r.BODY_ITER   as number | null) ?? undefined,
+    lineNo:   (r.LINE_NO      as number) ?? 0,
+    raw:      (r.JAVA_CODE    as string) ?? "",
+    sect:     (r.SECT         as string) ?? "header",
+    bodyIter: (r.BODY_ITER    as number | null) ?? undefined,
   }))
 }
 
-// ── MLAY_JAVA_EDIT 타입 ───────────────────────────────────────
+// ── MLAY_JAVA_CODE_EDIT ───────────────────────────────────────
+// M 편집만 저장. MLAY_TAX_CODE_EDIT / MLAY_TAX_ITEM_EDIT 와 동일한 구조.
 
-export interface JavaEditRow {
-  editSeq:     number
-  cmd:         "D" | "I" | "M"
-  lineNo:      number | null   // D/M: MLAY_JAVA 행 참조
-  prevLineNo:  number | null   // I: 앞 행의 LINE_NO (0=레코드 맨앞)
-  record:      string | null   // I 전용
-  javaCode:    string | null   // I/M: makeStr 표현식
-  fieldType:   string | null   // I 전용
-  fieldLen:    number | null   // I 전용
-  bodyIter:    number | null   // D 전용: 삭제 대상 body 반복 회차 (PREV_LINE_NO 재사용)
+export interface JavaCodeEdit {
+  seq:      number   // MLAY_JAVA.SEQ
+  javaCode: string   // 수정된 makeStr 표현식
 }
 
-export async function getJavaEdits(year: number, userId: number, record?: string): Promise<JavaEditRow[]> {
+export async function getJavaCodeEdits(year: number, userId: number, record?: string): Promise<JavaCodeEdit[]> {
   const [sql, params] = record
     ? [
-        `SELECT E.EDIT_SEQ, E.CMD, E.LINE_NO, E.PREV_LINE_NO, E.RECORD_TYPE, E.JAVA_CODE, E.FIELD_TYPE, E.FIELD_LEN
-         FROM MLAY_JAVA_EDIT E
-         WHERE E.YEAR = :1 AND E.USER_ID = :2
-           AND (
-             (E.CMD = 'I' AND E.RECORD_TYPE = :3)
-             OR
-             (E.CMD IN ('D', 'M') AND EXISTS (
-               SELECT 1 FROM MLAY_JAVA J
-               WHERE J.YEAR = :1 AND J.USER_ID = :2
-                 AND J.LINE_NO = E.LINE_NO AND J.RECORD_TYPE = :3
-             ))
-           )
-         ORDER BY E.EDIT_SEQ`,
-        [year, userId, record],
+        `SELECT E.SEQ, E.JAVA_CODE
+         FROM MLAY_JAVA_CODE_EDIT E
+         JOIN MLAY_JAVA J ON J.YEAR = :1 AND J.USER_ID = :2 AND J.SEQ = E.SEQ
+         WHERE E.YEAR = :3 AND E.USER_ID = :4 AND J.RECORD_TYPE = :5`,
+        [year, userId, year, userId, record],
       ]
     : [
-        `SELECT EDIT_SEQ, CMD, LINE_NO, PREV_LINE_NO, RECORD_TYPE, JAVA_CODE, FIELD_TYPE, FIELD_LEN
-         FROM MLAY_JAVA_EDIT WHERE YEAR = :1 AND USER_ID = :2 ORDER BY EDIT_SEQ`,
+        `SELECT SEQ, JAVA_CODE FROM MLAY_JAVA_CODE_EDIT WHERE YEAR = :1 AND USER_ID = :2`,
         [year, userId],
       ]
   const rows = await yttsDb.query<Record<string, unknown>>(sql, params)
-  return rows.map(r => {
-    const cmd = (r.CMD as string) as "D" | "I" | "M"
-    return {
-      editSeq:    r.EDIT_SEQ    as number,
-      cmd,
-      lineNo:     cmd === "I" ? null : ((r.LINE_NO as number | null) ?? null),
-      prevLineNo: cmd === "I" ? ((r.PREV_LINE_NO as number | null) ?? null) : null,
-      record:     (r.RECORD_TYPE  as string | null) ?? null,
-      javaCode:   (r.JAVA_CODE    as string | null) ?? null,
-      fieldType:  (r.FIELD_TYPE   as string | null) ?? null,
-      fieldLen:   (r.FIELD_LEN    as number | null) ?? null,
-      // D: PREV_LINE_NO에 bodyIter 저장. I: LINE_NO에 anchor bodyIter 저장
-      bodyIter:   cmd === "D" ? ((r.PREV_LINE_NO as number | null) ?? null) :
-                  cmd === "I" ? ((r.LINE_NO      as number | null) ?? null) : null,
-    }
-  })
+  return rows.map(r => ({
+    seq:      r.SEQ       as number,
+    javaCode: (r.JAVA_CODE as string) ?? "",
+  }))
 }
 
 // ── MLAY_SECT_CONFIG ─────────────────────────────────────────
@@ -467,63 +482,126 @@ export async function saveSectConfigWithRows(
   })
 }
 
-// ── 비교 데이터 빌드 (순차 1:1 매치) ─────────────────────────
 
-export function buildCompareRows(
-  taxRows:  TaxLayoutRow[],
-  javaRows: JavaField[],
-  edits:    JavaEditRow[] = [],
-): CompareRow[] {
-  // 편집 인덱스 구성
-  // lineNo만으로는 HBF body 반복 행 구분 불가 → bodyIter 복합키 사용
-  const dSet  = new Set(edits.filter(e => e.cmd === "D").map(e => `${e.lineNo}_${e.bodyIter ?? ""}`))
-  const mMap  = new Map(edits.filter(e => e.cmd === "M").map(e => [e.lineNo!, e]))
-  // I 편집: (prevLineNo, bodyIter) 복합키로 그룹 — lineNo non-unique 대응
-  const iMap  = new Map<string, JavaEditRow[]>()
-  for (const e of edits.filter(e => e.cmd === "I")) {
-    const key = `${e.prevLineNo ?? 0}_${e.bodyIter ?? ""}`
-    if (!iMap.has(key)) iMap.set(key, [])
-    iMap.get(key)!.push(e)
-  }
+// ── MLAY_TAX_JAVA_MAP ─────────────────────────────────────────
+// seq 기반 HWP ↔ Java 행 매칭 테이블.
+// 저장 시 레코드 전체를 DELETE + INSERT batch로 교체 (밀기 방식 SORT_ORDER).
 
-  const result: CompareRow[] = []
-  let ti = 0
+export interface MapSaveRow {
+  sortOrder:  number
+  recordType: string
+  taxSeq:     number | null  // null = D (Java 행 삭제 예정)
+  javaSeq:    number | null  // null = I (Java 코드 삽입 필요)
+  editedRaw?: string | null  // I 행의 makeStr 표현식
+}
 
-  // 맨앞(prevLineNo=0) I 삽입 처리 — header 구간이므로 bodyIter 항상 null
-  for (const ie of iMap.get("0_") ?? []) {
-    result.push({ seq: result.length + 1, tax: taxRows[ti] ?? null, java: null, cmd: "I", editedRaw: ie.javaCode ?? "" })
-    ti++
-  }
 
-  for (const java of javaRows) {
-    if (dSet.has(`${java.lineNo}_${java.bodyIter ?? ""}`)) {
-      // D: 국세청 슬롯 없이 D로 표시 (taxIdx 전진 안 함)
-      result.push({ seq: result.length + 1, tax: null, java, cmd: "D", editedRaw: java.raw })
-    } else {
-      const mEdit = mMap.get(java.lineNo)
-      result.push({
-        seq:       result.length + 1,
-        tax:       taxRows[ti] ?? null,
-        java,
-        cmd:       null,
-        editedRaw: mEdit?.javaCode ?? java.raw,
-      })
-      ti++
+export async function saveMap(
+  year: number, userId: number, record: string, rows: MapSaveRow[]
+): Promise<number> {
+  await withConnection("ytts", async (conn) => {
+    // 기존 I 삽입 행(LINE_NO=0) 삭제 — 이번 저장으로 재생성됨
+    await conn.execute(
+      `DELETE FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 AND LINE_NO = 0`,
+      [year, userId, record]
+    )
+
+    // I 행(javaSeq=null, editedRaw 있음): MLAY_JAVA에 새 행 삽입 후 SEQ 획득
+    const maxRow = await conn.execute(
+      `SELECT NVL(MAX(SEQ), 0) AS MSEQ FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2`,
+      [year, userId], { outFormat: 4002 }
+    )
+    let javaSeqN = ((maxRow.rows?.[0] as { MSEQ: number } | undefined)?.MSEQ ?? 0)
+
+    const finalRows: MapSaveRow[] = []
+    for (const r of rows) {
+      if (r.javaSeq === null && r.editedRaw) {
+        javaSeqN++
+        const parsed = /^makeStr\s*\(\s*"([xX9])"\s*,\s*(\d+)/.exec(r.editedRaw)
+        await conn.execute(
+          `INSERT INTO MLAY_JAVA
+             (YEAR, USER_ID, SEQ, RECORD_TYPE, JAVA_CODE, FIELD_TYPE, FIELD_LEN, LINE_NO)
+           VALUES (:1, :2, :3, :4, :5, :6, :7, 0)`,
+          [year, userId, javaSeqN, r.recordType, r.editedRaw,
+           parsed?.[1]?.toLowerCase() ?? null,
+           parsed ? parseInt(parsed[2]) : null]
+        )
+        finalRows.push({ ...r, javaSeq: javaSeqN })
+      } else {
+        finalRows.push(r)
+      }
     }
 
-    // 이 java 행 뒤에 삽입할 I 편집 처리
-    for (const ie of iMap.get(`${java.lineNo}_${java.bodyIter ?? ""}`) ?? []) {
-      result.push({ seq: result.length + 1, tax: taxRows[ti] ?? null, java: null, cmd: "I", editedRaw: ie.javaCode ?? "" })
-      ti++
+    // MAP 교체
+    await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3`,
+      [year, userId, record]
+    )
+    if (finalRows.length > 0) {
+      await conn.executeMany(
+        `INSERT INTO MLAY_TAX_JAVA_MAP (YEAR, USER_ID, SORT_ORDER, RECORD_TYPE, TAX_SEQ, JAVA_SEQ)
+         VALUES (:1, :2, :3, :4, :5, :6)`,
+        finalRows.map(r => [year, userId, r.sortOrder, r.recordType, r.taxSeq, r.javaSeq])
+      )
     }
-  }
+  })
+  return rows.length
+}
 
-  // 남은 국세청 행 (Java 대응 없음)
-  while (ti < taxRows.length) {
-    result.push({ seq: result.length + 1, tax: taxRows[ti++], java: null, cmd: null })
-  }
+export async function resetMap(year: number, userId: number, record?: string): Promise<number> {
+  let deleted = 0
+  await withConnection("ytts", async (conn) => {
+    const res = record
+      ? await conn.execute(
+          `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3`,
+          [year, userId, record]
+        )
+      : await conn.execute(
+          `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
+          [year, userId]
+        )
+    deleted = (res.rowsAffected ?? 0) as number
+  })
+  return deleted
+}
 
-  return result
+// MAP 기반 CompareRow 빌드.
+// 비교검증 화면은 HWP·Java 둘 다 있을 때만 열리므로 MAP이 항상 존재함을 전제로 한다.
+// MAP이 없으면(= 데이터 없음) null 반환.
+export async function buildCompareRowsFromMap(
+  year: number, userId: number, record: string,
+  taxRows: TaxLayoutRow[], javaRows: JavaField[], edits: JavaCodeEdit[],
+): Promise<CompareRow[] | null> {
+  const mapResult = await yttsDb.query<Record<string, unknown>>(
+    `SELECT SORT_ORDER, TAX_SEQ, JAVA_SEQ FROM MLAY_TAX_JAVA_MAP
+     WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3
+     ORDER BY SORT_ORDER`,
+    [year, userId, record]
+  )
+
+  if (mapResult.length === 0) return null
+
+  const taxBySeq  = new Map(taxRows.map(r => [r.seq, r]))
+  const javaBySeq = new Map(javaRows.map(r => [r.seq, r]))
+  // M 편집: MLAY_JAVA.SEQ 기반 (LINE_NO=0 삽입 행은 M 편집 대상 아님)
+  const mMap      = new Map(edits.filter(e => e.seq > 0).map(e => [e.seq, e]))
+
+  return mapResult.map((m, i) => {
+    const taxSeq  = m.TAX_SEQ  as number | null
+    const javaSeq = m.JAVA_SEQ as number | null
+    const tax     = taxSeq  ? (taxBySeq.get(taxSeq)   ?? null) : null
+    const java    = javaSeq ? (javaBySeq.get(javaSeq) ?? null) : null
+    const mEdit   = java ? mMap.get(java.seq) : null
+    // I 판별: java 행이 있고 LINE_NO=0 (사용자 삽입 행)
+    const cmd     = taxSeq === null ? "D" : java?.lineNo === 0 ? "I" : null
+    return {
+      seq: i + 1,
+      tax,
+      java,
+      cmd: cmd as CompareRow["cmd"],
+      editedRaw: mEdit?.javaCode ?? java?.raw ?? "",
+    }
+  })
 }
 
 export function calcSummary(rows: CompareRow[]) {
@@ -540,23 +618,48 @@ export function calcSummary(rows: CompareRow[]) {
 // ── MLAY_TAX 전체 조회 (편집용) ──────────────────────────────
 
 export async function getAllTaxRows(year: number, userId: number): Promise<TaxRow[]> {
-  const rows = await yttsDb.query<Record<string, unknown>>(
-    `SELECT SEQ, RECORD_TYPE, CODE, ITEM, VAL, FIELD_TYPE, FIELD_LEN, HWP_CUM, GUBUN, SECT
-     FROM MLAY_TAX WHERE YEAR = :1 AND USER_ID = :2 ORDER BY SEQ`,
-    [year, userId]
-  )
-  return rows.map(r => ({
-    seq:        r.SEQ         as number,
-    recordType: (r.RECORD_TYPE as string) ?? "",
-    code:       (r.CODE        as string) ?? "",
-    item:       (r.ITEM        as string) ?? "",
-    val:        (r.VAL         as string) ?? "",
-    fieldType:  (r.FIELD_TYPE  as string) || undefined,
-    fieldLen:   (r.FIELD_LEN   as number) || undefined,
-    hwpCum:     (r.HWP_CUM     as number) || undefined,
-    gubun:      (r.GUBUN       as string) || undefined,
-    sect:       (r.SECT        as string) ?? "header",
-  }))
+  const mapper = (r: Record<string, unknown>) => ({
+    seq:       r.SEQ         as number,
+    recordType:(r.RECORD_TYPE as string) ?? "",
+    code:      (r.CODE        as string) ?? "",
+    item:      (r.ITEM        as string) ?? "",
+    원본코드:  (r.ORG_CODE    as string) || undefined,
+    원본항목:  (r.ORG_ITEM    as string) || undefined,
+    val:       (r.VAL         as string) ?? "",
+    fieldType: (r.FIELD_TYPE  as string) || undefined,
+    fieldLen:  (r.FIELD_LEN   as number) || undefined,
+    hwpCum:    (r.HWP_CUM     as number) || undefined,
+    gubun:     (r.GUBUN       as string) || undefined,
+    sect:      (r.SECT        as string) ?? "header",
+  })
+
+  try {
+    const rows = await yttsDb.query<Record<string, unknown>>(
+      `SELECT T.SEQ, T.RECORD_TYPE, T.GUBUN,
+              NVL(CE.CODE, T.CODE) AS CODE,
+              NVL(IE.ITEM, T.ITEM) AS ITEM,
+              CASE WHEN CE.SEQ IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
+              CASE WHEN IE.SEQ IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
+              T.VAL, T.FIELD_TYPE, T.FIELD_LEN, T.HWP_CUM, T.SECT
+       FROM MLAY_TAX T
+       LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.SEQ = T.SEQ
+       LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.SEQ = T.SEQ
+       WHERE T.YEAR = :1 AND T.USER_ID = :2 ORDER BY T.SEQ`,
+      [year, userId]
+    )
+    return rows.map(mapper)
+  } catch (err: unknown) {
+    const oraErr = err as { errorNum?: number; message?: string }
+    if (oraErr?.errorNum !== 942) console.error("[getAllTaxRows] JOIN 오류:", oraErr?.message ?? err)
+    else console.warn("[getAllTaxRows] MLAY_TAX_CODE/ITEM_EDIT 없음 — DDL 실행 필요")
+    const rows = await yttsDb.query<Record<string, unknown>>(
+      `SELECT SEQ, RECORD_TYPE, GUBUN, CODE, NULL AS ORG_CODE, ITEM, NULL AS ORG_ITEM,
+              VAL, FIELD_TYPE, FIELD_LEN, HWP_CUM, SECT
+       FROM MLAY_TAX WHERE YEAR = :1 AND USER_ID = :2 ORDER BY SEQ`,
+      [year, userId]
+    )
+    return rows.map(mapper)
+  }
 }
 
 // ── MLAY_TAX 배치 업데이트 ────────────────────────────────────
@@ -568,69 +671,120 @@ export async function updateTaxRows(
 ): Promise<void> {
   if (updates.length === 0) return
   await withConnection("ytts", async (conn) => {
+    // FIELD_TYPE, FIELD_LEN 구조 필드만 MLAY_TAX에 직접 저장
     await conn.executeMany(
-      `UPDATE MLAY_TAX
-          SET CODE = :1, ITEM = :2, FIELD_TYPE = :3, FIELD_LEN = :4
-        WHERE YEAR = :5 AND USER_ID = :6 AND SEQ = :7`,
-      updates.map(u => [
-        u.code      || null,
-        u.item      || null,
-        u.fieldType || null,
-        u.fieldLen  ?? null,
-        year, userId, u.seq,
-      ])
+      `UPDATE MLAY_TAX SET FIELD_TYPE = :1, FIELD_LEN = :2 WHERE YEAR = :3 AND USER_ID = :4 AND SEQ = :5`,
+      updates.map(u => [u.fieldType || null, u.fieldLen ?? null, year, userId, u.seq])
     )
+    // CODE + ITEM은 MLAY_TAX_EDIT에 upsert (SEQ 기반)
+    await upsertTaxEdit(year, userId, updates.map(u => ({ seq: u.seq, code: u.code, item: u.item })), conn)
   })
 }
 
-// CODE 기준 ITEM 업데이트 (비교 화면용)
-export async function updateTaxItemsByCode(
-  year:    number,
-  userId:  number,
-  updates: { code: string; item: string }[],
+// SEQ 기반 MLAY_TAX_EDIT upsert (CODE + ITEM 동시 관리)
+export async function upsertTaxEdit(
+  year:   number,
+  userId: number,
+  edits:  { seq: number; code?: string; item?: string }[],
+  conn?:  any,
 ): Promise<void> {
-  if (updates.length === 0) return
-  await withConnection("ytts", async (conn) => {
-    await conn.executeMany(
-      `UPDATE MLAY_TAX SET ITEM = :1 WHERE YEAR = :2 AND USER_ID = :3 AND CODE = :4`,
-      updates.map(u => [u.item || null, year, userId, u.code])
-    )
-  })
+  if (edits.length === 0) return
+  const codeEdits = edits.filter(e => e.code !== undefined)
+  const itemEdits = edits.filter(e => e.item !== undefined)
+
+  const run = async (c: any) => {
+    // CODE → MLAY_TAX_CODE_EDIT (독립)
+    for (const e of codeEdits) {
+      await c.execute(
+        `MERGE INTO MLAY_TAX_CODE_EDIT CE USING DUAL
+         ON (CE.YEAR = :1 AND CE.USER_ID = :2 AND CE.SEQ = :3)
+         WHEN MATCHED THEN UPDATE SET CE.CODE = :4, CE.EDIT_AT = SYSDATE
+         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, SEQ, CODE) VALUES (:1, :2, :3, :4)`,
+        [year, userId, e.seq, e.code || null]
+      )
+      await c.execute(
+        `DELETE FROM MLAY_TAX_CODE_EDIT
+         WHERE YEAR = :1 AND USER_ID = :2 AND SEQ = :3
+           AND NVL(CODE,'') = NVL((SELECT CODE FROM MLAY_TAX WHERE YEAR=:1 AND USER_ID=:2 AND SEQ=:3),'')`,
+        [year, userId, e.seq]
+      )
+    }
+    // ITEM → MLAY_TAX_ITEM_EDIT (독립)
+    for (const e of itemEdits) {
+      await c.execute(
+        `MERGE INTO MLAY_TAX_ITEM_EDIT IE USING DUAL
+         ON (IE.YEAR = :1 AND IE.USER_ID = :2 AND IE.SEQ = :3)
+         WHEN MATCHED THEN UPDATE SET IE.ITEM = :4, IE.EDIT_AT = SYSDATE
+         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, SEQ, ITEM) VALUES (:1, :2, :3, :4)`,
+        [year, userId, e.seq, e.item || null]
+      )
+      await c.execute(
+        `DELETE FROM MLAY_TAX_ITEM_EDIT
+         WHERE YEAR = :1 AND USER_ID = :2 AND SEQ = :3
+           AND NVL(ITEM,'') = NVL((SELECT ITEM FROM MLAY_TAX WHERE YEAR=:1 AND USER_ID=:2 AND SEQ=:3),'')`,
+        [year, userId, e.seq]
+      )
+    }
+  }
+
+  const fallback = async (c: any) => {
+    if (codeEdits.length > 0)
+      await c.executeMany(
+        `UPDATE MLAY_TAX SET CODE = :1 WHERE YEAR = :2 AND USER_ID = :3 AND SEQ = :4`,
+        codeEdits.map(e => [e.code || null, year, userId, e.seq])
+      )
+    if (itemEdits.length > 0)
+      await c.executeMany(
+        `UPDATE MLAY_TAX SET ITEM = :1 WHERE YEAR = :2 AND USER_ID = :3 AND SEQ = :4`,
+        itemEdits.map(e => [e.item || null, year, userId, e.seq])
+      )
+  }
+
+  const handle = async (c: any) => {
+    try { await run(c) } catch (err: unknown) {
+      if ((err as { errorNum?: number })?.errorNum === 942) await fallback(c)
+      else throw err
+    }
+  }
+
+  if (conn) await handle(conn)
+  else await withConnection("ytts", handle)
 }
 
 // M 명령: MLAY_JAVA_EDIT에 upsert (MLAY_JAVA 원본 불변)
-export async function updateJavaCodeByLineNo(
+// M 저장: MLAY_JAVA_CODE_EDIT에 upsert (MLAY_JAVA 원본 불변)
+export async function updateJavaCode(
   year:    number,
   userId:  number,
-  updates: { lineNo: number; javaCode: string }[],
+  updates: { seq: number; javaCode: string }[],
 ): Promise<void> {
   if (updates.length === 0) return
   await withConnection("ytts", async (conn) => {
-    // MAX를 한 번만 읽고 로컬 카운터로 증가
-    const maxRow = await conn.execute(
-      `SELECT NVL(MAX(EDIT_SEQ),0) AS MSEQ FROM MLAY_JAVA_EDIT WHERE YEAR = :1 AND USER_ID = :2`,
-      [year, userId], { outFormat: 4002 }
-    )
-    let seq = ((maxRow.rows?.[0] as { MSEQ: number } | undefined)?.MSEQ ?? 0)
     for (const u of updates) {
-      const existing = await conn.execute(
-        `SELECT EDIT_SEQ FROM MLAY_JAVA_EDIT WHERE YEAR = :1 AND USER_ID = :2 AND CMD = 'M' AND LINE_NO = :3`,
-        [year, userId, u.lineNo], { outFormat: 4002 }
+      await conn.execute(
+        `MERGE INTO MLAY_JAVA_CODE_EDIT E USING DUAL
+         ON (E.YEAR = :1 AND E.USER_ID = :2 AND E.SEQ = :3)
+         WHEN MATCHED     THEN UPDATE SET E.JAVA_CODE = :4, E.EDIT_AT = SYSDATE
+         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, SEQ, JAVA_CODE)
+                               VALUES (:1,  :2,      :3, :4)`,
+        [year, userId, u.seq, u.javaCode || null]
       )
-      if ((existing.rows?.length ?? 0) > 0) {
-        await conn.execute(
-          `UPDATE MLAY_JAVA_EDIT SET JAVA_CODE = :1 WHERE YEAR = :2 AND USER_ID = :3 AND CMD = 'M' AND LINE_NO = :4`,
-          [u.javaCode || null, year, userId, u.lineNo]
-        )
-      } else {
-        seq++
-        await conn.execute(
-          `INSERT INTO MLAY_JAVA_EDIT (YEAR, USER_ID, EDIT_SEQ, CMD, LINE_NO, JAVA_CODE)
-           VALUES (:1, :2, :3, 'M', :4, :5)`,
-          [year, userId, seq, u.lineNo, u.javaCode || null]
-        )
-      }
     }
+  })
+}
+
+// M 복원: MLAY_JAVA_CODE_EDIT에서 삭제 (원본 복원)
+export async function deleteJavaCodeEdits(
+  year:   number,
+  userId: number,
+  resets: { seq: number }[],
+): Promise<void> {
+  if (resets.length === 0) return
+  await withConnection("ytts", async (conn) => {
+    await conn.executeMany(
+      `DELETE FROM MLAY_JAVA_CODE_EDIT WHERE YEAR = :1 AND USER_ID = :2 AND SEQ = :3`,
+      resets.map(r => [year, userId, r.seq])
+    )
   })
 }
 
@@ -667,6 +821,80 @@ export async function markJavaDeleted(
     }
   })
   return inserted
+}
+
+// ── MAP 레코드 단위 재초기화 (편집 초기화 후 1:1 복원) ────────
+export async function initMapForRecord(year: number, userId: number, record: string): Promise<void> {
+  const [taxRows, allJavaRows] = await Promise.all([
+    getTaxRows(year, userId, record),
+    getJavaRows(year, userId, record),
+  ])
+  // LINE_NO=0 사용자 삽입 행 제외 — 원본 행으로만 1:1 초기화
+  const javaRows = allJavaRows.filter(r => r.lineNo > 0)
+  if (taxRows.length === 0 || javaRows.length === 0) return
+
+  const len  = Math.max(taxRows.length, javaRows.length)
+  const rows = Array.from({ length: len }, (_, i) =>
+    [year, userId, i + 1, record, taxRows[i]?.seq ?? null, javaRows[i]?.seq ?? null] as
+    [number, number, number, string, number | null, number | null]
+  )
+
+  await withConnection("ytts", async (conn) => {
+    await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3`,
+      [year, userId, record]
+    )
+    await conn.executeMany(
+      `INSERT INTO MLAY_TAX_JAVA_MAP (YEAR, USER_ID, SORT_ORDER, RECORD_TYPE, TAX_SEQ, JAVA_SEQ)
+       VALUES (:1, :2, :3, :4, :5, :6)`,
+      rows
+    )
+  })
+}
+
+// ── MAP 초기 생성 (업로드 후 1:1 위치 매칭) ──────────────────
+// HWP 또는 Java 업로드 완료 후 호출.
+// Tax·Java 양쪽 모두 데이터가 있는 레코드에 대해서만 MAP을 생성.
+
+export async function initMapFromDB(year: number, userId: number): Promise<void> {
+  const [allTax, allJavaRaw] = await Promise.all([
+    getTaxRows(year, userId),
+    getJavaRows(year, userId),
+  ])
+  // LINE_NO=0 사용자 삽입 행 제외 — 원본 행으로만 1:1 초기화
+  const allJava = allJavaRaw.filter(r => r.lineNo > 0)
+  if (allTax.length === 0 || allJava.length === 0) return
+
+  // 레코드별 그룹화
+  const taxByRec:  Record<string, TaxLayoutRow[]> = {}
+  const javaByRec: Record<string, JavaField[]>    = {}
+  for (const r of allTax)  { const k = r.코드[0]; if (k) (taxByRec[k]  = taxByRec[k]  || []).push(r) }
+  for (const r of allJava) {                              (javaByRec[r.record] = javaByRec[r.record] || []).push(r) }
+
+  // 양쪽 모두 있는 레코드만 MAP 생성
+  const rows: [number, number, number, string, number | null, number | null][] = []
+  for (const rec of Object.keys(taxByRec)) {
+    const taxRows  = taxByRec[rec]  ?? []
+    const javaRows = javaByRec[rec] ?? []
+    if (javaRows.length === 0) continue
+    const len = Math.max(taxRows.length, javaRows.length)
+    for (let i = 0; i < len; i++) {
+      rows.push([year, userId, i + 1, rec, taxRows[i]?.seq ?? null, javaRows[i]?.seq ?? null])
+    }
+  }
+  if (rows.length === 0) return
+
+  await withConnection("ytts", async (conn) => {
+    await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
+      [year, userId]
+    )
+    await conn.executeMany(
+      `INSERT INTO MLAY_TAX_JAVA_MAP (YEAR, USER_ID, SORT_ORDER, RECORD_TYPE, TAX_SEQ, JAVA_SEQ)
+       VALUES (:1, :2, :3, :4, :5, :6)`,
+      rows
+    )
+  })
 }
 
 // I 명령: MLAY_JAVA_EDIT에 I 레코드 삽입 (PREV_LINE_NO=anchor lineNo, LINE_NO=anchor bodyIter)
@@ -718,20 +946,27 @@ export async function getJavaSourceText(year: number, userId: number): Promise<s
 export async function resetJavaEdits(year: number, userId: number, record: string): Promise<number> {
   let deleted = 0
   await withConnection("ytts", async (conn) => {
-    const result = await conn.execute(
-      `DELETE FROM MLAY_JAVA_EDIT
-       WHERE YEAR = :1 AND USER_ID = :2
-         AND (
-           (CMD = 'I' AND RECORD_TYPE = :3)
-           OR
-           (CMD IN ('D', 'M') AND LINE_NO IN (
-             SELECT LINE_NO FROM MLAY_JAVA
-             WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3
-           ))
-         )`,
+    // MAP 초기화
+    const mapRes = await conn.execute(
+      `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3`,
       [year, userId, record]
     )
-    deleted = (result.rowsAffected ?? 0) as number
+    // 사용자 삽입 Java 행(LINE_NO=0) 삭제
+    await conn.execute(
+      `DELETE FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 AND LINE_NO = 0`,
+      [year, userId, record]
+    )
+    // MLAY_JAVA_CODE_EDIT 초기화 (M 전체)
+    const editRes = await conn.execute(
+      `DELETE FROM MLAY_JAVA_CODE_EDIT
+       WHERE YEAR = :1 AND USER_ID = :2
+         AND SEQ IN (
+           SELECT SEQ FROM MLAY_JAVA
+           WHERE YEAR = :3 AND USER_ID = :4 AND RECORD_TYPE = :5
+         )`,
+      [year, userId, year, userId, record]
+    )
+    deleted = ((mapRes.rowsAffected ?? 0) as number) + ((editRes.rowsAffected ?? 0) as number)
   })
   return deleted
 }

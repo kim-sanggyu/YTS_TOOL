@@ -207,6 +207,7 @@ export function HwpStep() {
   const [sectMsg,      setSectMsg]      = useState<{ ok: boolean; text: string } | null>(null)
   const [checking,     setChecking]     = useState(false)
   const [hwpFile,   setHwpFile]   = useState<HwpFileRow | null>(null)
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null)
   const [deleting,  setDeleting]  = useState(false)
 
   const hasRows = Object.keys(byRecord).length > 0
@@ -250,8 +251,10 @@ export function HwpStep() {
       setSectConfigs(rowsData.sectConfigs ?? {})
       setDirty(new Map())
       setSaveMsg(null)
-      if (Object.keys(grouped).length > 0)
-        setActiveRec(Object.keys(grouped).sort()[0])
+      setActiveRec(prev => {
+        const keys = Object.keys(grouped).sort()
+        return keys.includes(prev) ? prev : (keys[0] ?? "A")
+      })
     } finally { setChecking(false) }
   }, [])
 
@@ -366,9 +369,9 @@ export function HwpStep() {
         [rec]: {
           year, userId: 0, record: rec, target: "TAX" as const,
           sectMode: cfg ? "hbf" : "body",
-          bodyStart:   cfg?.bodyStart  ?? null,
-          bodyEnd:     cfg?.bodyEnd    ?? null,
-          repeatCount: cfg?.divideBy   ?? null,
+          bodyStart:   cfg?.bodyStart  ?? 0,
+          bodyEnd:     cfg?.bodyEnd    ?? 0,
+          repeatCount: cfg?.divideBy   ?? 0,
         },
       }))
       setSectMsg({ ok: true, text: "구조 설정 저장됨" })
@@ -400,6 +403,7 @@ export function HwpStep() {
       if (!res.ok) throw new Error(data.message)
       setSaveMsg({ ok: true, text: `${data.updated}행 저장 완료` })
       setDirty(new Map())
+      await loadRows(year)
     } catch (err) {
       setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "저장 오류" })
     } finally { setSaving(false) }
@@ -429,38 +433,54 @@ export function HwpStep() {
       }
       cumBytes += r.fieldLen ?? 0
       const isDirty = dirty.has(r.seq)
-      const rowBg = isDirty ? "bg-amber-50" : sectRowBg(r.sect)
+      const isSelected = selectedSeq === r.seq
+      const rowBg = isSelected ? "bg-blue-100" : isDirty ? "bg-amber-50" : sectRowBg(r.sect)
       nodes.push(
-        <tr key={r.seq} className={cn("border-b hover:brightness-95 transition-colors", rowBg)}>
+        <tr key={r.seq} onClick={() => setSelectedSeq(isSelected ? null : r.seq)}
+          className={cn("border-b hover:brightness-95 transition-colors cursor-pointer", rowBg)}>
           {/* 번호 */}
-          <td className="px-1 py-0.5 border-r">
-            <input
-              className="w-full font-mono font-semibold text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:bg-white focus:border focus:border-primary outline-none text-center"
-              value={r.code}
-              onChange={e => editRow(activeRec, r.seq, { code: e.target.value })}
-            />
+          <td className="px-1 py-0.5 border-r cursor-text">
+            <div className="flex items-center gap-1 min-w-0">
+              <input
+                className="flex-1 min-w-0 font-mono font-semibold text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none text-center"
+                value={r.code}
+                spellCheck={false}
+                onChange={e => editRow(activeRec, r.seq, { code: e.target.value })}
+              />
+              {r.원본코드 && !dirty.has(r.seq) && (
+                <span title={`원본: ${r.원본코드}`}
+                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+              )}
+            </div>
           </td>
           {/* 서식항목 */}
-          <td className="px-1 py-0.5 border-r">
-            <input
-              className="w-full text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:bg-white focus:border focus:border-primary outline-none"
-              value={r.item}
-              onChange={e => editRow(activeRec, r.seq, { item: e.target.value })}
-            />
+          <td className="px-1 py-0.5 border-r cursor-text">
+            <div className="flex items-center gap-1 min-w-0">
+              <input
+                className="flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none"
+                value={r.item}
+                spellCheck={false}
+                onChange={e => editRow(activeRec, r.seq, { item: e.target.value })}
+              />
+              {r.원본항목 && !dirty.has(r.seq) && (
+                <span title={`원본: ${r.원본항목}`}
+                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+              )}
+            </div>
           </td>
           {/* 데이터타입 */}
-          <td className="px-2 py-1 border-r text-center font-mono text-xs">{r.val ?? ""}</td>
+          <td className="px-2 py-1 border-r text-center font-mono text-xs cursor-default">{r.val ?? ""}</td>
           {/* 길이 */}
-          <td className="px-2 py-1 border-r text-right font-mono text-xs">{r.fieldLen ?? ""}</td>
+          <td className="px-2 py-1 border-r text-right font-mono text-xs cursor-default">{r.fieldLen ?? ""}</td>
           {/* 누적(HWP) */}
-          <td className="px-2 py-1 border-r text-right font-mono text-xs tabular-nums text-muted-foreground/60">
+          <td className="px-2 py-1 border-r text-right font-mono text-xs tabular-nums text-muted-foreground/60 cursor-default">
             {r.hwpCum ?? ""}
           </td>
           {/* 누적(계산) */}
           {(() => {
             const mismatch = r.hwpCum !== undefined && r.hwpCum !== cumBytes
             return (
-              <td className={cn("px-2 py-1 text-right font-mono text-xs tabular-nums", mismatch ? "text-red-500 font-bold" : "text-muted-foreground/60")}>
+              <td className={cn("px-2 py-1 text-right font-mono text-xs tabular-nums cursor-default", mismatch ? "text-red-500 font-bold" : "text-muted-foreground/60")}>
                 {cumBytes > 0 ? cumBytes : ""}
               </td>
             )
@@ -619,15 +639,23 @@ export function HwpStep() {
 
               {/* 편집 테이블 */}
               <div ref={scrollDivRef} className="overflow-auto flex-1 text-xs">
-                <table className="w-full border-collapse">
+                <table className="w-full border-collapse table-fixed">
+                  <colgroup>
+                    <col className="w-24" />
+                    <col />
+                    <col className="w-20" />
+                    <col className="w-10" />
+                    <col className="w-16" />
+                    <col className="w-16" />
+                  </colgroup>
                   <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
-                      <th className="px-2 py-1.5 border-b border-r text-center w-20">번호</th>
-                      <th className="px-2 py-1.5 border-b border-r text-left min-w-[160px]">서식항목</th>
-                      <th className="px-2 py-1.5 border-b border-r text-center w-20">데이터타입</th>
-                      <th className="px-1 py-1.5 border-b border-r text-center w-10">길이</th>
-                      <th className="px-1 py-1.5 border-b border-r text-center w-16 whitespace-nowrap">누적(HWP)</th>
-                      <th className="px-1 py-1.5 border-b text-center w-16 whitespace-nowrap">누적(계산)</th>
+                      <th className="px-2 py-1.5 border-b border-r text-center">번호 <span className="text-muted-foreground/50 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
+                      <th className="px-2 py-1.5 border-b border-r text-left">서식항목 <span className="text-muted-foreground/50 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
+                      <th className="px-2 py-1.5 border-b border-r text-center">데이터타입</th>
+                      <th className="px-1 py-1.5 border-b border-r text-center">길이</th>
+                      <th className="px-1 py-1.5 border-b border-r text-center whitespace-nowrap">누적(HWP)</th>
+                      <th className="px-1 py-1.5 border-b text-center whitespace-nowrap">누적(계산)</th>
                     </tr>
                   </thead>
                   <tbody>

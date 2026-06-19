@@ -1,18 +1,28 @@
 import { auth } from "@/auth"
 import Link from "next/link"
-import { FileText, FileSearch, FileCode, Database, Calculator, GitCompare, FileOutput, Code2 } from "lucide-react"
+import { FileSearch, FileCode, Database, Calculator, GitCompare, FileOutput, Code2, FileText, ClipboardList, Package, ClipboardCheck, FolderOpen } from "lucide-react"
 import { QuoteWidget } from "@/features/dashboard/components/QuoteWidget"
 import { DateTimeWidget } from "@/features/dashboard/components/DateTimeWidget"
 
 const tools = [
-  { id: "hwp-layout",   name: ".hwp파일 업로드",      href: "/tools/hwp-layout",    icon: FileSearch, status: "active" as const },
-  { id: "java-layout",  name: ".java소스 업로드",     href: "/tools/java-layout",   icon: FileCode,   status: "active" as const },
-  { id: "media-layout",   name: "전산매체 비교·검증",  href: "/tools/media-layout",   icon: GitCompare, status: "active" as const },
-  { id: "media-generate", name: "전산매체 소스 생성",  href: "/tools/media-generate", icon: Code2,      status: "active" as const },
-  { id: "data-verify",  name: "데이터 검증",          href: "/tools/data-verify",   icon: Database,   status: "coming" as const },
-  { id: "tax-calc",     name: "공제 계산기",          href: "/tools/tax-calc",      icon: Calculator, status: "coming" as const },
-  { id: "diff-checker", name: "전년도 비교",          href: "/tools/diff-checker",  icon: GitCompare, status: "coming" as const },
-  { id: "report-gen",   name: "리포트 생성",          href: "/tools/report-gen",    icon: FileOutput, status: "coming" as const },
+  // 전산매체
+  { id: "hwp-layout",     name: ".hwp파일 업로드",     href: "/tools/hwp-layout",    icon: FileSearch,     status: "active" as const },
+  { id: "java-layout",    name: ".java소스 업로드",     href: "/tools/java-layout",   icon: FileCode,       status: "active" as const },
+  { id: "media-layout",   name: "전산매체 비교·검증",   href: "/tools/media-layout",  icon: GitCompare,     status: "active" as const },
+  { id: "media-generate", name: "전산매체 소스 생성",   href: "/tools/media-generate", icon: Code2,         status: "active" as const },
+  { id: "data-verify",    name: "전산매체 파일 검증",   href: "/tools/data-verify",   icon: Database,       status: "coming" as const },
+  // 세액계산
+  { id: "tax-calc",       name: "세액계산 로직 검증",   href: "/tools/tax-calc",      icon: Calculator,     status: "coming" as const },
+  { id: "diff-checker",   name: "차년도 데이터 생성",   href: "/tools/diff-checker",  icon: GitCompare,     status: "coming" as const },
+  { id: "report-gen",     name: "세액계산 내용 조회",   href: "/tools/report-gen",    icon: FileOutput,     status: "coming" as const },
+  // 운영지원
+  { id: "pdf-history",    name: "PDF 수정내역",         href: "/tools/pdf-history",   icon: FileText,       status: "coming" as const },
+  { id: "insurance-calc", name: "보험료 검증자료 산출", href: "/tools/insurance-calc", icon: ClipboardList, status: "coming" as const },
+  // 파일배포
+  { id: "deploy-gen",     name: "배포파일 생성",        href: "/tools/deploy-gen",    icon: Package,        status: "coming" as const },
+  // 과제관리
+  { id: "task-status",    name: "과제현황",              href: "/tools/task-status",   icon: ClipboardCheck, status: "coming" as const },
+  { id: "task-archive",   name: "자료실",                href: "/tools/task-archive",  icon: FolderOpen,     status: "coming" as const },
 ]
 
 // WMO 날씨 코드 → 아이콘 + 설명
@@ -76,7 +86,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* 도구 칩 */}
-      <div className="flex flex-wrap justify-center gap-2 px-4 max-w-xl">
+      <div className="flex flex-wrap justify-center gap-2 px-4 max-w-2xl">
         {tools.map((tool) => {
           const Icon = tool.icon
           const isActive = tool.status === "active"

@@ -143,7 +143,7 @@ export function GenerateStep() {
     <div className="flex flex-col flex-1 min-h-0 gap-4">
 
       {/* 상태 바 */}
-      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+      <div className="flex items-center gap-2 shrink-0 overflow-hidden">
         <select value={year} onChange={e => setYear(parseInt(e.target.value))}
           className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
           {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
@@ -151,7 +151,7 @@ export function GenerateStep() {
           ))}
         </select>
 
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-orange-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-orange-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -161,7 +161,7 @@ export function GenerateStep() {
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[200px] bg-blue-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-blue-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -179,25 +179,26 @@ export function GenerateStep() {
         </Button>
 
         {/* 원본 소스 패치 */}
-        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border">
-          <Button variant="outline" size="sm" className="shrink-0 h-8 text-xs"
+        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-border shrink min-w-0">
+          <Button variant="outline" size="sm" className="h-8 text-xs min-w-0 overflow-hidden"
             onClick={handlePatch} disabled={patching || !javaFile}>
             {patching
-              ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />패치 중...</>
-              : <><FileDiff className="h-3 w-3 mr-1" />원본 소스 패치 다운로드</>}
+              ? <><Loader2 className="h-3 w-3 mr-1 shrink-0 animate-spin" /><span className="truncate">패치 중...</span></>
+              : <><FileDiff className="h-3 w-3 mr-1 shrink-0" /><span className="truncate">원본 소스 패치 다운로드</span></>}
           </Button>
           {patchStats && (
-            <span className="text-xs text-muted-foreground tabular-nums">
+            <span className="text-xs text-muted-foreground tabular-nums shrink-0">
               편집 {patchStats.editCount}건 적용 · {patchStats.linesBefore}→{patchStats.linesAfter}행
             </span>
           )}
         </div>
       </div>
 
-      {/* 레코드별 바이트 */}
+      {/* 바이트 행 + 탭 + 섹션 박스 */}
       {recList.length > 0 && (
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
-          <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트:</span>
+          <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
             const t = taxBytes[r] ?? 0, j = javaBytes[r] ?? 0
             const ok = t > 0 && j > 0 && t === j
@@ -206,14 +207,12 @@ export function GenerateStep() {
               <span key={r} className={cn(
                 "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
                 none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-              )}>{r}:{t||"?"}↔{j||"?"}</span>
+              )}>{r}:{none ? "?" : ok ? "일치" : Math.abs(t - j)}</span>
             )
           })}
         </div>
-      )}
 
-      {/* 탭 + 섹션 박스 */}
-      {recList.length > 0 && (
+        {/* 탭 + 섹션 박스 */}
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
@@ -269,6 +268,7 @@ export function GenerateStep() {
               )}
             </div>
           </div>
+        </div>
         </div>
       )}
 

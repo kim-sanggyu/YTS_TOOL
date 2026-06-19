@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { parseJavaLayout } from "@/features/media-layout/lib/java-layout-parser"
-import { getJavaFile, getAllJavaRows, saveJavaFile } from "@/lib/tax-oracle"
+import { getJavaFile, getAllJavaRows, saveJavaFile, initMapFromDB } from "@/lib/tax-oracle"
 import { yttsDb } from "@/lib/db/oracle"
 
 function getUserId(session: { user?: { id?: string } | null } | null): number {
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     const text   = await javaFile.text()
     const { fields } = parseJavaLayout(text)
     await saveJavaFile(userId, year, javaFile.name, null, text, fields)
+    await initMapFromDB(year, userId)
 
     return NextResponse.json({ rows: fields.length })
   } catch (err) {
@@ -64,6 +65,11 @@ export async function DELETE(req: NextRequest) {
 
   const { rowsAffected } = await yttsDb.execute(
     `DELETE FROM MLAY_JAVA_FILE WHERE YEAR = :1 AND USER_ID = :2`,
+    [year, userId]
+  )
+  // JAVA_SEQ 참조가 무효화되므로 MAP 삭제
+  await yttsDb.execute(
+    `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
     [year, userId]
   )
   await yttsDb.execute(

@@ -7,6 +7,7 @@ import { signOut } from "next-auth/react"
 import {
   LayoutDashboard, FileText, FileCode, Database, Calculator,
   GitCompare, FileOutput, Settings, LogOut, ChevronsUpDown, ChevronDown, FileSearch, Code2,
+  ClipboardList, Package, ClipboardCheck, FolderOpen,
 } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader,
@@ -42,15 +43,35 @@ const navGroups: NavGroup[] = [
       { title: ".java소스 업로드",   href: "/tools/java-layout",   icon: FileCode },
       { title: "전산매체 비교·검증", href: "/tools/media-layout",  icon: GitCompare },
       { title: "전산매체 소스 생성", href: "/tools/media-generate", icon: Code2 },
-      { title: "신고 데이터 검증",   href: "/tools/data-verify",   icon: Database,  disabled: true },
+      { title: "전산매체 파일 검증", href: "/tools/data-verify",   icon: Database,  disabled: true },
     ],
   },
   {
-    label: "연말정산",
+    label: "세액계산",
     children: [
-      { title: "공제 금액 계산기", href: "/tools/tax-calc",     icon: Calculator, disabled: true },
-      { title: "전년도 비교",      href: "/tools/diff-checker", icon: GitCompare, disabled: true },
-      { title: "리포트 생성",      href: "/tools/report-gen",   icon: FileOutput, disabled: true },
+      { title: "세액계산 로직 검증", href: "/tools/tax-calc", icon: Calculator, disabled: true },
+      { title: "차년도 데이터 생성", href: "/tools/diff-checker", icon: GitCompare, disabled: true },
+      { title: "세액계산 내용 조회", href: "/tools/report-gen",  icon: FileOutput, disabled: true },
+    ],
+  },
+  {
+    label: "운영지원",
+    children: [
+      { title: "PDF 수정내역",        href: "/tools/pdf-history",    icon: FileText,      disabled: true },
+      { title: "보험료 검증자료 산출", href: "/tools/insurance-calc", icon: ClipboardList, disabled: true },
+    ],
+  },
+  {
+    label: "파일배포",
+    children: [
+      { title: "배포파일 생성", href: "/tools/deploy-gen", icon: Package, disabled: true },
+    ],
+  },
+  {
+    label: "과제관리",
+    children: [
+      { title: "과제현황", href: "/tools/task-status",  icon: ClipboardCheck, disabled: true },
+      { title: "자료실",   href: "/tools/task-archive", icon: FolderOpen,     disabled: true },
     ],
   },
 ]
@@ -62,7 +83,7 @@ interface AppSidebarProps {
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    "전산매체": true, "연말정산": true,
+    "전산매체": true, "세액계산": true, "운영지원": true, "파일배포": true, "과제관리": true,
   })
 
   const initials = (user?.name ?? "U")
@@ -92,7 +113,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 className={cn(
                   "h-8 gap-2 px-2 text-[13px] rounded-md",
                   pathname === item.href
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                    ? "!bg-gray-300 !text-gray-900 font-semibold"
                     : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
               >
@@ -109,17 +130,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
           return (
             <div key={group.label} className="mb-1">
+              {/* 접혔을 때 대메뉴 구분선 (펼쳤을 때는 그룹 라벨이 구분함) */}
+              <hr className="hidden group-data-[collapsible=icon]:block border-t border-sidebar-border mx-2 my-1" />
               {/* 그룹 라벨 — 접으면 숨김 */}
               <button
                 onClick={() => setOpenGroups((p) => ({ ...p, [group.label]: !p[group.label] }))}
-                className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 transition-colors hover:text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden"
+                className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>
                 <ChevronDown className={cn("h-3 w-3 transition-transform", isOpen && "rotate-180")} />
               </button>
 
               {/* 서브 메뉴 — 접혔을 때도 아이콘은 표시 */}
-              {(isOpen || true) && (
+              {isOpen && (
                 <SidebarMenu className="px-2">
                   {group.children.map((item) => (
                     <SidebarMenuItem key={item.title}>
@@ -130,7 +153,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                         className={cn(
                           "h-8 gap-2 px-2 text-[13px] rounded-md",
                           !item.disabled && pathname === item.href
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold"
+                            ? "!bg-gray-300 !text-gray-900 font-semibold"
                             : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent",
                           item.disabled && "pointer-events-none opacity-50"
                         )}

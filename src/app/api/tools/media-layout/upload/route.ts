@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { parseHwpBuffer } from "@/features/media-layout/lib/hwp-parser"
 import { parseJavaLayout } from "@/features/media-layout/lib/java-layout-parser"
-import { getHwpFile, getJavaFile, saveHwpFile, saveJavaFile } from "@/lib/tax-oracle"
+import { getHwpFile, getJavaFile, saveHwpFile, saveJavaFile, initMapFromDB } from "@/lib/tax-oracle"
 import { yttsDb } from "@/lib/db/oracle"
 import { auth } from "@/auth"
 
@@ -64,6 +64,9 @@ export async function POST(req: NextRequest) {
       result.javaRows = fields.length
     }
 
+    // 양쪽 데이터가 모두 있을 때 MAP 초기화 (1:1 위치 매칭)
+    await initMapFromDB(year, userId)
+
     return NextResponse.json(result)
   } catch (err) {
     const message = err instanceof Error ? err.message : "파싱 오류"
@@ -86,7 +89,11 @@ export async function DELETE(req: NextRequest) {
     `DELETE FROM MLAY_HWP_FILE WHERE YEAR = :1 AND USER_ID = :2`,
     [year, userId]
   )
-  // MLAY_COMPARE도 함께 정리
+  // TAX_SEQ 참조가 무효화되므로 MAP 삭제
+  await yttsDb.execute(
+    `DELETE FROM MLAY_TAX_JAVA_MAP WHERE YEAR = :1 AND USER_ID = :2`,
+    [year, userId]
+  )
   await yttsDb.execute(
     `DELETE FROM MLAY_COMPARE WHERE YEAR = :1 AND USER_ID = :2`,
     [year, userId]

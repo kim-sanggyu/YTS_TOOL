@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
-  getHwpFile, getLatestHwpFile, getTaxRows, getJavaRows, getJavaEdits,
-  buildCompareRows,
+  getHwpFile, getLatestHwpFile, getTaxRows, getJavaRows, getJavaCodeEdits,
+  buildCompareRowsFromMap,
 } from "@/lib/tax-oracle"
 import { auth } from "@/auth"
 
@@ -70,10 +70,10 @@ export async function POST(req: NextRequest) {
   const [taxRows, javaRows, edits] = await Promise.all([
     getTaxRows(hwp.year, userId, record),
     getJavaRows(hwp.year, userId, record),
-    getJavaEdits(hwp.year, userId, record),
+    getJavaCodeEdits(hwp.year, userId, record),
   ])
 
-  const rows = buildCompareRows(taxRows, javaRows, edits)
+  const rows = await buildCompareRowsFromMap(hwp.year, userId, record, taxRows, javaRows, edits) ?? []
   if (rows.length === 0) {
     return NextResponse.json({ message: "비교 데이터가 없습니다." }, { status: 400 })
   }

@@ -78,7 +78,8 @@ interface JavaSlot {
   field:     JavaField | null
   cmd:       "D" | "I" | null
   editedRaw: string
-  fromDB:    boolean   // true = MLAY_JAVA_EDIT에서 로드된 이미 저장된 D/I
+  loadedRaw: string   // 로드 시점 값 — 세션 중 변경 안 됨 (M 복원 감지용)
+  fromDB:    boolean  // true = MLAY_JAVA_EDIT에서 로드된 이미 저장된 D/I
 }
 
 // ── 구조 분석 (taxItems 기준) ─────────────────────────────────
@@ -200,7 +201,8 @@ export function MediaStep() {
   const [allSectConfigs, setAllSectConfigs] = useState<Record<string, TaxSectConfigRow>>({})
   const [comparing,   setComparing]   = useState(false)
   const [generating,  setGenerating]  = useState(false)
-  const [dirtyTax,    setDirtyTax]    = useState<Map<string, string>>(new Map()) // code → item
+  const [dirtyTax,    setDirtyTax]    = useState<Map<string, { seq: number; item: string }>>(new Map()) // code → {seq, item}
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
   // 레코드별 비교 캐시 — 탭 전환 시 API 호출 없이 즉시 전환
   type CachedRecord = { taxItems: (TaxLayoutRow | null)[]; javaSlots: JavaSlot[]; sectConfig: TaxSectConfigRow | null }
@@ -226,12 +228,16 @@ export function MediaStep() {
   function processCompareRows(rows: CompareRow[], cfg: TaxSectConfigRow | null): CachedRecord {
     return {
       taxItems:  applySectConfig(rows.map(r => r.tax), cfg),
-      javaSlots: rows.map(r => ({
-        field:     r.java,
-        cmd:       (r.cmd === "D" || r.cmd === "I") ? r.cmd as "D" | "I" : null,
-        editedRaw: canonicalize(r.editedRaw ?? r.java?.raw ?? ""),
-        fromDB:    r.cmd === "D" || r.cmd === "I",
-      })),
+      javaSlots: rows.map(r => {
+        const raw = canonicalize(r.editedRaw ?? r.java?.raw ?? "")
+        return {
+          field:     r.java,
+          cmd:       (r.cmd === "D" || r.cmd === "I") ? r.cmd as "D" | "I" : null,
+          editedRaw: raw,
+          loadedRaw: raw,
+          fromDB:    r.cmd === "D" || r.cmd === "I",
+        }
+      }),
       sectConfig: cfg,
     }
   }
@@ -349,7 +355,7 @@ export function MediaStep() {
     } else if (!slot?.fromDB) {
       setJavaSlots(prev => [
         ...prev.slice(0, idx),
-        { field: null, cmd: "I", editedRaw: "", fromDB: false },
+        { field: null, cmd: "I", editedRaw: "", loadedRaw: "", fromDB: false },
         ...prev.slice(idx),
       ])
     }
@@ -360,9 +366,9 @@ export function MediaStep() {
     setSaveMsg(null)
   }
 
-  function handleTaxItemEdit(code: string, item: string) {
+  function handleTaxItemEdit(code: string, seq: number, item: string) {
     setTaxItems(prev => prev.map(r => r?.코드 === code ? { ...r, 항목: item } : r))
-    setDirtyTax(prev => { const next = new Map(prev); next.set(code, item); return next })
+    setDirtyTax(prev => { const next = new Map(prev); next.set(code, { seq, item }); return next })
     setSaveMsg(null)
   }
 
@@ -378,40 +384,48 @@ export function MediaStep() {
     setSaving(true); setSaveMsg(null)
     try {
       const y = year
-      const taxItemUpdates = Array.from(dirtyTax.entries()).map(([code, item]) => ({ code, item }))
+      const taxItemUpdates = Array.from(dirtyTax.entries()).map(([, { seq, item }]) => ({ seq, item }))
       const javaCodeUpdates = javaSlots
         .filter(s => s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw) && s.cmd !== "D" && s.cmd !== "I")
-        .map(s => ({ lineNo: s.field!.lineNo, javaCode: canonicalize(s.editedRaw) }))
-      const dUpdates = javaSlots
-        .filter(s => s.cmd === "D" && s.field && !s.fromDB)
-        .map(s => ({ lineNo: s.field!.lineNo, bodyIter: s.field!.bodyIter ?? null }))
-      // I 삽입: fromDB=false인 것만, afterLineNo 포함해 역순 전달
-      const iInserts = javaSlots
-        .reduce((acc, s, idx) => {
-          if (s.cmd === "I" && !s.fromDB && s.editedRaw.trim()) {
-            const prevField = [...javaSlots.slice(0, idx)].reverse().find(j => j.field)?.field
-            acc.push({
-              editedRaw:     s.editedRaw,
-              record:        activeRec,
-              afterLineNo:   prevField?.lineNo ?? 0,
-              afterBodyIter: prevField?.bodyIter ?? null,
-              uiIdx:         idx,
-            })
-          }
-          return acc
-        }, [] as { editedRaw: string; record: string; afterLineNo: number; afterBodyIter: number | null; uiIdx: number }[])
-        .sort((a, b) => b.uiIdx - a.uiIdx)
-        .map(({ uiIdx: _ui, ...rest }) => rest)
+        .map(s => ({ seq: s.field!.seq, javaCode: canonicalize(s.editedRaw) }))
+      // 원본으로 복원된 슬롯 — DB의 M 레코드 삭제 필요
+      const javaCodeResets = javaSlots.filter(s =>
+        s.field &&
+        canonicalize(s.editedRaw) === canonicalize(s.field.raw) &&
+        canonicalize(s.loadedRaw) !== canonicalize(s.field.raw) &&
+        s.cmd !== "D" && s.cmd !== "I"
+      ).map(s => ({ seq: s.field!.seq }))
+      // 새 D/I 또는 기존 I 행 makeStr 변경 시 MAP 전체 교체
+      const hasNewDI = javaSlots.some(s =>
+        (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
+        (s.fromDB && s.cmd === "I" && canonicalize(s.editedRaw) !== canonicalize(s.loadedRaw))
+      )
+      const maxRow  = Math.max(taxItems.length, javaSlots.length)
+      const mapRows = hasNewDI
+        ? Array.from({ length: maxRow }, (_, i) => {
+            const tax  = taxItems[i]  ?? null
+            const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "", loadedRaw: "", fromDB: false }
+            // I 행(새것·기존 모두): javaSeq=null로 전달 → saveMap이 MLAY_JAVA에 삽입 후 SEQ 부여
+            const isI  = slot.cmd === "I"
+            return {
+              sortOrder:  i + 1,
+              recordType: activeRec,
+              taxSeq:     tax?.seq        ?? null,
+              javaSeq:    isI ? null : (slot.field?.seq ?? null),
+              editedRaw:  isI ? (slot.editedRaw || null) : null,
+            }
+          }).filter(r => r.taxSeq !== null || r.javaSeq !== null)
+        : undefined
 
       const res  = await fetch("/api/tools/media-layout/compare", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year: y, taxItemUpdates, javaCodeUpdates, dUpdates, iInserts }),
+        body: JSON.stringify({ year: y, taxItemUpdates, javaCodeUpdates, javaCodeResets, mapRows }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
       setDirtyTax(new Map())
-      const total = (data.taxUpdated ?? 0) + (data.javaUpdated ?? 0) + (data.dUpdated ?? 0) + (data.iInserted ?? 0)
+      const total = (data.taxUpdated ?? 0) + (data.javaUpdated ?? 0) + (data.mapSaved ?? 0)
       setSaveMsg({ ok: true, text: `저장 완료 (${total}건)` })
       await loadCompare(y, activeRec)
       setTimeout(() => setSaveMsg(null), 3000)
@@ -537,7 +551,7 @@ export function MediaStep() {
         </select>
 
         {/* HWP 상태 */}
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[400px] bg-orange-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-orange-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -548,7 +562,7 @@ export function MediaStep() {
         </div>
 
         {/* Java 상태 */}
-        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm min-w-[400px] bg-blue-50">
+        <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-blue-50">
           {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
@@ -566,10 +580,11 @@ export function MediaStep() {
         </Button>
       </div>
 
-      {/* 레코드별 바이트 비교 */}
+      {/* 바이트 행 + 탭 + 비교 테이블 */}
       {recList.length > 0 && (
+        <div className="flex flex-col flex-1 min-h-0 gap-2">
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
-          <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트:</span>
+          <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
             const t = taxBytes[r] ?? 0
             const j = javaBytes[r] ?? 0
@@ -580,15 +595,13 @@ export function MediaStep() {
                 "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
                 none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               )}>
-                {r}:{t||"?"}↔{j||"?"}
+                {r}:{none ? "?" : ok ? "일치" : Math.abs(t - j)}
               </span>
             )
           })}
         </div>
-      )}
 
-      {/* 탭 + 비교 테이블 */}
-      {recList.length > 0 && (
+        {/* 탭 + 비교 테이블 */}
         <div className="flex flex-col flex-1 min-h-0">
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
@@ -622,7 +635,8 @@ export function MediaStep() {
                   dirtyTax.size > 0 ||
                   javaSlots.some(s =>
                     (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
-                    (s.field && s.editedRaw !== s.field.raw)
+                    (s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw)) ||
+                    (s.field && canonicalize(s.editedRaw) === canonicalize(s.field.raw) && canonicalize(s.loadedRaw) !== canonicalize(s.field.raw))
                   )
                 return (
                   <>
@@ -664,29 +678,29 @@ export function MediaStep() {
             <div ref={scrollDivRef} className="overflow-auto flex-1 text-xs">
               <table className="w-full border-collapse table-fixed">
                 <colgroup>
-                  <col className="w-16" />          {/* HWP 코드 */}
-                  <col className="w-[400px]" />     {/* HWP 서식항목 ─┐ 동일 폭 */}
-                  <col className="w-20" />           {/* HWP 데이터타입 */}
-                  <col className="w-12" />           {/* HWP 누적 */}
-                  <col className="w-14" />           {/* D·I·M */}
-                  <col className="w-[400px]" />     {/* Java 서식항목 ─┘ 동일 폭 */}
-                  <col />                            {/* makeStr — 나머지 공간 */}
-                  <col className="w-[76px]" />      {/* Java 데이터타입 */}
-                  <col className="w-10" />           {/* Java 행 */}
-                  <col className="w-12" />           {/* Java 누적 */}
+                  <col className="w-24" />
+                  <col className="w-[18%]" />
+                  <col className="w-16" />
+                  <col className="w-10" />
+                  <col className="w-12" />
+                  <col className="w-[18%]" />
+                  <col />
+                  <col className="w-16" />
+                  <col className="w-9" />
+                  <col className="w-10" />
                 </colgroup>
                 <thead className="sticky top-0 z-10">
                   <tr>
                     {/* HWP */}
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center">코드</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center">번호</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목 <span className="opacity-40 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center whitespace-nowrap">데이터타입</th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center">누적</th>
                     {/* D·I·M */}
                     <th className="px-1 py-1.5 border-b border-r bg-muted text-center">D·I·M</th>
                     {/* Java */}
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left">서식항목</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left whitespace-nowrap">makeStr</th>
+                    <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left whitespace-nowrap">makeStr <span className="opacity-40 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center whitespace-nowrap">데이터타입</th>
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center">행</th>
                     <th className="px-2 py-1.5 border-b bg-blue-100 text-blue-800 text-center">누적</th>
@@ -706,7 +720,7 @@ export function MediaStep() {
                       const tax  = taxItems[i] ?? null
                       const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "" }
                       const isD  = slot.cmd === "D"
-                      const isI  = slot.cmd === "I" && slot.field === null
+                      const isI  = slot.cmd === "I"
                       const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
                       const parsedMake   = parsedSlots[i]
                       const makeValid    = !slot.editedRaw || parsedMake !== null
@@ -717,33 +731,48 @@ export function MediaStep() {
                       const itemMismatch = !isD && !isI && !!tax && !!slot.field &&
                         tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')
                       const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
-                      const rowBg = isD ? "bg-red-50" : isI ? "bg-yellow-50" : mismatch ? "bg-amber-50" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "")
+                      const isSelected = selectedIdx === i
+                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : mismatch ? "bg-amber-50" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "")
 
                       const nodes = []
                       if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
                       nodes.push(
-                        <tr key={i} className={cn("border-b hover:brightness-[0.97] transition-colors", rowBg)}>
+                        <tr key={i} onClick={() => setSelectedIdx(isSelected ? null : i)}
+                          className={cn("border-b hover:brightness-[0.97] transition-colors cursor-pointer", rowBg)}>
                           {/* HWP */}
-                          <td className="px-2 py-1 border-r font-mono font-semibold text-center">{tax?.코드 ?? ""}</td>
-                          <td className={cn("px-1 py-0.5 border-r", itemMismatch && "bg-orange-50")}>
+                          <td className="px-2 py-1 border-r font-mono font-semibold text-center cursor-default">
+                            {tax?.코드 ?? ""}
+                            {tax?.원본코드 && (
+                              <span title={`원본: ${tax.원본코드}`}
+                                className="ml-0.5 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+                            )}
+                          </td>
+                          <td className={cn("px-1 py-0.5 border-r cursor-text", itemMismatch && "bg-orange-50")}>
                             {tax ? (
-                              <input
-                                value={tax.항목 ?? ""}
-                                onChange={e => handleTaxItemEdit(tax.코드, e.target.value)}
-                                className={cn("w-full text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:bg-white focus:border focus:border-primary outline-none break-keep",
-                                  itemMismatch && "text-orange-600 font-medium",
-                                  dirtyTax.has(tax.코드) && "bg-amber-50")}
-                              />
+                              <div className="flex items-center gap-1 min-w-0">
+                                <input
+                                  value={tax.항목 ?? ""}
+                                  onChange={e => handleTaxItemEdit(tax.코드, tax.seq, e.target.value)}
+                                  spellCheck={false}
+                                  className={cn("flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none break-keep",
+                                    itemMismatch && "text-orange-600 font-medium",
+                                    dirtyTax.has(tax.코드) && "bg-amber-50")}
+                                />
+                                {tax.원본항목 && !dirtyTax.has(tax.코드) && (
+                                  <span title={`원본: ${tax.원본항목}`}
+                                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+                                )}
+                              </div>
                             ) : ""}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono", mismatch && "text-red-600 font-bold")}>
+                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")}>
                             {tax ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums", tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
+                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
                             {tc > 0 ? tc : ""}
                           </td>
                           {/* D·I·M */}
-                          <td className="px-1 py-1 border-r">
+                          <td className="px-1 py-0.5 border-r cursor-default">
                             <div className="flex gap-0.5 justify-center">
                               <button onClick={() => handleD(i)} disabled={isI || (slot.field === null && !isD) || slot.fromDB}
                                 className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
@@ -757,34 +786,36 @@ export function MediaStep() {
                           </td>
                           {/* Java */}
                           {/* Java 서식항목 */}
-                          <td className={cn("px-2 py-0.5 border-r text-xs break-keep overflow-hidden", itemMismatch && "text-orange-600 font-medium")}>{slot.field?.name ?? ""}</td>
+                          <td className={cn("px-2 py-0.5 border-r text-xs break-keep overflow-hidden cursor-default", itemMismatch && "text-orange-600 font-medium")}>{slot.field?.name ?? ""}</td>
                           {/* makeStr */}
-                          <td className="px-2 py-1 border-r font-mono whitespace-nowrap">
+                          <td className="px-2 py-0 border-r font-mono whitespace-nowrap cursor-text">
                             {isD ? (
                               <span className="line-through text-red-400 text-[11px]">{alignedRaws[i]}</span>
                             ) : isI ? (
                               <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
                                 placeholder='makeStr("x", 10, ...) 형식으로 입력'
+                                spellCheck={false}
                                 className={cn(
-                                  "w-full rounded px-1 py-1 font-mono text-[11px] outline-none",
+                                  "w-full rounded px-1 py-0.5 font-mono text-[11px] outline-none",
                                   slot.editedRaw.trim() && !parseMakeStr(slot.editedRaw)
                                     ? "bg-red-50 border border-red-400 focus:border-red-500"
                                     : "bg-yellow-50 border border-yellow-300 focus:border-yellow-500"
                                 )} />
                             ) : (
                               <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
-                                className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-1",
+                                spellCheck={false}
+                                className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-0.5",
                                   makeValid
-                                    ? "border-0 focus:bg-white focus:border focus:border-primary focus:rounded focus:px-1"
+                                    ? "border-0 focus:border focus:border-primary focus:rounded focus:px-1"
                                     : "border border-red-400 rounded px-1 bg-red-50",
                                   isM && makeValid && "text-blue-700")} />
                             )}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}>
+                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}>
                             {effDtype && effLen ? `${effDtype}(${effLen})` : ""}
                           </td>
-                          <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums">{slot.field?.lineNo ?? ""}</td>
-                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums", tc !== jc && jc > 0 ? "text-red-600 font-bold" : jc > 0 ? "text-green-700" : "")}>
+                          <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{slot.field?.lineNo ?? ""}</td>
+                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", tc !== jc && jc > 0 ? "text-red-600 font-bold" : jc > 0 ? "text-green-700" : "")}>
                             {jc > 0 ? jc : ""}
                           </td>
                         </tr>
@@ -796,6 +827,7 @@ export function MediaStep() {
               </table>
             </div>
           </div>
+        </div>
         </div>
       )}
 

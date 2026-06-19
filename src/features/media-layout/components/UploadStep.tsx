@@ -314,8 +314,8 @@ export function UploadStep({ initialYear, initialUpload }: Props = {}) {
                 <tr>
                   <th className="px-2 py-1.5 border-b border-r bg-muted text-center w-10">#</th>
                   <th className="px-2 py-1.5 border-b border-r bg-muted text-center w-8">구분</th>
-                  <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-20">코드</th>
-                  <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">항목명</th>
+                  <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-20">번호</th>
+                  <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목</th>
                   <th className="px-2 py-1.5 border-b bg-orange-50 text-orange-800 text-center w-24">타입(길이)</th>
                 </tr>
               </thead>

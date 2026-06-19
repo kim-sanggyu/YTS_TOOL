@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
   getHwpFile, getLatestHwpFile,
-  getTaxRows, getJavaRows, getJavaEdits,
+  getTaxRows, getJavaRows, getJavaCodeEdits,
   getTaxSectConfig, getAllTaxSectConfigs,
-  buildCompareRows, calcSummary,
-  updateTaxItemsByCode, updateJavaCodeByLineNo,
-  markJavaDeleted, insertJavaRows, resetJavaEdits,
+  buildCompareRowsFromMap, calcSummary,
+  upsertTaxEdit, updateJavaCode, deleteJavaCodeEdits,
+  saveMap, resetJavaEdits, initMapForRecord,
+  type MapSaveRow,
 } from "@/lib/tax-oracle"
 import { auth } from "@/auth"
 
@@ -33,45 +34,41 @@ export async function GET(req: NextRequest) {
     const [taxRows, javaRows, edits, sectConfig] = await Promise.all([
       getTaxRows(hwp.year, userId, record),
       getJavaRows(hwp.year, userId, record),
-      getJavaEdits(hwp.year, userId, record),
+      getJavaCodeEdits(hwp.year, userId, record),
       getTaxSectConfig(hwp.year, userId, record, "TAX"),
     ])
-    const rows    = buildCompareRows(taxRows, javaRows, edits)
+    const rows = await buildCompareRowsFromMap(hwp.year, userId, record, taxRows, javaRows, edits) ?? []
     const summary = calcSummary(rows)
     return NextResponse.json({ rows, summary, year: hwp.year, sectConfig })
   }
 
-  // 전체 레코드 모드 — 4 쿼리로 전체 로드, Node에서 레코드별 분류
+  // 전체 레코드 모드
   const [allTaxRows, allJavaRows, allEdits, allSectConfigs] = await Promise.all([
     getTaxRows(hwp.year, userId),
     getJavaRows(hwp.year, userId),
-    getJavaEdits(hwp.year, userId),
+    getJavaCodeEdits(hwp.year, userId),
     getAllTaxSectConfigs(hwp.year, userId, "TAX"),
   ])
 
-  // D/M 편집의 레코드 분류: lineNo → record
-  const lineNoRec: Record<number, string> = {}
-  for (const r of allJavaRows) if (r.lineNo) lineNoRec[r.lineNo] = r.record
-
-  // 레코드별 그룹화
-  const taxByRec:   Record<string, typeof allTaxRows>  = {}
-  const javaByRec:  Record<string, typeof allJavaRows> = {}
-  const editsByRec: Record<string, typeof allEdits>    = {}
+  // 레코드별 그룹화 (SEQ 기반 — lineNo 불필요)
+  const taxByRec:  Record<string, typeof allTaxRows>  = {}
+  const javaByRec: Record<string, typeof allJavaRows> = {}
+  const editsByRec: Record<string, typeof allEdits>   = {}
+  const seqToRec: Record<number, string> = {}
   for (const r of allTaxRows)  { const k = r.코드[0]; if (k) (taxByRec[k]  = taxByRec[k]  || []).push(r) }
-  for (const r of allJavaRows) {                              (javaByRec[r.record] = javaByRec[r.record] || []).push(r) }
-  for (const e of allEdits) {
-    const k = e.cmd === "I"
-      ? e.record
-      : (e.lineNo !== null ? lineNoRec[e.lineNo] ?? null : null)
-    if (k) (editsByRec[k] = editsByRec[k] || []).push(e)
-  }
+  for (const r of allJavaRows) { seqToRec[r.seq] = r.record;  (javaByRec[r.record] = javaByRec[r.record] || []).push(r) }
+  for (const e of allEdits)    { const k = seqToRec[e.seq]; if (k) (editsByRec[k] = editsByRec[k] || []).push(e) }
 
-  const byRecord: Record<string, { rows: ReturnType<typeof buildCompareRows>; sectConfig: typeof allSectConfigs[string] | null }> = {}
   const allRecs = new Set([...Object.keys(taxByRec), ...Object.keys(javaByRec)])
-  for (const rec of allRecs) {
-    const rows = buildCompareRows(taxByRec[rec] ?? [], javaByRec[rec] ?? [], editsByRec[rec] ?? [])
+  const byRecord: Record<string, { rows: import("@/features/media-layout/types").CompareRow[]; sectConfig: typeof allSectConfigs[string] | null }> = {}
+
+  await Promise.all(Array.from(allRecs).map(async (rec) => {
+    const rows = await buildCompareRowsFromMap(
+      hwp.year, userId, rec,
+      taxByRec[rec] ?? [], javaByRec[rec] ?? [], editsByRec[rec] ?? []
+    ) ?? []
     if (rows.length > 0) byRecord[rec] = { rows, sectConfig: allSectConfigs[rec] ?? null }
-  }
+  }))
 
   return NextResponse.json({ byRecord, year: hwp.year })
 }
@@ -88,6 +85,7 @@ export async function DELETE(req: NextRequest) {
   if (!record || !year) return NextResponse.json({ message: "record, year 필수" }, { status: 400 })
 
   const deleted = await resetJavaEdits(year, userId, record)
+  await initMapForRecord(year, userId, record)
   return NextResponse.json({ ok: true, deleted })
 }
 
@@ -97,21 +95,33 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ message: "인증 필요" }, { status: 401 })
 
   const userId = parseInt(session.user?.id ?? "0")
-  const { year, taxItemUpdates, javaCodeUpdates, dUpdates, iInserts } = await req.json()
+  const { year, taxItemUpdates, javaCodeUpdates, javaCodeResets, mapRows } = await req.json()
 
   if (!year) return NextResponse.json({ message: "연도를 입력하세요." }, { status: 400 })
 
-  // MLAY_JAVA_EDIT에 쓰는 함수들은 EDIT_SEQ 충돌 방지를 위해 순차 실행
-  if (taxItemUpdates?.length)  await updateTaxItemsByCode(year, userId, taxItemUpdates)
-  if (javaCodeUpdates?.length) await updateJavaCodeByLineNo(year, userId, javaCodeUpdates)
-  const dUpdated  = dUpdates?.length ? await markJavaDeleted(year, userId, dUpdates as { lineNo: number; bodyIter?: number | null }[]) : 0
-  const iInserted = iInserts?.length ? await insertJavaRows(year, userId, iInserts as { editedRaw: string; record: string; afterLineNo: number; afterBodyIter?: number | null }[]) : 0
+  try {
+    if (taxItemUpdates?.length)  await upsertTaxEdit(year, userId, taxItemUpdates)
+    if (javaCodeResets?.length)  await deleteJavaCodeEdits(year, userId, javaCodeResets)
+    if (javaCodeUpdates?.length) await updateJavaCode(year, userId, javaCodeUpdates)
 
-  return NextResponse.json({
-    ok: true,
-    taxUpdated:  taxItemUpdates?.length  ?? 0,
-    javaUpdated: javaCodeUpdates?.length ?? 0,
-    dUpdated:    dUpdated ?? 0,
-    iInserted:   iInserted ?? 0,
-  })
+    let mapSaved = 0
+    if (mapRows?.length) {
+      const rows   = mapRows as MapSaveRow[]
+      const record = rows.find(r => r.recordType)?.recordType ?? ""
+      if (record) mapSaved = await saveMap(year, userId, record, rows)
+    }
+
+    return NextResponse.json({
+      ok: true,
+      taxUpdated:  taxItemUpdates?.length  ?? 0,
+      javaUpdated: javaCodeUpdates?.length ?? 0,
+      mapSaved,
+    })
+  } catch (err) {
+    console.error("[compare PATCH]", err)
+    return NextResponse.json(
+      { message: err instanceof Error ? err.message : "저장 중 오류가 발생했습니다." },
+      { status: 500 }
+    )
+  }
 }

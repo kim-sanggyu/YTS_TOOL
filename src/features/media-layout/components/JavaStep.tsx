@@ -116,9 +116,10 @@ export function JavaStep() {
   const [uploadErr, setUploadErr] = useState("")
   const [checking,  setChecking]  = useState(false)
   const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
-  const [byRecord,  setByRecord]  = useState<Record<string, JavaRow[]>>({})
-  const [activeRec, setActiveRec] = useState("A")
-  const [deleting,  setDeleting]  = useState(false)
+  const [byRecord,     setByRecord]     = useState<Record<string, JavaRow[]>>({})
+  const [activeRec,    setActiveRec]    = useState("A")
+  const [deleting,     setDeleting]     = useState(false)
+  const [selectedSeq,  setSelectedSeq]  = useState<number | null>(null)
 
   const hasRows = Object.keys(byRecord).length > 0
   const recList = RECORD_TYPES.filter(r => byRecord[r]?.length)
@@ -220,8 +221,11 @@ export function JavaStep() {
       const r = rows[i]
       if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
       cumBytes += r.fieldLen ?? 0
+      const isSelected = selectedSeq === r.seq
+      const rowBg = isSelected ? "bg-blue-100" : sectRowBg(r.sect)
       nodes.push(
-        <tr key={r.seq} className={cn("border-b hover:brightness-95 transition-colors", sectRowBg(r.sect))}>
+        <tr key={r.seq} onClick={() => setSelectedSeq(isSelected ? null : r.seq)}
+          className={cn("border-b hover:brightness-95 transition-colors cursor-pointer", rowBg)}>
           {/* 번호 */}
           <td className="px-2 py-1 border-r font-mono font-semibold text-xs text-center">{r.code}</td>
           {/* 항목명 */}
@@ -359,7 +363,7 @@ export function JavaStep() {
                   <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
                       <th className="px-2 py-1.5 border-b border-r text-center w-20">번호</th>
-                      <th className="px-2 py-1.5 border-b border-r text-left min-w-[120px]">항목명</th>
+                      <th className="px-2 py-1.5 border-b border-r text-left min-w-[120px]">서식항목</th>
                       <th className="px-2 py-1.5 border-b border-r text-left">makeStr</th>
                       <th className="px-1 py-1.5 border-b border-r text-center w-10">타입</th>
                       <th className="px-1 py-1.5 border-b border-r text-center w-10">길이</th>

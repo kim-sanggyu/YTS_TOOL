@@ -1,19 +1,23 @@
 // ── 전산매체 레이아웃 ─────────────────────────────────────────
 
 export interface TaxLayoutRow {
-  구분:  string
-  코드:  string   // 항목 코드 (A1, C5 …)
-  항목:  string
-  값:    string
-  타입?: string   // x | 9
-  길이?: number
-  sect: string    // HEAD | BODY_N | FOOT
+  seq:      number   // MLAY_TAX.SEQ — MLAY_TAX_EDIT JOIN 키
+  구분:    string
+  코드:    string   // NVL(E.CODE, T.CODE)
+  항목:    string   // NVL(E.ITEM, T.ITEM)
+  원본코드?: string  // MLAY_TAX_EDIT로 덮어쓴 경우의 원본 MLAY_TAX.CODE
+  원본항목?: string  // MLAY_TAX_EDIT로 덮어쓴 경우의 원본 MLAY_TAX.ITEM
+  값:      string
+  타입?:   string   // x | 9
+  길이?:   number
+  sect:    string   // HEAD | BODY_N | FOOT
 }
 
 // ── Java 소스 파싱 결과 ────────────────────────────────────────
 // (java-layout-parser.ts 의 출력 타입 — 공유 타입으로 여기서 정의)
 
 export interface JavaField {
+  seq:         number   // MLAY_JAVA.SEQ — MAP JOIN 키 (파서 출력 시 0, DB 저장 후 실제값)
   record:      string   // 레코드 구분 (A-K)
   no:          string   // 소스 내 항목코드 주석 (A1, C64ⓐ …) — 비교 단계에서 의미 없음
   name:        string   // 항목명 (소스 주석 기준)

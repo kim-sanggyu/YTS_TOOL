@@ -248,8 +248,8 @@ export function CompareStep() {
             <tr>
               <th className="px-1 py-1.5 border-b border-r bg-muted text-center w-8">#</th>
               {/* 전산매체 (기준, 고정) */}
-              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-16">코드</th>
-              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">항목명</th>
+              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-16">번호</th>
+              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목</th>
               <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-20">타입(길이)</th>
               <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center w-14">누적</th>
               {/* 조작 */}

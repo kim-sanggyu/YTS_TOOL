@@ -29,6 +29,7 @@ export function parseTaxExcel(buffer: Buffer): TaxLayoutRow[] {
 
     const m = TYPE_LEN_RE.exec(값)
     rows.push({
+      seq:  0,
       구분,
       코드,
       항목,

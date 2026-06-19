@@ -11,7 +11,7 @@ export default async function PortalLayout({ children }: { children: React.React
   return (
     <SidebarProvider>
       <AppSidebar user={session.user} />
-      <SidebarInset className="flex flex-col h-screen">
+      <SidebarInset className="flex flex-col h-screen min-w-0 overflow-x-hidden">
         <header className="flex h-10 shrink-0 items-center border-b bg-background px-4">
           <Breadcrumbs />
         </header>
