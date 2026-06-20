@@ -3,12 +3,13 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X, HelpCircle, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { SectionBox, sectColors, sectionLineCount } from "./SectionBox"
 import { cn } from "@/lib/utils"
-import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
+import type { HwpFileRow, JavaFileRow, TaxSectConfigRow, ItemNoteRow } from "@/lib/tax-oracle"
 import type { TaxLayoutRow, JavaField, CompareRow } from "../types"
+import { ItemNoteSticker, NoteMarkButton } from "./ItemNoteSticker"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
@@ -194,6 +195,63 @@ export function MediaStep() {
   const [taxBytes,  setTaxBytes]  = useState<Record<string, number>>({})
   const [javaBytes, setJavaBytes] = useState<Record<string, number>>({})
   const [checking,  setChecking]  = useState(false)
+  const [helpOpen,    setHelpOpen]    = useState(false)
+  const [helpTab,     setHelpTab]     = useState<"usage" | "how">("usage")
+
+  // 주목 노트
+  const [notes,       setNotes]       = useState<Record<string, ItemNoteRow>>({})
+  const [openNoteKey, setOpenNoteKey] = useState<string | null>(null)
+
+  const loadNotes = useCallback(async (y: number) => {
+    try {
+      const res  = await fetch(`/api/tools/media-layout/item-notes?year=${y}`)
+      const data = await res.json()
+      const map: Record<string, ItemNoteRow> = {}
+      for (const n of (data.notes ?? []) as ItemNoteRow[]) {
+        map[`${n.recordType}-${n.code}`] = n
+      }
+      setNotes(map)
+    } catch {}
+  }, [])
+
+  useEffect(() => { loadNotes(year) }, [year, loadNotes])
+
+  const notesRef = useRef(notes)
+  useEffect(() => { notesRef.current = notes }, [notes])
+
+  useEffect(() => {
+    if (!openNoteKey) return
+    function handle(e: PointerEvent) {
+      if (!(e.target as Element).closest?.("[data-note-popup]")) {
+        const note = notesRef.current[openNoteKey]
+        if (note && !note.memo.trim()) {
+          const sep = openNoteKey.indexOf("-")
+          handleNoteDelete(openNoteKey.slice(0, sep), openNoteKey.slice(sep + 1))
+        } else {
+          setOpenNoteKey(null)
+        }
+      }
+    }
+    document.addEventListener("pointerdown", handle)
+    return () => document.removeEventListener("pointerdown", handle)
+  }, [openNoteKey])
+
+  async function handleNoteSave(rec: string, code: string, patch: Partial<Pick<ItemNoteRow, "memo" | "isDone" | "color">>) {
+    const key  = `${rec}-${code}`
+    const cur  = notes[key]
+    setNotes(prev => ({ ...prev, [key]: { ...cur, ...patch } as ItemNoteRow }))
+    await fetch("/api/tools/media-layout/item-notes", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ year, recordType: rec, code, ...patch }),
+    })
+  }
+
+  async function handleNoteDelete(rec: string, code: string) {
+    const key = `${rec}-${code}`
+    setNotes(prev => { const n = { ...prev }; delete n[key]; return n })
+    await fetch(`/api/tools/media-layout/item-notes?year=${year}&record=${rec}&code=${encodeURIComponent(code)}`, { method: "DELETE" })
+  }
 
   const [activeRec,   setActiveRec]   = useState("A")
   const [taxItems,    setTaxItems]    = useState<(TaxLayoutRow | null)[]>([])
@@ -534,6 +592,16 @@ export function MediaStep() {
     return s
   }, [taxItems])
 
+  const gubunBounds = useMemo(() => {
+    const m = new Map<number, string>()
+    let prev = ""
+    for (let i = 0; i < taxItems.length; i++) {
+      const g = taxItems[i]?.구분 ?? ""
+      if (g && g !== prev) { m.set(i, g); prev = g }
+    }
+    return m
+  }, [taxItems])
+
   const finalTaxBytes  = cumData[maxLen - 1]?.tc ?? 0
   const finalJavaBytes = cumData[maxLen - 1]?.jc ?? 0
 
@@ -579,6 +647,113 @@ export function MediaStep() {
           <RefreshCw className={cn("h-3 w-3 mr-1", (checking || comparing) && "animate-spin")} />
           새로고침
         </Button>
+
+        {/* 사용법 아이콘 */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(p => !p)}
+            className={cn(
+              "h-8 w-8 rounded flex items-center justify-center border transition-colors",
+              helpOpen ? "bg-blue-50 border-blue-300 text-blue-600" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            )}
+            title="사용법 안내"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+          {helpOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setHelpOpen(false)} />
+              <div className="absolute right-0 top-9 z-30 w-[600px] bg-background border rounded-lg shadow-lg text-xs">
+                <div className="flex border-b">
+                  {(["usage", "how"] as const).map(tab => (
+                    <button key={tab} type="button"
+                      onClick={e => { e.stopPropagation(); setHelpTab(tab) }}
+                      className={cn("flex-1 py-2 text-xs font-medium transition-colors",
+                        helpTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}>
+                      {tab === "usage" ? "사용법" : "프로그램 설명"}
+                    </button>
+                  ))}
+                </div>
+                <div className="p-4 space-y-3">
+                  {helpTab === "usage" ? (
+                    <>
+                      <p className="text-muted-foreground leading-relaxed">
+                        HWP 항목과 Java makeStr을 나란히 비교하고, 항목명·makeStr을 직접 수정하여 저장합니다.
+                      </p>
+                      <div>
+                        <p className="font-semibold mb-1.5">사용 순서</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li>레코드 탭 선택</li>
+                          <li>HWP·Java 양쪽 항목 비교 — 서식항목·데이터타입 불일치 확인</li>
+                          <li>D·I 버튼으로 Java 행 위치 조정</li>
+                          <li>항목명·makeStr 셀 직접 수정 → <strong className="text-foreground">저장</strong></li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">D · I · M 버튼</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center">D</td><td className="px-2 py-1.5 text-muted-foreground">Java 행 삭제 — 다음 Java 행이 이 국세청 행과 매치됨</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center">I</td><td className="px-2 py-1.5 text-muted-foreground">Java 빈 행 삽입 — 아래 Java 행이 한 칸 밀림</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center">M</td><td className="px-2 py-1.5 text-muted-foreground">makeStr 내용 수정됨 (셀 편집 시 자동 표시)</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">오류 뱃지</p>
+                        <div className="flex gap-3">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 bg-orange-100 text-orange-700 text-[11px] font-bold">서식항목 N</span>
+                          <span className="text-muted-foreground">항목명이 다른 행 수</span>
+                        </div>
+                        <div className="flex gap-3 mt-1">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 bg-red-100 text-red-700 text-[11px] font-bold">데이터타입 N</span>
+                          <span className="text-muted-foreground">타입 또는 길이가 다른 행 수</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-semibold mb-1.5">주요 처리사항</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadAllCompare()</span> — 전체 레코드 비교 데이터 한 번에 로드, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span>에 레코드별 캐시</li>
+                          <li>화면 표시: MLAY_TAX_JAVA_MAP 순서 + MLAY_JAVA_EDIT(D/I/M) 덮어씌운 CompareRow[] 렌더링</li>
+                          <li>서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">dirtyTax Map</span> 업데이트 / makeStr 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">javaSlots[i].editedRaw</span> 업데이트</li>
+                          <li>M 감지: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadedRaw</span>(로드 시점 고정) ≠ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">editedRaw</span>(현재 값) → M 상태</li>
+                          <li>저장 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../compare</span> — taxItemUpdates + javaCodeUpdates + javaCodeResets + mapRows 동시 전송</li>
+                          <li>변경취소 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → JAVA_EDIT 삭제 + MAP 1:1 리셋 → 화면 재로드</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">관련 table</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER — 행 매핑 순서. D/I 저장 후 새 순서로 재저장</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, CMD(D/I/M), EDITED_RAW, LINE_NO — makeStr 수정·D/I 편집 이력 통합</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, ITEM, ORG_ITEM — 서식항목 수정값 + 원본 보존</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE.CONTENT</td><td className="px-2 py-1.5 text-muted-foreground">원본 소스 패치 다운로드 기능에서만 참조 (이 화면에서는 직접 사용 안 함)</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">핵심적인 로직</p>
+                        <ul className="space-y-1.5 text-muted-foreground">
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">JavaSlot.fromDB</span> — MLAY_JAVA_EDIT에서 로드된 기존 편집이면 true. 변경취소 대상 여부 판별에 사용</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">javaCodeResets</span> — M 상태였다가 원본으로 되돌린 행. PATCH 시 MLAY_JAVA_EDIT에서 해당 SEQ 삭제</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">TaxSectInfo</span> (컴포넌트) — 오류 집계 UI. 항목명 공백 제거 비교 + makeStr 파싱으로 타입·길이 비교. 저장 없이 화면 계산만</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span> — 레코드별 비교 결과 클라이언트 캐시 (Record&lt;string, ...&gt;). 탭 전환 시 캐시 있으면 재요청 없음</li>
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 바이트 행 + 탭 + 비교 테이블 */}
@@ -694,7 +869,12 @@ export function MediaStep() {
                   <tr>
                     {/* HWP */}
                     <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center">번호</th>
-                    <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목 <span className="opacity-40 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
+                    <th className="pl-1 pr-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                        서식항목 <span className="opacity-40 inline-block" style={{transform:"scaleX(-1)"}}>✎</span>
+                      </span>
+                    </th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center whitespace-nowrap">데이터타입</th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center">누적</th>
                     {/* D·I·M */}
@@ -735,33 +915,75 @@ export function MediaStep() {
                       const isSelected = selectedIdx === i
                       const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : mismatch ? "bg-amber-50" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "")
 
+                      const noteKey  = tax ? `${activeRec}-${tax.코드}` : null
+                      const note     = noteKey ? notes[noteKey] : undefined
+
                       const nodes = []
+                      if (gubunBounds.has(i)) {
+                        nodes.push(
+                          <tr key={`gubun-${i}`} className="bg-sky-50 border-y border-sky-200">
+                            <td colSpan={10} className="px-3 py-0.5 text-[11px] font-semibold text-sky-700 select-none">
+                              {gubunBounds.get(i)}
+                            </td>
+                          </tr>
+                        )
+                      }
                       if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
                       nodes.push(
                         <tr key={i} onClick={() => setSelectedIdx(isSelected ? null : i)}
-                          className={cn("border-b hover:brightness-[0.97] transition-colors cursor-pointer", rowBg)}>
+                          className={cn(
+                            "border-b hover:brightness-[0.97] transition-colors cursor-pointer group",
+                            noteKey && openNoteKey === noteKey ? "relative z-[25]" : "",
+                            rowBg
+                          )}>
                           {/* HWP */}
-                          <td className="px-2 py-1 border-r font-mono font-semibold text-center cursor-default">
-                            {tax?.코드 ?? ""}
-                            {tax?.원본코드 && (
-                              <span title={`원본: ${tax.원본코드}`}
-                                className="ml-0.5 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
-                            )}
+                          <td className="px-1 py-1 border-r font-mono font-semibold text-center cursor-default">
+                            <div className="flex items-center gap-1 justify-center">
+                              <span>{tax?.코드 ?? ""}</span>
+                              {tax?.원본코드 && (
+                                <span title={`원본: ${tax.원본코드}`}
+                                  className="text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+                              )}
+                            </div>
                           </td>
-                          <td className={cn("px-1 py-0.5 border-r cursor-text", itemMismatch && "bg-orange-50")}>
+                          <td className={cn("pl-1 pr-1 py-0.5 border-r cursor-text align-top", itemMismatch && "bg-orange-50")}>
                             {tax ? (
-                              <div className="flex items-center gap-1 min-w-0">
-                                <input
+                              <div className="flex items-start gap-0 min-w-0">
+                                <div className="relative shrink-0 self-center" data-note-popup onClick={e => e.stopPropagation()}>
+                                  <NoteMarkButton
+                                    hasNote={!!note}
+                                    isDone={note?.isDone}
+                                    onClick={() => tax && setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!)}
+                                  />
+                                  {openNoteKey === noteKey && note && tax && (
+                                    <div className="absolute left-0 top-5 z-30">
+                                        <ItemNoteSticker
+                                          note={note}
+                                          item={tax.항목}
+                                          onSave={patch => handleNoteSave(activeRec, tax.코드, patch)}
+                                          onDelete={() => handleNoteDelete(activeRec, tax.코드)}
+                                          onClose={() => setOpenNoteKey(null)}
+                                        />
+                                    </div>
+                                  )}
+                                </div>
+                                <textarea
+                                  ref={el => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px` } }}
                                   value={tax.항목 ?? ""}
-                                  onChange={e => handleTaxItemEdit(tax.코드, tax.seq, e.target.value)}
+                                  onChange={e => {
+                                    e.target.style.height = "auto"
+                                    e.target.style.height = `${e.target.scrollHeight}px`
+                                    handleTaxItemEdit(tax.코드, tax.seq, e.target.value)
+                                  }}
                                   spellCheck={false}
-                                  className={cn("flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none break-keep",
+                                  rows={1}
+                                  className={cn("flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none resize-none overflow-hidden leading-tight break-keep",
                                     itemMismatch && "text-orange-600 font-medium",
                                     dirtyTax.has(tax.코드) && "bg-amber-50")}
                                 />
                                 {tax.원본항목 && !dirtyTax.has(tax.코드) && (
                                   <span title={`원본: ${tax.원본항목}`}
-                                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+                                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none mt-0.5">수정</span>
                                 )}
                               </div>
                             ) : ""}
