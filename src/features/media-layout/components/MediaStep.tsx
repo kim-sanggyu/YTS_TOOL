@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X, HelpCircle, FileText } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X, HelpCircle, FileText, Maximize2, Minimize2 } from "lucide-react"
 import { toast } from "sonner"
 import { SectionBox, sectColors, sectionLineCount } from "./SectionBox"
 import { cn } from "@/lib/utils"
@@ -17,10 +17,8 @@ const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
 const BODY_BG = ["bg-purple-50","bg-violet-50","bg-indigo-50","bg-blue-50"]
 function bodyIdx(sect: string) { const m = sect.match(/^body_(\d+)$/); return m ? parseInt(m[1]) : 0 }
-function taxSectBg(sect: string) {
-  if (sect === "header") return "bg-gray-50"
-  if (sect === "footer") return "bg-teal-50"
-  if (sect.startsWith("body_")) return BODY_BG[(bodyIdx(sect) - 1) % BODY_BG.length]
+function taxSectBg(sect: string, isHbf: boolean) {
+  if (sect === "footer" || (isHbf && sect === "header")) return "bg-teal-50"
   return ""
 }
 
@@ -43,7 +41,7 @@ function SectSep({ sect, colSpan }: { sect: string; colSpan: number }) {
 
 // ── makeStr 파싱 + 검증 ───────────────────────────────────────
 
-const MAKE_STR_RE = /^makeStr\s*\(\s*"([xX9])"\s*,\s*(\d+)\s*,[\s\S]+\)\s*$/
+const MAKE_STR_RE = /^makeStr\s*\(\s*"([X9])"\s*,\s*(\d{1,4})\s*,\s*[\s\S]+\)\s*$/
 
 function parseMakeStr(raw: string): { dtype: string; len: number } | null {
   const m = MAKE_STR_RE.exec(raw.trim())
@@ -101,7 +99,7 @@ function analyzeFromItems(items: (TaxLayoutRow | null)[]) {
 
 // ── 구조 표시 + 오류 통계 (읽기전용) ────────────────────────────
 
-function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: JavaSlot[] }) {
+function TaxSectInfo({ items, slots, rightContent }: { items: (TaxLayoutRow | null)[]; slots: JavaSlot[]; rightContent?: React.ReactNode }) {
   const info = analyzeFromItems(items)
   if (items.length === 0) return null
 
@@ -111,9 +109,17 @@ function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: 
   for (let i = 0; i < maxLen; i++) {
     const tax  = items[i]
     const slot = slots[i]
-    if (!tax || !slot?.field || slot.cmd === "D" || slot.cmd === "I") continue
+    if (!tax || slot?.cmd === "D") continue
+    const parsed   = slot?.editedRaw ? parseMakeStr(slot.editedRaw) : null
+    const effDtype = parsed?.dtype ?? slot?.field?.dtype ?? ""
+    const effLen   = parsed?.len   ?? slot?.field?.len   ?? 0
+    if (slot?.cmd === "I") {
+      if (effDtype && effLen && (tax.타입 !== effDtype || tax.길이 !== effLen)) typeDiff++
+      continue
+    }
+    if (!slot?.field) continue
     if (tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')) itemDiff++
-    if (tax.타입 !== slot.field.dtype || tax.길이 !== slot.field.len) typeDiff++
+    if (effDtype && effLen && (tax.타입 !== effDtype || tax.길이 !== effLen)) typeDiff++
   }
 
   // 0이어도 항상 뱃지 표시 — 검증 완료 여부를 한눈에 확인
@@ -140,6 +146,7 @@ function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: 
         <span className="font-medium text-sky-700">Header 구조</span>
         <span>· 전체 {info.total}행</span>
         {errBadge}
+        {rightContent && <span className="ml-auto flex items-center gap-2">{rightContent}</span>}
       </div>
     )
   }
@@ -159,6 +166,7 @@ function TaxSectInfo({ items, slots }: { items: (TaxLayoutRow | null)[]; slots: 
       {info.footRows > 0 && <><span>·</span><span className="text-teal-600">Footer {info.footRows}행</span></>}
       <span>· 전체 {info.total}행</span>
       {errBadge}
+      {rightContent && <span className="ml-auto flex items-center gap-2">{rightContent}</span>}
     </div>
   )
 }
@@ -199,8 +207,11 @@ export function MediaStep() {
   const [helpTab,     setHelpTab]     = useState<"usage" | "how">("usage")
 
   // 주목 노트
-  const [notes,       setNotes]       = useState<Record<string, ItemNoteRow>>({})
-  const [openNoteKey, setOpenNoteKey] = useState<string | null>(null)
+  const [notes,              setNotes]              = useState<Record<string, ItemNoteRow>>({})
+  const [openNoteKey,        setOpenNoteKey]        = useState<string | null>(null)
+  const [hasCancelledFromDB, setHasCancelledFromDB] = useState(false)
+  const [showSeq,            setShowSeq]            = useState(false)
+  const [isFullscreen,       setIsFullscreen]       = useState(false)
 
   const loadNotes = useCallback(async (y: number) => {
     try {
@@ -221,12 +232,13 @@ export function MediaStep() {
 
   useEffect(() => {
     if (!openNoteKey) return
+    const key = openNoteKey
     function handle(e: PointerEvent) {
       if (!(e.target as Element).closest?.("[data-note-popup]")) {
-        const note = notesRef.current[openNoteKey]
+        const note = notesRef.current[key]
         if (note && !note.memo.trim()) {
-          const sep = openNoteKey.indexOf("-")
-          handleNoteDelete(openNoteKey.slice(0, sep), openNoteKey.slice(sep + 1))
+          const sep = key.indexOf("-")
+          handleNoteDelete(key.slice(0, sep), key.slice(sep + 1))
         } else {
           setOpenNoteKey(null)
         }
@@ -397,19 +409,21 @@ export function MediaStep() {
 
   function handleD(idx: number) {
     const slot = javaSlots[idx]
-    if (!slot || slot.fromDB) return   // 이미 저장된 D/I는 UI에서 취소 불가
+    if (!slot) return
     if (slot.cmd === "D") {
+      if (slot.fromDB) setHasCancelledFromDB(true)
       setTaxItems(prev  => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
-      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: null } : j))
-    } else {
+      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: null, fromDB: false } : j))
+    } else if (!slot.fromDB) {
       setTaxItems(prev  => [...prev.slice(0, idx), null, ...prev.slice(idx)])
-      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D", fromDB: false } : j))
+      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D" } : j))
     }
   }
 
   function handleI(idx: number) {
     const slot = javaSlots[idx]
-    if (slot?.cmd === "I" && slot.field === null && !slot.fromDB) {
+    if (slot?.cmd === "I") {
+      if (slot.fromDB) setHasCancelledFromDB(true)
       setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
     } else if (!slot?.fromDB) {
       setJavaSlots(prev => [
@@ -454,8 +468,8 @@ export function MediaStep() {
         canonicalize(s.loadedRaw) !== canonicalize(s.field.raw) &&
         s.cmd !== "D" && s.cmd !== "I"
       ).map(s => ({ seq: s.field!.seq }))
-      // 새 D/I 또는 기존 I 행 makeStr 변경 시 MAP 전체 교체
-      const hasNewDI = javaSlots.some(s =>
+      // 새 D/I, 기존 I makeStr 변경, 또는 fromDB D/I 취소 시 MAP 전체 교체
+      const hasNewDI = hasCancelledFromDB || javaSlots.some(s =>
         (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
         (s.fromDB && s.cmd === "I" && canonicalize(s.editedRaw) !== canonicalize(s.loadedRaw))
       )
@@ -483,7 +497,7 @@ export function MediaStep() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      setDirtyTax(new Map())
+      setDirtyTax(new Map()); setHasCancelledFromDB(false)
       const total = (data.taxUpdated ?? 0) + (data.javaUpdated ?? 0) + (data.mapSaved ?? 0)
       setSaveMsg({ ok: true, text: `저장 완료 (${total}건)` })
       await loadCompare(y, activeRec)
@@ -520,7 +534,7 @@ export function MediaStep() {
     } else {
       loadCompare(year, activeRec)
     }
-    setDirtyTax(new Map()); setSaveMsg(null)
+    setDirtyTax(new Map()); setHasCancelledFromDB(false); setSaveMsg(null)
   }
 
   // ── Java 소스 생성 + 다운로드 ─────────────────────────────────
@@ -778,7 +792,7 @@ export function MediaStep() {
         </div>
 
         {/* 탭 + 비교 테이블 */}
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-0 z-40 bg-background p-3")}>
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
               {recList.map(r => {
@@ -808,6 +822,7 @@ export function MediaStep() {
               )}
               {(() => {
                 const hasChanges =
+                  hasCancelledFromDB ||
                   dirtyTax.size > 0 ||
                   javaSlots.some(s =>
                     (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
@@ -816,6 +831,11 @@ export function MediaStep() {
                   )
                 return (
                   <>
+                    <Button size="sm" variant="outline"
+                      className={cn("h-7 text-xs", showSeq && "bg-slate-100 border-slate-400")}
+                      onClick={() => setShowSeq(v => !v)}>
+                      키값보기
+                    </Button>
                     {hasChanges && <Badge variant="outline" className="text-xs">미저장</Badge>}
                     <Button size="sm" variant="default" className="h-7 text-xs" onClick={handleSave}
                       disabled={saving || !hasChanges}>
@@ -837,20 +857,27 @@ export function MediaStep() {
                   </Button>
                 ) : null
               })()}
-              {maxLen > 0 && (
-                <span className={cn("text-xs font-mono", finalTaxBytes !== finalJavaBytes ? "text-red-500 font-bold" : "text-green-600")}>
-                  HWP {finalTaxBytes} {finalTaxBytes !== finalJavaBytes ? <><AlertTriangle className="inline h-3 w-3" /> Java {finalJavaBytes}</> : "= Java"}
-                </span>
-              )}
-              <Button size="sm" variant="outline" className="h-7 text-xs"
-                onClick={handleGenerate} disabled={generating || maxLen === 0}>
-                {generating ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />생성 중...</> : <><Code2 className="h-3 w-3 mr-1" />Java 미리보기</>}
+              <Button size="sm" variant="outline"
+                className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
+                onClick={() => setIsFullscreen(v => !v)}
+                title={isFullscreen ? "전체화면 해제" : "전체화면"}>
+                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
             </div>
           </div>
 
           <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
-            <TaxSectInfo items={taxItems} slots={javaSlots} />
+            <TaxSectInfo items={taxItems} slots={javaSlots} rightContent={maxLen > 0 ? (
+              <>
+                <span className={cn("text-xs font-mono", finalTaxBytes !== finalJavaBytes ? "text-red-500 font-bold" : "text-green-600")}>
+                  HWP {finalTaxBytes} {finalTaxBytes !== finalJavaBytes ? <><AlertTriangle className="inline h-3 w-3" /> Java {finalJavaBytes}</> : "= Java"}
+                </span>
+                <Button size="sm" variant="outline" className="h-7 text-xs"
+                  onClick={handleGenerate} disabled={generating}>
+                  {generating ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />생성 중...</> : <><Code2 className="h-3 w-3 mr-1" />Java 미리보기</>}
+                </Button>
+              </>
+            ) : undefined} />
             <div ref={scrollDivRef} className="overflow-auto flex-1 text-xs">
               <table className="w-full border-collapse table-fixed">
                 <colgroup>
@@ -907,18 +934,21 @@ export function MediaStep() {
                       const makeValid    = !slot.editedRaw || parsedMake !== null
                       const effDtype     = parsedMake?.dtype ?? slot.field?.dtype ?? ""
                       const effLen       = parsedMake?.len   ?? slot.field?.len   ?? 0
-                      const mismatch     = !isD && !isI && !!tax &&
+                      const mismatch     = !isD && !!tax && !!effDtype && !!effLen &&
                         (tax.타입 !== effDtype || tax.길이 !== effLen)
                       const itemMismatch = !isD && !isI && !!tax && !!slot.field &&
                         tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')
                       const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
+                      const cumMismatch = !isD && !isI && tc > 0 && jc > 0 && tc !== jc
+                      const anyMismatch = mismatch || itemMismatch || cumMismatch
                       const isSelected = selectedIdx === i
-                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : mismatch ? "bg-amber-50" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "")
+                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
 
                       const noteKey  = tax ? `${activeRec}-${tax.코드}` : null
                       const note     = noteKey ? notes[noteKey] : undefined
 
                       const nodes = []
+                      if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
                       if (gubunBounds.has(i)) {
                         nodes.push(
                           <tr key={`gubun-${i}`} className="bg-sky-50 border-y border-sky-200">
@@ -928,7 +958,6 @@ export function MediaStep() {
                           </tr>
                         )
                       }
-                      if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
                       nodes.push(
                         <tr key={i} onClick={() => setSelectedIdx(isSelected ? null : i)}
                           className={cn(
@@ -939,6 +968,7 @@ export function MediaStep() {
                           {/* HWP */}
                           <td className="px-1 py-1 border-r font-mono font-semibold text-center cursor-default">
                             <div className="flex items-center gap-1 justify-center">
+                              {showSeq && <span className="text-[9px] text-slate-400 font-normal tabular-nums">{i + 1}</span>}
                               <span>{tax?.코드 ?? ""}</span>
                               {tax?.원본코드 && (
                                 <span title={`원본: ${tax.원본코드}`}
@@ -946,13 +976,15 @@ export function MediaStep() {
                               )}
                             </div>
                           </td>
-                          <td className={cn("pl-1 pr-1 py-0.5 border-r cursor-text align-top", itemMismatch && "bg-orange-50")}>
+                          <td className="pl-1 pr-1 py-0.5 border-r cursor-text align-top">
                             {tax ? (
                               <div className="flex items-start gap-0 min-w-0">
+                                {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 self-center pr-0.5">{tax.seq}</span>}
                                 <div className="relative shrink-0 self-center" data-note-popup onClick={e => e.stopPropagation()}>
                                   <NoteMarkButton
                                     hasNote={!!note}
                                     isDone={note?.isDone}
+                                    hideEmpty
                                     onClick={() => tax && setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!)}
                                   />
                                   {openNoteKey === noteKey && note && tax && (
@@ -988,19 +1020,21 @@ export function MediaStep() {
                               </div>
                             ) : ""}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")}>
+                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")}
+                            title={mismatch ? `Java: ${effDtype}(${effLen})` : undefined}>
                             {tax ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
+                            {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
-                            {tc > 0 ? tc : ""}
+                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", !tax ? "text-muted-foreground/40" : tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
+                            {!tax ? "-" : tc > 0 ? tc : ""}
                           </td>
                           {/* D·I·M */}
                           <td className="px-1 py-0.5 border-r cursor-default">
                             <div className="flex gap-0.5 justify-center">
-                              <button onClick={() => handleD(i)} disabled={isI || (slot.field === null && !isD) || slot.fromDB}
+                              <button onClick={() => handleD(i)} disabled={isI || (slot.field === null && !isD)}
                                 className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
                                   isD ? "bg-red-500 text-white" : "border border-border text-muted-foreground hover:border-red-400 hover:text-red-500")}>D</button>
-                              <button onClick={() => handleI(i)} disabled={isD}
+                              <button onClick={() => handleI(i)} disabled={isD || (slot.fromDB && !isI)}
                                 className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
                                   isI ? "bg-yellow-500 text-white" : "border border-border text-muted-foreground hover:border-yellow-400 hover:text-yellow-600")}>I</button>
                               <span className={cn("w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center select-none",
@@ -1009,14 +1043,19 @@ export function MediaStep() {
                           </td>
                           {/* Java */}
                           {/* Java 서식항목 */}
-                          <td className={cn("px-2 py-0.5 border-r text-xs break-keep overflow-hidden cursor-default", itemMismatch && "text-orange-600 font-medium")}>{slot.field?.name ?? ""}</td>
+                          <td className={cn("px-1 py-0.5 border-r text-xs break-keep cursor-default", itemMismatch && "text-orange-600 font-medium")}>
+                            <span className="flex items-start gap-0.5">
+                              {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 mt-0.5">{slot.field?.seq ?? ""}</span>}
+                              <span className="break-keep">{slot.field?.name ?? ""}</span>
+                            </span>
+                          </td>
                           {/* makeStr */}
                           <td className="px-2 py-0 border-r font-mono whitespace-nowrap cursor-text">
                             {isD ? (
                               <span className="line-through text-red-400 text-[11px]">{alignedRaws[i]}</span>
                             ) : isI ? (
                               <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
-                                placeholder='makeStr("x", 10, ...) 형식으로 입력'
+                                placeholder='makeStr("9"|"X", 길이(4자리이하), 값/메소드)'
                                 spellCheck={false}
                                 className={cn(
                                   "w-full rounded px-1 py-0.5 font-mono text-[11px] outline-none",
@@ -1034,12 +1073,14 @@ export function MediaStep() {
                                   isM && makeValid && "text-blue-700")} />
                             )}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}>
+                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}
+                            title={mismatch ? `HWP: ${tax?.타입}(${tax?.길이})` : undefined}>
                             {effDtype && effLen ? `${effDtype}(${effLen})` : ""}
+                            {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
                           </td>
                           <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{slot.field?.lineNo ?? ""}</td>
-                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", tc !== jc && jc > 0 ? "text-red-600 font-bold" : jc > 0 ? "text-green-700" : "")}>
-                            {jc > 0 ? jc : ""}
+                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : tc !== jc && jc > 0 ? "text-red-600 font-bold" : jc > 0 ? "text-green-700" : "")}>
+                            {isD ? "-" : jc > 0 ? jc : ""}
                           </td>
                         </tr>
                       )

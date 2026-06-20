@@ -145,6 +145,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         {/* 카테고리 그룹 */}
         {navGroups.map((group) => {
           const isOpen = openGroups[group.label] ?? true
+          const allDisabled = group.children.every(c => c.disabled)
 
           return (
             <div key={group.label} className="mb-1">
@@ -156,6 +157,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>
+                {!isOpen && allDisabled && (
+                  <span className="rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-normal normal-case tracking-normal text-sidebar-foreground/50 opacity-50">
+                    준비중
+                  </span>
+                )}
                 <ChevronDown className={cn("h-3 w-3 transition-transform", isOpen && "rotate-180")} />
               </button>
 
@@ -179,7 +185,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                         <item.icon className="h-3.5 w-3.5 shrink-0" />
                         <span className="flex-1">{item.title}</span>
                         {item.disabled && (
-                          <span className="rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden">
+                          <span className="rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] text-sidebar-foreground/50 group-data-[collapsible=icon]:hidden">
                             준비중
                           </span>
                         )}
