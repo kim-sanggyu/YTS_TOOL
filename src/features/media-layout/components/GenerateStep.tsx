@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff, HelpCircle } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { SectionBox } from "./SectionBox"
@@ -28,6 +28,8 @@ export function GenerateStep() {
   const [stats,      setStats]      = useState<{ lines: number; bytes: number } | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genCache,   setGenCache]   = useState<Record<string, CachedRecord>>({})
+  const [helpOpen,   setHelpOpen]   = useState(false)
+  const [helpTab,    setHelpTab]    = useState<"usage" | "how">("usage")
   const [patching,   setPatching]   = useState(false)
   const [patchStats, setPatchStats] = useState<{ editCount: number; linesBefore: number; linesAfter: number } | null>(null)
 
@@ -144,7 +146,7 @@ export function GenerateStep() {
     <div className="flex flex-col flex-1 min-h-0 gap-4">
 
       {/* 상태 바 */}
-      <div className="flex items-center gap-2 shrink-0 overflow-hidden">
+      <div className="flex items-center gap-2 shrink-0">
         <select value={year} onChange={e => setYear(parseInt(e.target.value))}
           className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
           {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
@@ -191,6 +193,102 @@ export function GenerateStep() {
             <span className="text-xs text-muted-foreground tabular-nums shrink-0">
               편집 {patchStats.editCount}건 적용 · {patchStats.linesBefore}→{patchStats.linesAfter}행
             </span>
+          )}
+        </div>
+
+        {/* 사용법 아이콘 */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(p => !p)}
+            className={cn(
+              "h-8 w-8 rounded flex items-center justify-center border transition-colors",
+              helpOpen ? "bg-blue-50 border-blue-300 text-blue-600" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            )}
+            title="사용법 안내"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+          {helpOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setHelpOpen(false)} />
+              <div className="absolute right-0 top-9 z-30 w-[600px] bg-background border rounded-lg shadow-lg text-xs">
+                <div className="flex border-b">
+                  {(["usage", "how"] as const).map(tab => (
+                    <button key={tab} type="button"
+                      onClick={e => { e.stopPropagation(); setHelpTab(tab) }}
+                      className={cn("flex-1 py-2 text-xs font-medium transition-colors",
+                        helpTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}>
+                      {tab === "usage" ? "사용법" : "프로그램 설명"}
+                    </button>
+                  ))}
+                </div>
+                <div className="p-4 space-y-3">
+                  {helpTab === "usage" ? (
+                    <>
+                      <p className="text-muted-foreground leading-relaxed">
+                        저장된 편집 내용을 반영하여 레코드별 makeStr 소스 코드를 생성하고 미리봅니다.
+                      </p>
+                      <div>
+                        <p className="font-semibold mb-1.5">사용 순서</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li>귀속연도 선택 (레코드별 소스 자동 생성)</li>
+                          <li>레코드 탭에서 섹션별 makeStr 미리보기 확인</li>
+                          <li><strong className="text-foreground">원본 소스 패치 다운로드</strong> — 기존 Java 파일에 전체 편집 내용 반영</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">기능 설명</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-40">기능</th><th className="px-2 py-1 text-left border-b font-semibold">설명</th></tr></thead>
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-medium">미리보기</td><td className="px-2 py-1.5 text-muted-foreground">섹션(H/B/F)별 색구분된 makeStr 구문 확인</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">다운로드</td><td className="px-2 py-1.5 text-muted-foreground">현재 레코드 소스를 단독 파일로 다운로드</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">원본 소스 패치</td><td className="px-2 py-1.5 text-muted-foreground">기존 Java 파일에 전체 편집 내용을 반영한 파일 다운로드</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-semibold mb-1.5">주요 처리사항</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../generate</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">buildCompareRowsFromMap()</span>으로 MAP 순서대로 HWP+Java+JAVA_EDIT 결합</li>
+                          <li>D 행 제외, I 행 삽입 후 각 줄 끝에 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">{"// 코드 구분 항목명"}</span> 주석 추가</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignSections()</span> — 전체 makeStr을 한 번에 열 정렬 (타입·길이·인자 컬럼 맞춤)</li>
+                          <li>미리보기: Body-1만 표시 + body_sum 섹션 자동 삽입 (X/9 타입별 연속 합산, 미리보기 전용)</li>
+                          <li>결과를 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">genCache[activeRec]</span>에 캐시 → 탭 재전환 시 재요청 없음</li>
+                          <li>원본 패치: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../patch-source</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">patched_연도.java</span> 다운로드</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">관련 table</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER — 소스 생성 행 순서의 원천</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">CMD, EDITED_RAW, LINE_NO — D/I/M 편집이력. 소스 생성 및 패치에 모두 반영</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE.CONTENT</td><td className="px-2 py-1.5 text-muted-foreground">원본 소스 전문 — 패치 시 이 텍스트에 D/I/M 적용 후 반환</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA.LINE_NO</td><td className="px-2 py-1.5 text-muted-foreground">원본 소스 라인 번호 — D(삭제)/M(교체) 위치 특정에 사용</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">핵심적인 로직</p>
+                        <ul className="space-y-1.5 text-muted-foreground">
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignSections()</span> — 전체 makeStr 라인을 파싱 후 maxLen/maxArg 계산 → padStart/padEnd 적용. 다운로드 코드와 미리보기 모두에 적용</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> (patch-source/route.ts) — 원본 라인 배열에 deleteLines(Set) + replaceLines(Map) + insertAfter(Map) 세 가지를 순서대로 적용</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">replaceMakeStr()</span> — 원본 라인에서 괄호 깊이 추적으로 makeStr() 범위를 정확히 찾아 교체. 들여쓰기와 후행 세미콜론·주석 보존</li>
+                          <li>body_sum — Body-1 라인을 타입(X/9)별 연속 그룹화, 합산 길이·행 범위 표시. 다운로드 코드에는 포함되지 않음 (미리보기 전용)</li>
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>

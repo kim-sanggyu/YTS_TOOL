@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RefreshCw, AlertTriangle } from "lucide-react"
+import { RefreshCw, AlertTriangle, HelpCircle } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { TaxLayoutRow, JavaField, CompareRow } from "../types"
 import type { TaxSectConfigRow } from "@/lib/tax-oracle"
 
@@ -90,6 +91,8 @@ export function CompareStep() {
   const [taxItems,     setTaxItems]     = useState<(TaxLayoutRow | null)[]>([])
   const [javaSlots,    setJavaSlots]    = useState<JavaSlot[]>([])
   const [loading,      setLoading]      = useState(false)
+  const [helpOpen,     setHelpOpen]     = useState(false)
+  const [helpTab,      setHelpTab]      = useState<"usage" | "how">("usage")
 
   const load = useCallback(async (record: string) => {
     setLoading(true)
@@ -207,10 +210,122 @@ export function CompareStep() {
             ))}
           </TabsList>
         </Tabs>
-        <Button variant="outline" size="sm" onClick={() => load(activeRecord)} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-          새로고침
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => load(activeRecord)} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+            새로고침
+          </Button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(p => !p)}
+              className={cn(
+                "h-8 w-8 rounded flex items-center justify-center border transition-colors",
+                helpOpen ? "bg-blue-50 border-blue-300 text-blue-600" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+              title="사용법 안내"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
+            {helpOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setHelpOpen(false)} />
+                <div className="absolute right-0 top-9 z-30 w-[600px] bg-background border rounded-lg shadow-lg text-xs">
+                  <div className="flex border-b">
+                    {(["usage", "how"] as const).map(tab => (
+                      <button key={tab} type="button"
+                        onClick={e => { e.stopPropagation(); setHelpTab(tab) }}
+                        className={cn("flex-1 py-2 text-xs font-medium transition-colors",
+                          helpTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+                        )}>
+                        {tab === "usage" ? "사용법" : "프로그램 설명"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {helpTab === "usage" ? (
+                      <>
+                        <p className="text-muted-foreground leading-relaxed">
+                          HWP 항목 구조와 Java 소스의 makeStr 구문을 나란히 비교하여 불일치를 확인합니다.
+                        </p>
+                        <div>
+                          <p className="font-semibold mb-1.5">사용 순서</p>
+                          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                            <li>레코드 탭 선택</li>
+                            <li>국세청(HWP)과 Java 컬럼 비교 — 타입·길이 불일치 확인</li>
+                            <li>D·I 버튼으로 Java 행 위치 조정</li>
+                            <li>makeStr 셀을 직접 수정 (수정 시 M 자동 표시)</li>
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1.5">D · I · M 버튼</p>
+                          <table className="w-full border rounded text-[11px]">
+                            <tbody className="divide-y">
+                              <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center">D</td><td className="px-2 py-1.5 text-muted-foreground">Java 행 삭제 — 다음 Java 행이 이 국세청 행과 매치됨</td></tr>
+                              <tr><td className="px-2 py-1.5 border-r font-bold text-center">I</td><td className="px-2 py-1.5 text-muted-foreground">Java 빈 행 삽입 — 아래 Java 행이 한 칸 밀림</td></tr>
+                              <tr><td className="px-2 py-1.5 border-r font-bold text-center">M</td><td className="px-2 py-1.5 text-muted-foreground">makeStr 내용 수정됨 (셀 편집 시 자동 표시)</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1.5">행 색상 표시</p>
+                          <div className="flex flex-col gap-1.5">
+                            {([
+                              { cls: "bg-red-50 border-red-200",       label: "D — Java 행 삭제" },
+                              { cls: "bg-yellow-50 border-yellow-200", label: "I — Java 행 삽입" },
+                              { cls: "bg-amber-50 border-amber-200",   label: "타입 또는 길이 불일치" },
+                              { cls: "bg-blue-50 border-blue-200",     label: "M — makeStr 수정됨" },
+                            ] as const).map(({ cls, label }) => (
+                              <span key={label} className="inline-flex items-center gap-2">
+                                <span className={`inline-block w-14 h-4 rounded border ${cls}`} />
+                                <span className="text-muted-foreground">{label}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="font-semibold mb-1.5">주요 처리사항</p>
+                          <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                            <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">GET /api/.../compare?record=A</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">buildCompareRowsFromMap()</span>으로 CompareRow[] 조립</li>
+                            <li>MLAY_TAX_JAVA_MAP의 SORT_ORDER 순서로 HWP·Java 항목 1:1 매핑, MLAY_JAVA_EDIT의 D/I/M 이력 덮어씌우기</li>
+                            <li>화면에서 D/I 클릭 → taxItems/javaSlots 배열 즉시 조작 (서버 저장 전 클라이언트 상태)</li>
+                            <li>makeStr 셀 편집 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">canonicalize(editedRaw) !== canonicalize(field.raw)</span>이면 M 표시</li>
+                            <li>저장 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../compare</span> → TAX_EDIT + JAVA_EDIT + MAP 재저장 동시 처리</li>
+                            <li>변경취소 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → JAVA_EDIT 전체 삭제 + MAP 1:1 리셋</li>
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1.5">관련 table</p>
+                          <table className="w-full border rounded text-[11px]">
+                            <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
+                            <tbody className="divide-y">
+                              <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER — 화면 행 순서의 원천. D/I 저장 후 재계산</td></tr>
+                              <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→JAVA), CMD(D/I/M), EDITED_RAW, LINE_NO — D·I·M 편집 이력 전부</td></tr>
+                              <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→TAX), ITEM, ORG_ITEM — 서식항목 수정 (이 화면에서는 읽기 전용)</td></tr>
+                              <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">LINE_NO — 원본 패치 시 삭제/교체할 소스 라인 번호로 사용</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1.5">핵심적인 로직</p>
+                          <ul className="space-y-1.5 text-muted-foreground">
+                            <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">buildCompareRowsFromMap()</span> — MAP의 TAX_SEQ/JAVA_SEQ로 양쪽 행 조회, JAVA_SEQ=null이면 I슬롯, JAVA_EDIT의 cmd=D이면 D슬롯으로 처리</li>
+                            <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">canonicalize()</span> — makeStr 공백 정규화 (쉼표 뒤 공백 1개, 괄호 앞 공백 제거). M 판별과 저장 전 비교의 기준</li>
+                            <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveMap()</span> — D/I 적용 후 새 TAX_SEQ↔JAVA_SEQ 순서를 SORT_ORDER와 함께 MAP에 재저장. 이후 모든 화면이 새 순서 참조</li>
+                            <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignMakeStrs()</span> — 전체 makeStr 열 맞춤. 표시 전용이며 저장값(EDITED_RAW)과는 무관</li>
+                          </ul>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 요약 바 */}

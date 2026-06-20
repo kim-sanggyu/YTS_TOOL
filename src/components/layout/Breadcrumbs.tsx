@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation"
 import { ChevronRight, Home } from "lucide-react"
 
 const PATH_LABELS: Record<string, string> = {
-  "tools":        "도구",
-  "media-layout": "레이아웃 관리",
-  "settings":     "설정",
+  "tools":          "전산매체",
+  "hwp-layout":     ".hwp파일 업로드",
+  "java-layout":    ".java소스 업로드",
+  "media-layout":   "전산매체 비교·검증",
+  "media-generate": "전산매체 소스 생성",
+  "settings":       "설정",
 }
 
 export function Breadcrumbs() {

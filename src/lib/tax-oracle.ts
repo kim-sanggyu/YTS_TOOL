@@ -50,6 +50,18 @@ export interface JavaFileRow {
   uploadedAt:   string
 }
 
+export interface ItemNoteRow {
+  year:       number
+  userId:     number
+  recordType: string
+  code:       string
+  memo:       string
+  isDone:     boolean
+  color:      string   // yellow | red | blue | green
+  createdAt:  string
+  updatedAt:  string
+}
+
 export interface TaxSectConfigRow {
   year:        number
   userId:      number
@@ -1012,4 +1024,73 @@ export async function updateTaxSect(
       rows.map(r => [r.sect, year, userId, r.seq])
     )
   })
+}
+
+// ── MLAY_ITEM_NOTE CRUD ───────────────────────────────────────
+
+const TS_FMT = `TO_CHAR(%s, 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
+
+function toNoteRow(r: Record<string, unknown>): ItemNoteRow {
+  return {
+    year:       r.YEAR        as number,
+    userId:     r.USER_ID     as number,
+    recordType: r.RECORD_TYPE as string,
+    code:       r.CODE        as string,
+    memo:       (r.MEMO       as string) ?? "",
+    isDone:     (r.IS_DONE    as number) === 1,
+    color:      (r.COLOR      as string) ?? "yellow",
+    createdAt:  (r.CREATED_AT as string) ?? "",
+    updatedAt:  (r.UPDATED_AT as string) ?? "",
+  }
+}
+
+export async function getItemNotes(
+  year:   number,
+  userId: number,
+  record?: string,
+): Promise<ItemNoteRow[]> {
+  const where = record ? "AND RECORD_TYPE = :3" : ""
+  const params: unknown[] = record ? [year, userId, record] : [year, userId]
+  try {
+    const rows = await yttsDb.query<Record<string, unknown>>(
+      `SELECT YEAR, USER_ID, RECORD_TYPE, CODE, MEMO, IS_DONE, COLOR,
+              ${TS_FMT.replace("%s", "CREATED_AT")} AS CREATED_AT,
+              ${TS_FMT.replace("%s", "UPDATED_AT")} AS UPDATED_AT
+       FROM MLAY_ITEM_NOTE
+       WHERE YEAR = :1 AND USER_ID = :2 ${where}
+       ORDER BY RECORD_TYPE, CREATED_AT`,
+      params
+    )
+    return rows.map(toNoteRow)
+  } catch { return [] }
+}
+
+export async function upsertItemNote(
+  year:   number,
+  userId: number,
+  note:   { recordType: string; code: string; memo: string; isDone: boolean; color: string },
+): Promise<void> {
+  await yttsDb.execute(
+    `MERGE INTO MLAY_ITEM_NOTE N USING DUAL
+     ON (N.YEAR = :1 AND N.USER_ID = :2 AND N.RECORD_TYPE = :3 AND N.CODE = :4)
+     WHEN MATCHED THEN
+       UPDATE SET N.MEMO = :5, N.IS_DONE = :6, N.COLOR = :7, N.UPDATED_AT = SYSTIMESTAMP
+     WHEN NOT MATCHED THEN
+       INSERT (YEAR, USER_ID, RECORD_TYPE, CODE, MEMO, IS_DONE, COLOR, CREATED_AT, UPDATED_AT)
+       VALUES (:1, :2, :3, :4, :5, :6, :7, SYSTIMESTAMP, SYSTIMESTAMP)`,
+    [year, userId, note.recordType, note.code, note.memo, note.isDone ? 1 : 0, note.color]
+  )
+}
+
+export async function deleteItemNote(
+  year:   number,
+  userId: number,
+  recordType: string,
+  code:   string,
+): Promise<void> {
+  await yttsDb.execute(
+    `DELETE FROM MLAY_ITEM_NOTE
+     WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 AND CODE = :4`,
+    [year, userId, recordType, code]
+  )
 }

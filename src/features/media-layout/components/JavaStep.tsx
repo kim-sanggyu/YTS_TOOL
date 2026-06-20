@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react"
+import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2, HelpCircle } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { JavaRow, JavaFileRow } from "@/lib/tax-oracle"
@@ -116,6 +116,8 @@ export function JavaStep() {
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState("")
   const [checking,  setChecking]  = useState(false)
+  const [helpOpen,  setHelpOpen]  = useState(false)
+  const [helpTab,   setHelpTab]   = useState<"usage" | "how">("usage")
   const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
   const [byRecord,     setByRecord]     = useState<Record<string, JavaRow[]>>({})
   const [activeRec,    setActiveRec]    = useState("A")
@@ -289,6 +291,108 @@ export function JavaStep() {
             {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
           </Button>
         )}
+
+        {/* 사용법 아이콘 */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(p => !p)}
+            className={cn(
+              "h-8 w-8 rounded flex items-center justify-center border transition-colors",
+              helpOpen ? "bg-blue-50 border-blue-300 text-blue-600" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            )}
+            title="사용법 안내"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+          {helpOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setHelpOpen(false)} />
+              <div className="absolute right-0 top-9 z-30 w-[600px] bg-background border rounded-lg shadow-lg text-xs">
+                <div className="flex border-b">
+                  {(["usage", "how"] as const).map(tab => (
+                    <button key={tab} type="button"
+                      onClick={e => { e.stopPropagation(); setHelpTab(tab) }}
+                      className={cn("flex-1 py-2 text-xs font-medium transition-colors",
+                        helpTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}>
+                      {tab === "usage" ? "사용법" : "프로그램 설명"}
+                    </button>
+                  ))}
+                </div>
+                <div className="p-4 space-y-3">
+                  {helpTab === "usage" ? (
+                    <>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Java 소스(.java 또는 .txt)를 업로드하여 레코드별 makeStr 구문을 추출·파싱합니다.
+                      </p>
+                      <div>
+                        <p className="font-semibold mb-1.5">사용 순서</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li>귀속연도 선택 후 Java 소스 파일을 클릭하여 선택 → <strong className="text-foreground">업로드</strong></li>
+                          <li>레코드 탭(A~K)에서 파싱된 makeStr 목록 확인</li>
+                          <li>섹션 구조(Header/Body/Footer) 반영 여부 확인</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">그리드 컬럼 설명</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <thead><tr className="bg-muted/60">
+                            <th className="px-2 py-1 text-left border-b border-r font-semibold w-28">컬럼</th>
+                            <th className="px-2 py-1 text-left border-b font-semibold">설명</th>
+                          </tr></thead>
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-medium">번호</td><td className="px-2 py-1.5 text-muted-foreground">Java에서 파싱된 항목 코드 (예: A01)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">서식항목</td><td className="px-2 py-1.5 text-muted-foreground">매칭된 국세청 항목명</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">makeStr</td><td className="px-2 py-1.5 text-muted-foreground">Java 소스의 makeStr 구문</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">타입</td><td className="px-2 py-1.5 text-muted-foreground">데이터 유형 (x/X/9)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">길이</td><td className="px-2 py-1.5 text-muted-foreground">바이트 길이</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">누적(계산)</td><td className="px-2 py-1.5 text-muted-foreground">길이 합산 누적 바이트</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <p className="font-semibold mb-1.5">주요 처리사항</p>
+                        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                          <li>Java 파일 업로드 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../upload</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">parseJavaLayout()</span> 호출</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">제1절 근로소득</span> 주석 기준으로 파싱 범위 제한</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">//E레코드</span> 주석으로 레코드 전환, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">countPerRecord=N</span>으로 Body 반복 횟수 결정</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">bw.write(</span> 블록 진입 → makeStr 추출, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">{'"\\n"'}</span> 있으면 Footer 블록, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">{"} else {"}</span> 이후 블록은 패딩으로 무시</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">flushRecord()</span> — 레코드 전환 시 블록 배열을 HEAD/BODY×N/FOOTER 섹션으로 분배하여 MLAY_JAVA INSERT</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveJavaFile()</span> → MLAY_JAVA_FILE(원본 소스 전문 포함) + MLAY_JAVA 저장</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">initMapFromDB()</span> — HWP·Java 양쪽 데이터 존재 시 레코드별 TAX_SEQ ↔ JAVA_SEQ 1:1 ZIP 매핑 생성</li>
+                        </ol>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">관련 table</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, FILE_NAME, CONTENT(원본 소스 전문) — 패치 다운로드의 원본 텍스트</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(PK), RECORD, NO, NAME, DTYPE, LEN, LINE_NO, RAW, SECT — 파싱 결과</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">RECORD_TYPE, TAX_SEQ, JAVA_SEQ, SORT_ORDER — 비교/전산매체/소스생성 화면의 행 순서 원천</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">핵심적인 로직</p>
+                        <ul className="space-y-1.5 text-muted-foreground">
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">flushRecord()</span> — repeat≤1이면 블록 순서대로 단순 누적. repeat&gt;1이면 첫 블록=HEAD, 중간=BODY×N회 반복, Footer 블록=FOOT로 분배. 반복 레코드(E/F/G/K) 처리의 핵심</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">{"} else {"}</span> 브랜치 — nextBlockIsElse 플래그로 다음 bw.write 블록을 패딩으로 마킹 후 flushRecord에서 제외</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">LINE_NO</span> — 파싱 시 소스 라인 번호를 MLAY_JAVA에 저장. 원본 패치 시 이 번호로 교체/삭제 위치 특정</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">initMapFromDB()</span> — HWP 재업로드 또는 Java 재업로드 시 항상 호출되어 MAP 초기화. D/I 편집 이력(MLAY_JAVA_EDIT)도 함께 삭제</li>
+                        </ul>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {uploadErr && (

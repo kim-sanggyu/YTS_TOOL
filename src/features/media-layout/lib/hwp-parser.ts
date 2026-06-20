@@ -162,7 +162,7 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
     // 구분 레이블 감지: 【자료관리번호】 등 — 레코드 헤더가 아닌 단독 【...】
     if (currentRecord && !RECORD_HDR_RE.test(t)) {
       const gm = GUBUN_RE.exec(t)
-      if (gm) { currentGubun = gm[0]; i++; continue }
+      if (gm) { currentGubun = gm[0].replace(/\s+/g, ""); i++; continue }
     }
 
     if (FIELD_NUM_RE.test(t) && currentRecord) {
@@ -183,7 +183,7 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
         // 이름 토큰 사이에 섞인 구분 레이블 감지 (HWP 병합셀이 중간에 나오는 경우)
         for (let k = i + 1; k < dtypeIdx; k++) {
           const gm2 = GUBUN_RE.exec(texts[k])
-          if (gm2 && !RECORD_HDR_RE.test(texts[k])) currentGubun = gm2[0]
+          if (gm2 && !RECORD_HDR_RE.test(texts[k])) currentGubun = gm2[0].replace(/\s+/g, "")
         }
         const fieldName = texts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
         // 누적 불일치 시 proposedCum으로 재동기화 (HWP 원본 오타 대응)
@@ -198,7 +198,7 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
           if (FIELD_NUM_RE.test(texts[scan]) || RECORD_HDR_RE.test(texts[scan])) break
           // 연속 dtype 사이에서도 구분 레이블 감지
           const gm3 = GUBUN_RE.exec(texts[scan])
-          if (gm3 && !RECORD_HDR_RE.test(texts[scan])) { currentGubun = gm3[0]; scan++; continue }
+          if (gm3 && !RECORD_HDR_RE.test(texts[scan])) { currentGubun = gm3[0].replace(/\s+/g, ""); scan++; continue }
           if (DATA_TYPE_RE.test(texts[scan]) && scan + 1 < texts.length && CUM_LEN_RE.test(texts[scan + 1])) {
             const cCum  = parseInt(texts[scan + 1])
             const cDlen = dtypeLen(texts[scan])

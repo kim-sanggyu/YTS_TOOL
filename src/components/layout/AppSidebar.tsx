@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
@@ -82,9 +82,27 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+
+  const defaultGroups: Record<string, boolean> = {
     "전산매체": true, "세액계산": true, "운영지원": true, "파일배포": true, "과제관리": true,
-  })
+  }
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(defaultGroups)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("yts:sidebar-groups")
+      if (saved) setOpenGroups({ ...defaultGroups, ...JSON.parse(saved) })
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function toggleGroup(label: string) {
+    setOpenGroups(prev => {
+      const next = { ...prev, [label]: !prev[label] }
+      try { localStorage.setItem("yts:sidebar-groups", JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
 
   const initials = (user?.name ?? "U")
     .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
@@ -134,7 +152,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               <hr className="hidden group-data-[collapsible=icon]:block border-t border-sidebar-border mx-2 my-1" />
               {/* 그룹 라벨 — 접으면 숨김 */}
               <button
-                onClick={() => setOpenGroups((p) => ({ ...p, [group.label]: !p[group.label] }))}
+                onClick={() => toggleGroup(group.label)}
                 className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>

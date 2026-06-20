@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs"
@@ -9,8 +10,11 @@ export default async function PortalLayout({ children }: { children: React.React
   const session = await auth()
   if (!session) redirect("/login")
 
+  const cookieStore = await cookies()
+  const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false"
+
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={sidebarOpen}>
       <AppSidebar user={session.user} />
       <SidebarInset className="flex flex-col h-screen min-w-0 overflow-x-hidden">
         <header className="flex h-10 shrink-0 items-center border-b bg-background px-4">
