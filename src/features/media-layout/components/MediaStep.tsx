@@ -524,6 +524,39 @@ export function MediaStep() {
     } finally { setSaving(false) }
   }
 
+  function handleCopyBody1ToAll() {
+    const body1Idxs: number[] = []
+    const otherBodyMap = new Map<string, number[]>()
+
+    for (let i = 0; i < taxItems.length; i++) {
+      const sect = taxItems[i]?.sect ?? ""
+      if (sect === "body_1") {
+        body1Idxs.push(i)
+      } else if (/^body_\d+$/.test(sect)) {
+        if (!otherBodyMap.has(sect)) otherBodyMap.set(sect, [])
+        otherBodyMap.get(sect)!.push(i)
+      }
+    }
+
+    if (body1Idxs.length === 0 || otherBodyMap.size === 0) return
+    const targets = [...otherBodyMap.keys()].join(", ")
+    if (!confirm(`body_1의 Java 내용을 ${targets} 영역에 복사하시겠습니까?`)) return
+
+    setJavaSlots(prev => {
+      const next = [...prev]
+      for (const [, dstIdxs] of otherBodyMap) {
+        for (let j = 0; j < dstIdxs.length && j < body1Idxs.length; j++) {
+          const src = next[body1Idxs[j]]
+          const dstIdx = dstIdxs[j]
+          if (!src || !next[dstIdx]) continue
+          next[dstIdx] = { ...next[dstIdx], editedRaw: src.editedRaw }
+        }
+      }
+      return next
+    })
+    setSaveMsg(null)
+  }
+
   function handleCancel() {
     // 캐시에 저장된 마지막 확정 상태로 복원 (없으면 서버 재조회)
     const cached = compareCache[activeRec]
@@ -857,6 +890,14 @@ export function MediaStep() {
                   </Button>
                 ) : null
               })()}
+              {sectConfig?.sectMode === "hbf" && taxItems.some(t => bodyIdx(t?.sect ?? "") > 1) && (
+                <Button size="sm" variant="outline"
+                  className="h-7 text-xs text-purple-700 border-purple-300 hover:bg-purple-50"
+                  onClick={handleCopyBody1ToAll} disabled={saving}
+                  title="body_1 Java 내용을 body_2 이후 모든 body 영역에 복사">
+                  Body 동기화
+                </Button>
+              )}
               <Button size="sm" variant="outline"
                 className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
                 onClick={() => setIsFullscreen(v => !v)}
