@@ -22,16 +22,45 @@ interface BulkConfig { bodyStart: number; bodyEnd: number; divideBy: number }
 function detectInterval(rows: TaxRow[]): BulkConfig | null {
   if (rows.length < 2) return null
 
-  // item 이름을 앵커로, fieldLen 시퀀스로 검증하는 방식.
-  // A 레코드: 모든 item이 유일 → null
-  // E/F/G/K 레코드: 반복 body의 첫 item(예: "성명")이 N번 등장 → 간격=unitLen, fieldLen 일치 시 반복 확정
-  const items = rows.map(r => (r.item ?? "").replace(/\s+/g, " ").trim())
-  const lens  = rows.map(r => r.fieldLen ?? 0)
+  const lens = rows.map(r => r.fieldLen ?? 0)
+  let best: BulkConfig | null = null
 
-  // 패딩·예비 용도 item은 앵커 후보에서 제외
+  const selectBest = (candidate: BulkConfig) => {
+    const curUL = best ? (best.bodyEnd - best.bodyStart + 1) / best.divideBy : 0
+    const newUL = (candidate.bodyEnd - candidate.bodyStart + 1) / candidate.divideBy
+    if (!best || candidate.divideBy > best.divideBy ||
+        (candidate.divideBy === best.divideBy && newUL > curUL)) {
+      best = candidate
+    }
+  }
+
+  // ── 전략 1: GUBUN 반복 감지 (E/F/G/K 레코드 등) ──────────────
+  // body 단위마다 동일 GUBUN 레이블이 붙는 경우, 가장 신뢰도 높음
+  const gubunPos = new Map<string, number[]>()
+  for (let i = 0; i < rows.length; i++) {
+    const g = rows[i].gubun?.trim()
+    if (!g) continue
+    const arr = gubunPos.get(g) ?? []
+    arr.push(i)
+    gubunPos.set(g, arr)
+  }
+
+  for (const positions of gubunPos.values()) {
+    if (positions.length < 2) continue
+    const s       = positions[0]
+    const unitLen = positions[1] - s
+    if (unitLen <= 0) continue
+    const allUniform = positions.every((p, i) => p === s + i * unitLen)
+    if (!allUniform) continue
+    selectBest({ bodyStart: s + 1, bodyEnd: s + unitLen * positions.length, divideBy: positions.length })
+  }
+
+  if (best) return best
+
+  // ── 전략 2: 항목명 + fieldLen 시퀀스 일치 (GUBUN 없는 레코드 대비) ──
+  const items  = rows.map(r => (r.item ?? "").replace(/\s+/g, " ").trim())
   const PADDING = new Set(["공란", "예비", "여백", "미사용", "사용안함", "reserved"])
 
-  // 동일 item이 등장하는 위치 목록 (빈 문자열·패딩 제외)
   const itemPos = new Map<string, number[]>()
   for (let i = 0; i < items.length; i++) {
     const v = items[i]
@@ -41,30 +70,20 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
     itemPos.set(v, arr)
   }
 
-  let best: BulkConfig | null = null
-
   for (const positions of itemPos.values()) {
-    if (positions.length < 2) continue  // 유일한 item → 스킵 (A 레코드)
-
+    if (positions.length < 2) continue
     const s       = positions[0]
     const unitLen = positions[1] - s
     if (unitLen <= 0) continue
 
     const unitKey = lens.slice(s, s + unitLen).join(",")
-
-    // unitLen 간격으로 fieldLen 시퀀스가 몇 번 연속 일치하는지 카운트
-    let repeatCount = 0
-    let pos = s
+    let repeatCount = 0, pos = s
     while (pos + unitLen <= rows.length &&
            lens.slice(pos, pos + unitLen).join(",") === unitKey) {
-      repeatCount++
-      pos += unitLen
+      repeatCount++; pos += unitLen
     }
-
     if (repeatCount < 2) continue
 
-    // 앵커가 body 단위 내부 행일 수 있으므로 앞으로 확장하여 진짜 bodyStart 탐색.
-    // unitLen 간격 앞 행의 fieldLen이 일치하는 한 계속 확장.
     let actualStart = s
     while (actualStart > 0) {
       const prev = actualStart - 1
@@ -72,19 +91,7 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
       if (lens[prev] !== lens[prev + unitLen]) break
       actualStart--
     }
-
-    // 반복 횟수 많은 것 우선, 동점이면 unitLen 긴 것 우선
-    const curUnitLen = best
-      ? (best.bodyEnd - best.bodyStart + 1) / best.divideBy
-      : 0
-    if (!best || repeatCount > best.divideBy ||
-        (repeatCount === best.divideBy && unitLen > curUnitLen)) {
-      best = {
-        bodyStart: actualStart + 1,
-        bodyEnd:   actualStart + unitLen * repeatCount,
-        divideBy:  repeatCount,
-      }
-    }
+    selectBest({ bodyStart: actualStart + 1, bodyEnd: actualStart + unitLen * repeatCount, divideBy: repeatCount })
   }
 
   return best
@@ -369,12 +376,13 @@ export function HwpStep() {
 
   useEffect(() => {
     if (!openNoteKey) return
+    const key = openNoteKey
     function handle(e: PointerEvent) {
       if (!(e.target as Element).closest?.("[data-note-popup]")) {
-        const note = notesRef.current[openNoteKey]
+        const note = notesRef.current[key]
         if (note && !note.memo.trim()) {
-          const sep = openNoteKey.indexOf("-")
-          handleNoteDelete(openNoteKey.slice(0, sep), openNoteKey.slice(sep + 1))
+          const sep = key.indexOf("-")
+          handleNoteDelete(key.slice(0, sep), key.slice(sep + 1))
         } else {
           setOpenNoteKey(null)
         }
@@ -860,6 +868,7 @@ export function HwpStep() {
                           <li>레코드 탭(A~K)에서 각 레코드의 항목 목록 확인</li>
                           <li>구조설정에서 Header / Body / Footer 구간 지정 후 <strong className="text-foreground">설정 적용</strong></li>
                           <li>번호·서식항목 셀을 클릭해 직접 수정 → <strong className="text-foreground">저장</strong></li>
+                          <li>세법개정 등 주의 항목은 서식항목 앞 <span className="text-yellow-500 font-medium">📄 아이콘</span> 클릭 → 메모 작성 → <strong className="text-foreground">저장</strong></li>
                         </ol>
                       </div>
                       <div>
@@ -873,11 +882,22 @@ export function HwpStep() {
                           </thead>
                           <tbody className="divide-y">
                             <tr><td className="px-2 py-1.5 border-r font-medium">번호 ✎</td><td className="px-2 py-1.5 text-muted-foreground">레코드 항목 코드 (예: A01) — 직접 수정 가능</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-medium">서식항목 ✎</td><td className="px-2 py-1.5 text-muted-foreground">항목명 — 직접 수정 가능</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">서식항목 ✎</td><td className="px-2 py-1.5 text-muted-foreground">항목명 — 직접 수정 가능. 좌측 <span className="text-yellow-500">📄</span> 아이콘으로 주목 메모 추가</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">데이터타입</td><td className="px-2 py-1.5 text-muted-foreground">HWP에서 파싱된 데이터 유형</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">길이</td><td className="px-2 py-1.5 text-muted-foreground">필드 바이트 길이</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">누적(HWP)</td><td className="px-2 py-1.5 text-muted-foreground">HWP 원본 누적 바이트</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">누적(계산)</td><td className="px-2 py-1.5 text-muted-foreground">길이 합산 누적 바이트 — <span className="text-red-600 font-medium">빨간색</span>이면 HWP 원본과 불일치</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">주목 메모</p>
+                        <p className="text-muted-foreground mb-1.5">세법개정으로 수정이 필요한 항목에 메모를 남겨 비교검증 시 주의집중에 활용합니다.</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-medium w-24">아이콘 색상</td><td className="px-2 py-1.5 text-muted-foreground"><span className="text-yellow-500 font-medium">노란색</span> — 메모 있음 / 회색(행 hover 시) — 메모 없음(클릭하여 추가)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">저장</td><td className="px-2 py-1.5 text-muted-foreground">메모 입력 후 저장 버튼 클릭. 외부 클릭 시 내용 없으면 자동 삭제</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">완료 체크</td><td className="px-2 py-1.5 text-muted-foreground">처리 완료된 항목 표시 — 아이콘이 회색으로 변경됨</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -908,6 +928,7 @@ export function HwpStep() {
                           <li>화면에서 번호·서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../tax-rows</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows()</span> → MLAY_TAX_EDIT MERGE</li>
                           <li>구조설정 적용 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PUT /api/.../sect-config</span> → MLAY_SECT_CONFIG 저장 + MLAY_TAX.SECT 갱신</li>
                           <li><strong className="text-foreground">구간 자동설정</strong> — 전체 레코드를 순회하며 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">detectInterval()</span>으로 반복 구간 감지 후 병렬 저장</li>
+                          <li>주목 메모 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PUT /api/.../item-notes</span> → MLAY_ITEM_NOTE UPSERT. 외부 클릭 닫힘 시 빈 메모는 자동 DELETE</li>
                         </ol>
                       </div>
 
@@ -923,6 +944,7 @@ export function HwpStep() {
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(PK), RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, HWP_CUM, GUBUN, SECT — 파싱 항목 원본. GUBUN은 공백 제거된 값으로 저장</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→TAX), CODE, ITEM, ORG_CODE, ORG_ITEM — 수정값 + HWP 원본값 보존</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_SECT_CONFIG</td><td className="px-2 py-1.5 text-muted-foreground">RECORD, TARGET, SECT_MODE, BODY_START, BODY_END, REPEAT_COUNT — 섹션 구조 설정</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_ITEM_NOTE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, CODE, MEMO, IS_DONE, COLOR — 항목별 주목 메모</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -1000,7 +1022,7 @@ export function HwpStep() {
                   return (
                     <button key={r} type="button" onClick={() => handleTabChange(r)}
                       className={cn(
-                        "px-2 py-1.5 text-xs font-medium rounded-t-md transition-colors shrink min-w-[36px] truncate max-w-[100px]",
+                        "px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors shrink min-w-[36px] truncate max-w-[80px]",
                         baseBg,
                         isActive
                           ? cn("font-semibold border border-border border-b-white -mb-px relative z-10", topLine)

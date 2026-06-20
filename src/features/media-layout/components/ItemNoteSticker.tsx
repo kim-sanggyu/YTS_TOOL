@@ -117,12 +117,13 @@ export function ItemNoteSticker({ note, item, onSave, onDelete, onClose }: Props
 // ── 미니 마크 버튼 (그리드 행에 표시) ────────────────────────────
 
 interface MarkBtnProps {
-  hasNote: boolean
-  isDone?: boolean
-  onClick: () => void
+  hasNote:    boolean
+  isDone?:    boolean
+  onClick:    () => void
+  hideEmpty?: boolean
 }
 
-export function NoteMarkButton({ hasNote, isDone, onClick }: MarkBtnProps) {
+export function NoteMarkButton({ hasNote, isDone, onClick, hideEmpty }: MarkBtnProps) {
   return (
     <button
       type="button"
@@ -132,7 +133,9 @@ export function NoteMarkButton({ hasNote, isDone, onClick }: MarkBtnProps) {
         "w-3.5 shrink-0 flex items-center justify-center transition-opacity",
         hasNote
           ? (isDone ? "text-gray-300" : "text-yellow-500")
-          : "opacity-0 group-hover:opacity-40 hover:!opacity-80 text-gray-400 transition-opacity"
+          : hideEmpty
+            ? "opacity-0 pointer-events-none"
+            : "opacity-0 group-hover:opacity-40 hover:!opacity-80 text-gray-400 transition-opacity"
       )}
     >
       <FileText className="w-3.5 h-3.5" />

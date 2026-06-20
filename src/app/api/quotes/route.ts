@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic"
 export const revalidate = 86400 // 24시간 캐시
 
 export async function GET() {
