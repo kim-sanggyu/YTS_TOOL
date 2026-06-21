@@ -272,7 +272,7 @@ export function MediaStep() {
   const [allSectConfigs, setAllSectConfigs] = useState<Record<string, TaxSectConfigRow>>({})
   const [comparing,   setComparing]   = useState(false)
   const [generating,  setGenerating]  = useState(false)
-  const [dirtyTax,    setDirtyTax]    = useState<Map<string, { seq: number; item: string }>>(new Map()) // code → {seq, item}
+  const [dirtyTax,    setDirtyTax]    = useState<Map<string, { orgItem: string; item: string }>>(new Map()) // 코드 → {orgItem, item}
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
   // 레코드별 비교 캐시 — 탭 전환 시 API 호출 없이 즉시 전환
@@ -439,9 +439,14 @@ export function MediaStep() {
     setSaveMsg(null)
   }
 
-  function handleTaxItemEdit(code: string, seq: number, item: string) {
+  function handleTaxItemEdit(code: string, orgItem: string, item: string) {
     setTaxItems(prev => prev.map(r => r?.코드 === code ? { ...r, 항목: item } : r))
-    setDirtyTax(prev => { const next = new Map(prev); next.set(code, { seq, item }); return next })
+    setDirtyTax(prev => {
+      const next = new Map(prev)
+      const existing = next.get(code)
+      next.set(code, { orgItem: existing?.orgItem ?? orgItem, item })
+      return next
+    })
     setSaveMsg(null)
   }
 
@@ -457,7 +462,7 @@ export function MediaStep() {
     setSaving(true); setSaveMsg(null)
     try {
       const y = year
-      const taxItemUpdates = Array.from(dirtyTax.entries()).map(([, { seq, item }]) => ({ seq, item }))
+      const taxItemUpdates = Array.from(dirtyTax.entries()).map(([, { orgItem, item }]) => ({ recordType: activeRec, orgItem, item }))
       const javaCodeUpdates = javaSlots
         .filter(s => s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw) && s.cmd !== "D" && s.cmd !== "I")
         .map(s => ({ seq: s.field!.seq, javaCode: canonicalize(s.editedRaw) }))
@@ -525,35 +530,92 @@ export function MediaStep() {
   }
 
   function handleCopyBody1ToAll() {
-    const body1Idxs: number[] = []
-    const otherBodyMap = new Map<string, number[]>()
+    // ── 1단계: body_1 전체 행 수집 (D행 포함) ────────────────────
+    // D행: tax=null이지만 java 있음 → lastSect로 body_1 구간 판단
+    type BodyRow = { tax: TaxLayoutRow | null; slot: JavaSlot }
+    const body1All: BodyRow[] = []
+    const body1TaxList: TaxLayoutRow[] = []  // non-null tax (j번째 매핑)
+    const body1JavaList: JavaField[]    = []  // non-null java field (k번째 매핑, I행 제외)
 
+    let lastSect = ""
     for (let i = 0; i < taxItems.length; i++) {
-      const sect = taxItems[i]?.sect ?? ""
-      if (sect === "body_1") {
-        body1Idxs.push(i)
-      } else if (/^body_\d+$/.test(sect)) {
-        if (!otherBodyMap.has(sect)) otherBodyMap.set(sect, [])
-        otherBodyMap.get(sect)!.push(i)
-      }
+      const tax = taxItems[i]
+      if (tax !== null) lastSect = tax.sect
+      if ((tax?.sect ?? lastSect) !== "body_1") continue
+      const slot = javaSlots[i]
+      body1All.push({ tax, slot })
+      if (tax)              body1TaxList.push(tax)
+      if (slot?.field && slot.cmd !== "I") body1JavaList.push(slot.field)
     }
+    if (body1All.length === 0) return
 
-    if (body1Idxs.length === 0 || otherBodyMap.size === 0) return
-    const targets = [...otherBodyMap.keys()].join(", ")
-    if (!confirm(`body_1의 Java 내용을 ${targets} 영역에 복사하시겠습니까?`)) return
+    // ── 2단계: body_N별 구간 및 seq 정보 수집 ────────────────────
+    // start~end: body_N의 taxItems 배열 구간 [start, end)
+    // taxList  : non-null tax rows  → j번째 매핑 원본
+    // javaList : non-null java fields (I행 제외) → k번째 매핑 원본
+    type BodyInfo = { start: number; end: number; taxList: TaxLayoutRow[]; javaList: JavaField[] }
+    const bodyInfo = new Map<string, BodyInfo>()
 
-    setJavaSlots(prev => {
-      const next = [...prev]
-      for (const [, dstIdxs] of otherBodyMap) {
-        for (let j = 0; j < dstIdxs.length && j < body1Idxs.length; j++) {
-          const src = next[body1Idxs[j]]
-          const dstIdx = dstIdxs[j]
-          if (!src || !next[dstIdx]) continue
-          next[dstIdx] = { ...next[dstIdx], editedRaw: src.editedRaw }
+    lastSect = ""
+    for (let i = 0; i < taxItems.length; i++) {
+      const tax = taxItems[i]
+      if (tax !== null) lastSect = tax.sect
+      const sect = tax?.sect ?? lastSect
+      if (!/^body_\d+$/.test(sect) || sect === "body_1") continue
+
+      if (!bodyInfo.has(sect)) bodyInfo.set(sect, { start: i, end: i + 1, taxList: [], javaList: [] })
+      const info = bodyInfo.get(sect)!
+      info.end = i + 1
+      if (tax) info.taxList.push(tax)
+      const slot = javaSlots[i]
+      if (slot?.field && slot.cmd !== "I") info.javaList.push(slot.field)
+    }
+    if (bodyInfo.size === 0) return
+
+    if (!confirm(`body_1 구조를 ${[...bodyInfo.keys()].join(", ")} 영역에 복사하시겠습니까?`)) return
+
+    // ── 3단계: 각 body_N에 대해 배열 재구성 ─────────────────────
+    // 나중 body부터 처리 → 앞 교체 시 인덱스 밀림 방지
+    let nextTax   = [...taxItems]
+    let nextSlots = [...javaSlots]
+
+    const sorted = [...bodyInfo.entries()].sort((a, b) => b[1].start - a[1].start)
+    for (const [sect, { start, end, taxList: bodyNTaxList, javaList: bodyNJavaList }] of sorted) {
+      // j번째 tax seq → body_N TaxLayoutRow
+      const taxMap = new Map<number, TaxLayoutRow>()
+      body1TaxList.forEach((t, j) => { if (bodyNTaxList[j]) taxMap.set(t.seq, bodyNTaxList[j]) })
+
+      // k번째 java seq → body_N JavaField
+      const javaMap = new Map<number, JavaField>()
+      body1JavaList.forEach((f, k) => { if (bodyNJavaList[k]) javaMap.set(f.seq, bodyNJavaList[k]) })
+
+      const newTax:   (TaxLayoutRow | null)[] = []
+      const newSlots: JavaSlot[]              = []
+
+      for (const { tax, slot } of body1All) {
+        // Tax 변환: D행은 null 유지, 나머지는 j번째 매핑
+        if (tax === null) {
+          newTax.push(null)
+        } else {
+          const mapped = taxMap.get(tax.seq)
+          newTax.push(mapped ? { ...mapped, sect } : null)
+        }
+        // Java slot 변환: I행·java=null은 field=null 유지, 나머지는 k번째 매핑
+        if (!slot?.field || slot.cmd === "I") {
+          newSlots.push({ ...(slot ?? { field: null, cmd: null, editedRaw: "", loadedRaw: "", fromDB: false }), field: null, fromDB: false })
+        } else {
+          const mappedField = javaMap.get(slot.field.seq)
+          newSlots.push({ ...slot, field: mappedField ?? null, fromDB: false })
         }
       }
-      return next
-    })
+
+      // 배열 교체
+      nextTax   = [...nextTax.slice(0, start),   ...newTax,   ...nextTax.slice(end)]
+      nextSlots = [...nextSlots.slice(0, start), ...newSlots, ...nextSlots.slice(end)]
+    }
+
+    setTaxItems(nextTax)
+    setJavaSlots(nextSlots)
     setSaveMsg(null)
   }
 
@@ -1046,7 +1108,7 @@ export function MediaStep() {
                                   onChange={e => {
                                     e.target.style.height = "auto"
                                     e.target.style.height = `${e.target.scrollHeight}px`
-                                    handleTaxItemEdit(tax.코드, tax.seq, e.target.value)
+                                    handleTaxItemEdit(tax.코드, tax.원본항목 ?? tax.항목, e.target.value)
                                   }}
                                   spellCheck={false}
                                   rows={1}

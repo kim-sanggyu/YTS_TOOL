@@ -509,9 +509,15 @@ export function HwpStep() {
       return { ...prev, [rec]: rows }
     })
     setDirty(prev => {
-      const next = new Map(prev)
-      const cur  = byRecord[rec]?.find(r => r.seq === seq)
-      if (cur) next.set(seq, { ...cur, ...patch })
+      const next     = new Map(prev)
+      const cur      = byRecord[rec]?.find(r => r.seq === seq)
+      if (cur) {
+        const existing = next.get(seq)
+        // 최초 편집 시 원본값 고정 (이후 편집에서도 유지)
+        const 원본항목 = existing?.원본항목 ?? cur.원본항목 ?? cur.item
+        const 원본코드 = existing?.원본코드 ?? cur.원본코드 ?? cur.code
+        next.set(seq, { ...cur, ...patch, 원본항목, 원본코드 })
+      }
       return next
     })
     setSaveMsg(null)
@@ -569,8 +575,9 @@ export function HwpStep() {
     setSaving(true); setSaveMsg(null)
     try {
       const updates = Array.from(dirty.values()).map(r => ({
-        seq: r.seq, code: r.code, item: r.item,
+        seq: r.seq, recordType: r.recordType, code: r.code, item: r.item,
         fieldType: r.fieldType, fieldLen: r.fieldLen,
+        원본코드: r.원본코드, 원본항목: r.원본항목,
       }))
       const res  = await fetch("/api/tools/media-layout/tax-rows", {
         method: "PATCH",
@@ -666,6 +673,13 @@ export function HwpStep() {
     let prevGubun = ""
     let cumBytes  = 0
     const maxBody = rows.reduce((m, r) => Math.max(m, bodyIdx(r.sect)), 0)
+    // 원본 항목명 중복 카운트 (수정 시 전체 일괄 반영 경고용 — 패딩 항목 제외)
+    const PADDING_ITEMS = new Set(["공란", "예비", "여백", "미사용", "사용안함", "reserved"])
+    const itemDupeMap = new Map<string, number>()
+    for (const r of rows) {
+      const key = r.원본항목 ?? r.item
+      if (key && !PADDING_ITEMS.has(key)) itemDupeMap.set(key, (itemDupeMap.get(key) ?? 0) + 1)
+    }
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
       if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
@@ -745,6 +759,15 @@ export function HwpStep() {
                 <span title={`원본: ${r.원본항목}`}
                   className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-amber-100 text-amber-700 font-medium select-none">수정</span>
               )}
+              {(() => {
+                const origText  = r.원본항목 ?? r.item
+                const dupeCount = origText ? (itemDupeMap.get(origText) ?? 0) : 0
+                return dupeCount > 1 ? (
+                  <span
+                    title={`이 항목명("${origText}")이 이 레코드에 ${dupeCount}개 있습니다.\n수정 시 같은 원본 항목명을 가진 행 모두에 동일하게 반영됩니다.`}
+                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-orange-100 text-orange-600 font-medium select-none cursor-help ml-0.5">중복</span>
+                ) : null
+              })()}
             </div>
           </td>
           {/* 데이터타입 */}

@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     if (!row.tax || !row.java) continue
     if (row.cmd === "D") continue
 
-    const sect = row.java.sect || "header"
+    const sect = row.tax.sect || row.java.sect || "header"
     if (sect !== curSect) {
       allSections.push({ sect, label: sectLabel(sect), lines: [] })
       curSect = sect

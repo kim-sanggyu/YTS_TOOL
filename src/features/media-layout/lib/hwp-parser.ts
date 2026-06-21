@@ -13,12 +13,24 @@ export interface HwpField {
 }
 
 // ── 텍스트 정제 ──────────────────────────────────────────────
-const HWP_OBJ_RE     = /\x02[一-鿿]{1,4}[\x00]{0,8}\x02/g
-const CTRL_RE        = /[\x00-\x1F\x7F]/g
-const LEADING_CJK_RE = /^[一-鿿\s]+/
+const HWP_OBJ_RE         = /\x02[一-鿿]{1,4}[\x00]{0,8}\x02/g
+const CTRL_RE            = /[\x00-\x1F\x7F]/g
+const LEADING_CJK_RE     = /^[一-鿿\s]+/
+const LEADING_CIRCLED_RE = /^[①-⒇]+\s*/   // ①-⒇ 원문자 제거
+const DASH_CIRCLED_RE    = /\s*-[①-⒇ⓐ-ⓩ가나다라마바사아자차카타파하]/g  // '-원문자/-가나다' 제거
+const DASH_NUM_FIELD_RE  = /^-[12]\s?([A-Za-z]\d{2})/  // '-1 A01...' → 'A01...'
 
-function cleanText(s: string): string {
+// HWP 아티팩트·제어문자·한자 접두사만 제거 (마커 제거 제외)
+function cleanBasic(s: string): string {
   return s.replace(HWP_OBJ_RE, "").replace(CTRL_RE, "").replace(LEADING_CJK_RE, "").trim()
+}
+// 원문자·가나다 마커 + 숫자접두필드 마커까지 완전 제거
+function cleanText(s: string): string {
+  return cleanBasic(s)
+    .replace(LEADING_CIRCLED_RE, "")
+    .replace(DASH_CIRCLED_RE, "")
+    .replace(DASH_NUM_FIELD_RE, "$1")
+    .trim()
 }
 
 // ── 파싱 패턴 ────────────────────────────────────────────────
@@ -80,9 +92,15 @@ function extractTexts(data: Buffer): string[] {
   return out
 }
 
+export interface ParseLogEntry {
+  origText:  string
+  cleanText: string
+}
+
 export interface ParseResult {
   fields:           HwpField[]
   detectedSections: string[]   // 감지된 절 헤더 목록 (디버그용)
+  parseLogs:        ParseLogEntry[]
 }
 
 // ── 메인 파서 ─────────────────────────────────────────────────
@@ -108,15 +126,21 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
     textsRaw   = textsRaw.concat(extractTexts(data))
   }
 
-  // 정제 + "C65" + "ⓐ" 합치기
-  const clean = textsRaw.map(cleanText)
-  const texts: string[] = []
+  // 정제 + "C65"+"ⓐ" 합치기 (rawTexts는 항목명 변환 로그 비교용)
+  const parseLogs: ParseLogEntry[] = []
+  const cleanArr  = textsRaw.map(cleanText)
+  const texts:    string[] = []
+  const rawTexts: string[] = []
   let j = 0
-  while (j < clean.length) {
-    if (BARE_FIELD_RE.test(clean[j]) && j + 1 < clean.length && LONE_SUFFIX_RE.test(clean[j + 1])) {
-      texts.push(clean[j] + clean[j + 1]); j += 2
+  while (j < cleanArr.length) {
+    if (BARE_FIELD_RE.test(cleanArr[j]) && j + 1 < cleanArr.length && LONE_SUFFIX_RE.test(cleanArr[j + 1])) {
+      texts.push(cleanArr[j] + cleanArr[j + 1])
+      rawTexts.push(cleanBasic(textsRaw[j]) + cleanBasic(textsRaw[j + 1]))
+      j += 2
     } else {
-      texts.push(clean[j]); j++
+      texts.push(cleanArr[j])
+      rawTexts.push(cleanBasic(textsRaw[j]))
+      j++
     }
   }
 
@@ -185,7 +209,10 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
           const gm2 = GUBUN_RE.exec(texts[k])
           if (gm2 && !RECORD_HDR_RE.test(texts[k])) currentGubun = gm2[0].replace(/\s+/g, "")
         }
-        const fieldName = texts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
+        const fieldName    = texts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
+        const rawFieldName = rawTexts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
+        if (rawFieldName && fieldName !== rawFieldName)
+          parseLogs.push({ origText: rawFieldName, cleanText: fieldName })
         // 누적 불일치 시 proposedCum으로 재동기화 (HWP 원본 오타 대응)
         if (accumulated + dlen !== proposedCum) accumulated = proposedCum - dlen
 
@@ -215,5 +242,5 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
     i++
   }
 
-  return { fields: rows, detectedSections }
+  return { fields: rows, detectedSections, parseLogs }
 }

@@ -51,8 +51,8 @@ export async function POST(req: NextRequest) {
     // HWP 파일 처리
     if (hwpFile) {
       const buffer = Buffer.from(await hwpFile.arrayBuffer())
-      const { fields } = parseHwpBuffer(buffer)
-      await saveHwpFile(userId, year, hwpFile.name, null, buffer, fields)
+      const { fields, parseLogs } = parseHwpBuffer(buffer)
+      await saveHwpFile(userId, year, hwpFile.name, null, buffer, fields, parseLogs)
       result.hwpRows = fields.length
     }
 

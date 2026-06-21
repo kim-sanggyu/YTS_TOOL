@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   LayoutDashboard, FileText, FileCode, Database, Calculator,
@@ -82,6 +82,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user }: AppSidebarProps) {
   const pathname = usePathname()
+  const router   = useRouter()
 
   const defaultGroups: Record<string, boolean> = {
     "전산매체": true, "세액계산": true, "운영지원": true, "파일배포": true, "과제관리": true,
@@ -125,7 +126,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           {navMain.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                render={<Link href={item.href} />}
+                render={<Link href={item.href} onClick={pathname === item.href ? (e) => { e.preventDefault(); router.refresh() } : undefined} />}
                 isActive={pathname === item.href}
                 tooltip={item.title}
                 className={cn(
@@ -171,7 +172,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   {group.children.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
-                        render={<Link href={item.href} />}
+                        render={<Link href={item.href} onClick={!item.disabled && pathname === item.href ? (e) => { e.preventDefault(); router.refresh() } : undefined} />}
                         isActive={!item.disabled && pathname === item.href}
                         tooltip={item.title}
                         className={cn(

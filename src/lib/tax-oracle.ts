@@ -136,12 +136,13 @@ export async function getJavaFile(year: number, userId: number): Promise<JavaFil
 // ── HWP 업로드 저장 (트랜잭션) ───────────────────────────────
 
 export async function saveHwpFile(
-  userId:   number,
-  year:     number,
-  fileName: string,
-  filePath: string | null,
-  hwpData:  Buffer,
-  fields:   HwpField[],
+  userId:    number,
+  year:      number,
+  fileName:  string,
+  filePath:  string | null,
+  hwpData:   Buffer,
+  fields:    HwpField[],
+  parseLogs: { origText: string; cleanText: string }[] = [],
 ): Promise<void> {
   await withConnection("ytts", async (conn) => {
     // 기존 데이터 삭제 (MLAY_TAX CASCADE)
@@ -167,6 +168,12 @@ export async function saveHwpFile(
     // MLAY_SECT_CONFIG (TAX) 삭제
     await conn.execute(
       `DELETE FROM MLAY_SECT_CONFIG WHERE YEAR = :1 AND USER_ID = :2 AND TARGET = 'TAX'`,
+      [year, userId]
+    )
+
+    // 파싱 변환 로그 삭제 (재업로드 시 초기화)
+    await conn.execute(
+      `DELETE FROM MLAY_HWP_PARSE_LOG WHERE YEAR = :1 AND USER_ID = :2`,
       [year, userId]
     )
 
@@ -205,6 +212,15 @@ export async function saveHwpFile(
            (YEAR, USER_ID, RECORD_TYPE, TARGET, SECT_MODE, BODY_START, BODY_END, REPEAT_COUNT)
          VALUES (:1, :2, :3, :4, :5, :6, :7, :8)`,
         records.map(rec => [year, userId, rec, 'TAX', 'body', null, null, null])
+      )
+    }
+
+    // 파싱 변환 로그 저장
+    if (parseLogs.length > 0) {
+      await conn.executeMany(
+        `INSERT INTO MLAY_HWP_PARSE_LOG (YEAR, USER_ID, LOG_SEQ, ORIG_TEXT, CLEAN_TEXT)
+         VALUES (:1, :2, :3, :4, :5)`,
+        parseLogs.map((l, i) => [year, userId, i + 1, l.origText.slice(0, 2000), (l.cleanText || null)?.slice(0, 2000)])
       )
     }
   })
@@ -312,12 +328,12 @@ export async function getTaxRows(year: number, userId: number, record?: string):
     `SELECT T.SEQ, T.GUBUN,
             NVL(CE.CODE, T.CODE) AS CODE,
             NVL(IE.ITEM, T.ITEM) AS ITEM,
-            CASE WHEN CE.SEQ IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
-            CASE WHEN IE.SEQ IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
+            CASE WHEN CE.ORG_CODE IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
+            CASE WHEN IE.ORG_ITEM IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
             T.VAL, T.FIELD_TYPE, T.FIELD_LEN, T.SECT
      FROM MLAY_TAX T
-     LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.SEQ = T.SEQ
-     LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.SEQ = T.SEQ
+     LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.RECORD_TYPE = T.RECORD_TYPE AND CE.ORG_CODE = T.CODE
+     LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.RECORD_TYPE = T.RECORD_TYPE AND IE.ORG_ITEM = T.ITEM
      WHERE ${filter} ORDER BY T.SEQ`
 
   const plainSql = (filter: string) =>
@@ -650,12 +666,12 @@ export async function getAllTaxRows(year: number, userId: number): Promise<TaxRo
       `SELECT T.SEQ, T.RECORD_TYPE, T.GUBUN,
               NVL(CE.CODE, T.CODE) AS CODE,
               NVL(IE.ITEM, T.ITEM) AS ITEM,
-              CASE WHEN CE.SEQ IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
-              CASE WHEN IE.SEQ IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
+              CASE WHEN CE.ORG_CODE IS NOT NULL AND NVL(CE.CODE,'') != NVL(T.CODE,'') THEN T.CODE END AS ORG_CODE,
+              CASE WHEN IE.ORG_ITEM IS NOT NULL AND NVL(IE.ITEM,'') != NVL(T.ITEM,'') THEN T.ITEM END AS ORG_ITEM,
               T.VAL, T.FIELD_TYPE, T.FIELD_LEN, T.HWP_CUM, T.SECT
        FROM MLAY_TAX T
-       LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.SEQ = T.SEQ
-       LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.SEQ = T.SEQ
+       LEFT JOIN MLAY_TAX_CODE_EDIT CE ON CE.YEAR = T.YEAR AND CE.USER_ID = T.USER_ID AND CE.RECORD_TYPE = T.RECORD_TYPE AND CE.ORG_CODE = T.CODE
+       LEFT JOIN MLAY_TAX_ITEM_EDIT IE ON IE.YEAR = T.YEAR AND IE.USER_ID = T.USER_ID AND IE.RECORD_TYPE = T.RECORD_TYPE AND IE.ORG_ITEM = T.ITEM
        WHERE T.YEAR = :1 AND T.USER_ID = :2 ORDER BY T.SEQ`,
       [year, userId]
     )
@@ -679,76 +695,86 @@ export async function getAllTaxRows(year: number, userId: number): Promise<TaxRo
 export async function updateTaxRows(
   year:    number,
   userId:  number,
-  updates: Pick<TaxRow, "seq" | "code" | "item" | "fieldType" | "fieldLen">[],
+  updates: Pick<TaxRow, "seq" | "recordType" | "code" | "item" | "fieldType" | "fieldLen" | "원본코드" | "원본항목">[],
 ): Promise<void> {
   if (updates.length === 0) return
   await withConnection("ytts", async (conn) => {
-    // FIELD_TYPE, FIELD_LEN 구조 필드만 MLAY_TAX에 직접 저장
     await conn.executeMany(
       `UPDATE MLAY_TAX SET FIELD_TYPE = :1, FIELD_LEN = :2 WHERE YEAR = :3 AND USER_ID = :4 AND SEQ = :5`,
       updates.map(u => [u.fieldType || null, u.fieldLen ?? null, year, userId, u.seq])
     )
-    // CODE + ITEM은 MLAY_TAX_EDIT에 upsert (SEQ 기반)
-    await upsertTaxEdit(year, userId, updates.map(u => ({ seq: u.seq, code: u.code, item: u.item })), conn)
+    const editUpdates = updates.filter(u => u.recordType)
+    if (editUpdates.length > 0)
+      await upsertTaxEdit(year, userId, editUpdates.map(u => ({
+        recordType: u.recordType,
+        orgCode:    u.원본코드 ?? u.code,
+        code:       u.code,
+        orgItem:    u.원본항목 ?? u.item,
+        item:       u.item,
+      })), conn)
   })
 }
 
-// SEQ 기반 MLAY_TAX_EDIT upsert (CODE + ITEM 동시 관리)
+// ORG_ITEM / ORG_CODE 기반 MLAY_TAX_EDIT upsert
+// HWP 재업로드 시 SEQ가 재발번되어도 원본 항목명·코드로 편집 이력을 재활용
 export async function upsertTaxEdit(
   year:   number,
   userId: number,
-  edits:  { seq: number; code?: string; item?: string }[],
+  edits:  { recordType: string; orgCode?: string; code?: string; orgItem?: string; item?: string }[],
   conn?:  any,
 ): Promise<void> {
   if (edits.length === 0) return
-  const codeEdits = edits.filter(e => e.code !== undefined)
-  const itemEdits = edits.filter(e => e.item !== undefined)
+  const codeEdits = edits.filter(e => e.orgCode !== undefined && e.code !== undefined)
+  const itemEdits = edits.filter(e => e.orgItem !== undefined && e.item !== undefined)
+  console.log("[upsertTaxEdit] itemEdits:", JSON.stringify(itemEdits), "codeEdits:", JSON.stringify(codeEdits))
 
   const run = async (c: any) => {
-    // CODE → MLAY_TAX_CODE_EDIT (독립)
     for (const e of codeEdits) {
       await c.execute(
         `MERGE INTO MLAY_TAX_CODE_EDIT CE USING DUAL
-         ON (CE.YEAR = :1 AND CE.USER_ID = :2 AND CE.SEQ = :3)
-         WHEN MATCHED THEN UPDATE SET CE.CODE = :4, CE.EDIT_AT = SYSDATE
-         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, SEQ, CODE) VALUES (:1, :2, :3, :4)`,
-        [year, userId, e.seq, e.code || null]
+         ON (CE.YEAR = :1 AND CE.USER_ID = :2 AND CE.RECORD_TYPE = :3 AND CE.ORG_CODE = :4)
+         WHEN MATCHED THEN UPDATE SET CE.CODE = :5, CE.EDIT_AT = SYSDATE
+         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, RECORD_TYPE, ORG_CODE, CODE)
+                               VALUES (:1,   :2,      :3,          :4,       :5)`,
+        [year, userId, e.recordType, e.orgCode, e.code || null]
       )
       await c.execute(
         `DELETE FROM MLAY_TAX_CODE_EDIT
-         WHERE YEAR = :1 AND USER_ID = :2 AND SEQ = :3
-           AND NVL(CODE,'') = NVL((SELECT CODE FROM MLAY_TAX WHERE YEAR=:1 AND USER_ID=:2 AND SEQ=:3),'')`,
-        [year, userId, e.seq]
+         WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 AND ORG_CODE = :4
+           AND NVL(CODE,'') = NVL(ORG_CODE,'')`,
+        [year, userId, e.recordType, e.orgCode]
       )
     }
-    // ITEM → MLAY_TAX_ITEM_EDIT (독립)
     for (const e of itemEdits) {
       await c.execute(
         `MERGE INTO MLAY_TAX_ITEM_EDIT IE USING DUAL
-         ON (IE.YEAR = :1 AND IE.USER_ID = :2 AND IE.SEQ = :3)
-         WHEN MATCHED THEN UPDATE SET IE.ITEM = :4, IE.EDIT_AT = SYSDATE
-         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, SEQ, ITEM) VALUES (:1, :2, :3, :4)`,
-        [year, userId, e.seq, e.item || null]
+         ON (IE.YEAR = :1 AND IE.USER_ID = :2 AND IE.RECORD_TYPE = :3 AND IE.ORG_ITEM = :4)
+         WHEN MATCHED THEN UPDATE SET IE.ITEM = :5, IE.EDIT_AT = SYSDATE
+         WHEN NOT MATCHED THEN INSERT (YEAR, USER_ID, RECORD_TYPE, ORG_ITEM, ITEM)
+                               VALUES (:1,   :2,      :3,          :4,       :5)`,
+        [year, userId, e.recordType, e.orgItem, e.item || null]
       )
       await c.execute(
         `DELETE FROM MLAY_TAX_ITEM_EDIT
-         WHERE YEAR = :1 AND USER_ID = :2 AND SEQ = :3
-           AND NVL(ITEM,'') = NVL((SELECT ITEM FROM MLAY_TAX WHERE YEAR=:1 AND USER_ID=:2 AND SEQ=:3),'')`,
-        [year, userId, e.seq]
+         WHERE YEAR = :1 AND USER_ID = :2 AND RECORD_TYPE = :3 AND ORG_ITEM = :4
+           AND NVL(ITEM,'') = NVL(ORG_ITEM,'')`,
+        [year, userId, e.recordType, e.orgItem]
       )
     }
   }
 
   const fallback = async (c: any) => {
-    if (codeEdits.length > 0)
-      await c.executeMany(
-        `UPDATE MLAY_TAX SET CODE = :1 WHERE YEAR = :2 AND USER_ID = :3 AND SEQ = :4`,
-        codeEdits.map(e => [e.code || null, year, userId, e.seq])
+    for (const e of codeEdits)
+      await c.execute(
+        `UPDATE MLAY_TAX SET CODE = :1
+         WHERE YEAR = :2 AND USER_ID = :3 AND RECORD_TYPE = :4 AND CODE = :5`,
+        [e.code || null, year, userId, e.recordType, e.orgCode]
       )
-    if (itemEdits.length > 0)
-      await c.executeMany(
-        `UPDATE MLAY_TAX SET ITEM = :1 WHERE YEAR = :2 AND USER_ID = :3 AND SEQ = :4`,
-        itemEdits.map(e => [e.item || null, year, userId, e.seq])
+    for (const e of itemEdits)
+      await c.execute(
+        `UPDATE MLAY_TAX SET ITEM = :1
+         WHERE YEAR = :2 AND USER_ID = :3 AND RECORD_TYPE = :4 AND ITEM = :5`,
+        [e.item || null, year, userId, e.recordType, e.orgItem]
       )
   }
 
@@ -1000,7 +1026,15 @@ export async function getMediaSummary(year: number, userId: number): Promise<{
       [year, userId]
     ),
     yttsDb.query<Record<string, unknown>>(
-      `SELECT RECORD_TYPE, SUM(NVL(FIELD_LEN,0)) AS BYTES FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 GROUP BY RECORD_TYPE`,
+      `SELECT J.RECORD_TYPE, SUM(NVL(J.FIELD_LEN,0)) AS BYTES
+       FROM MLAY_JAVA J
+       WHERE J.YEAR = :1 AND J.USER_ID = :2
+         AND NOT EXISTS (
+           SELECT 1 FROM MLAY_TAX_JAVA_MAP M
+           WHERE M.YEAR = :1 AND M.USER_ID = :2
+             AND M.JAVA_SEQ = J.SEQ AND M.TAX_SEQ IS NULL
+         )
+       GROUP BY J.RECORD_TYPE`,
       [year, userId]
     ),
     getAllTaxSectConfigs(year, userId, "TAX"),
