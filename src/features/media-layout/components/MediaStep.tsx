@@ -174,8 +174,9 @@ function TaxSectInfo({ items, slots, rightContent }: { items: (TaxLayoutRow | nu
 // ── applySectConfig ───────────────────────────────────────────
 
 function applySectConfig(rows: (TaxLayoutRow | null)[], cfg: TaxSectConfigRow | null): (TaxLayoutRow | null)[] {
-  if (!cfg || cfg.sectMode === "body") return rows.map(r => r ? { ...r, sect: "header" } : null)
-  const { bodyStart, bodyEnd, repeatCount } = cfg
+  if (!cfg || cfg.sectMode === "body" || cfg.bodyStart == null || cfg.bodyEnd == null || cfg.repeatCount == null)
+    return rows.map(r => r ? { ...r, sect: "header" } : null)
+  const { bodyStart, bodyEnd, repeatCount } = cfg as { bodyStart: number; bodyEnd: number; repeatCount: number } & typeof cfg
   // HwpStep의 applyBulk와 동일하게: 전체 body 범위를 repeatCount로 나눠 1개 단위 길이 계산
   const unitLen = Math.max(1, Math.floor(Math.max(1, bodyEnd - bodyStart + 1) / repeatCount))
   // D 행(tax=null)은 tax 위치 카운트에서 제외
@@ -200,9 +201,6 @@ export function MediaStep() {
   const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
   const [hwpFile,   setHwpFile]   = useState<HwpFileRow | null>(null)
   const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
-  const [taxBytes,  setTaxBytes]  = useState<Record<string, number>>({})
-  const [javaBytes, setJavaBytes] = useState<Record<string, number>>({})
-  const [checking,  setChecking]  = useState(false)
   const [helpOpen,    setHelpOpen]    = useState(false)
   const [helpTab,     setHelpTab]     = useState<"usage" | "how">("usage")
 
@@ -269,7 +267,6 @@ export function MediaStep() {
   const [taxItems,    setTaxItems]    = useState<(TaxLayoutRow | null)[]>([])
   const [javaSlots,   setJavaSlots]   = useState<JavaSlot[]>([])
   const [sectConfig,     setSectConfig]     = useState<TaxSectConfigRow | null>(null)
-  const [allSectConfigs, setAllSectConfigs] = useState<Record<string, TaxSectConfigRow>>({})
   const [comparing,   setComparing]   = useState(false)
   const [generating,  setGenerating]  = useState(false)
   const [dirtyTax,    setDirtyTax]    = useState<Map<string, { orgItem: string; item: string }>>(new Map()) // 코드 → {orgItem, item}
@@ -292,7 +289,7 @@ export function MediaStep() {
     type: "resize"; dir: string; ox: number; oy: number; px: number; py: number; pw: number; ph: number
   }>(null)
 
-  const recList = RECORD_TYPES.filter(r => taxBytes[r] || javaBytes[r])
+  const recList = RECORD_TYPES.filter(r => compareCache[r])
 
   // ── API 응답 → 캐시 항목 변환 헬퍼 ──────────────────────────
 
@@ -321,21 +318,6 @@ export function MediaStep() {
     setTimeout(() => { if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0 }, 0)
   }
 
-  // ── 요약 로드 (바이트 바, 파일 상태) ──────────────────────────
-
-  const loadSummary = useCallback(async (y: number) => {
-    setChecking(true)
-    try {
-      const res  = await fetch(`/api/tools/media-layout/summary?year=${y}`)
-      const data = await res.json()
-      setHwpFile(data.hwpFile ?? null)
-      setJavaFile(data.javaFile ?? null)
-      setTaxBytes(data.taxBytes ?? {})
-      setJavaBytes(data.javaBytes ?? {})
-      setAllSectConfigs(data.sectConfigs ?? {})
-    } finally { setChecking(false) }
-  }, [])
-
   // ── 전체 레코드 한 번에 로드 (마운트/연도 변경 시) ─────────────
 
   const loadAllCompare = useCallback(async (y: number) => {
@@ -343,6 +325,8 @@ export function MediaStep() {
     try {
       const res  = await fetch(`/api/tools/media-layout/compare?year=${y}`)
       const data = await res.json()
+      setHwpFile(data.hwpFile ?? null)
+      setJavaFile(data.javaFile ?? null)
       const byRecord = data.byRecord as Record<string, { rows: CompareRow[]; sectConfig: TaxSectConfigRow | null }> | undefined
       if (!byRecord) { setCompareCache({}); return }
       const newCache: Record<string, CachedRecord> = {}
@@ -355,15 +339,18 @@ export function MediaStep() {
 
   // ── 단일 레코드 로드 (저장 후 캐시 갱신용) ──────────────────
 
-  const loadCompare = useCallback(async (y: number, rec: string) => {
+  const loadCompare = useCallback(async (y: number, rec: string): Promise<CachedRecord | null> => {
     setComparing(true)
     try {
       const res  = await fetch(`/api/tools/media-layout/compare?record=${rec}&year=${y}`)
       const data = await res.json()
       const rows: CompareRow[] = data.rows ?? []
       const cfg:  TaxSectConfigRow | null = data.sectConfig ?? null
-      setCompareCache(prev => ({ ...prev, [rec]: processCompareRows(rows, cfg) }))
-    } finally { setComparing(false) }
+      const cached = processCompareRows(rows, cfg)
+      setCompareCache(prev => ({ ...prev, [rec]: cached }))
+      return cached
+    } catch { return null }
+    finally { setComparing(false) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 캐시 → 표시 상태 동기화 (activeRec 변경 or 캐시 갱신 시 자동 반영)
@@ -376,7 +363,6 @@ export function MediaStep() {
     setDirtyTax(new Map())
   }, [compareCache, activeRec])
 
-  useEffect(() => { loadSummary(year) },    [year, loadSummary])
   useEffect(() => {
     setCompareCache({})
     loadAllCompare(year)
@@ -502,10 +488,17 @@ export function MediaStep() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      setDirtyTax(new Map()); setHasCancelledFromDB(false)
+      setHasCancelledFromDB(false)
       const total = (data.taxUpdated ?? 0) + (data.javaUpdated ?? 0) + (data.mapSaved ?? 0)
       setSaveMsg({ ok: true, text: `저장 완료 (${total}건)` })
-      await loadCompare(y, activeRec)
+      const newCached = await loadCompare(y, activeRec)
+      // saving=false 렌더 전에 javaSlots를 동기화해 hasChanges=false 보장
+      if (newCached) {
+        setSectConfig(newCached.sectConfig)
+        setTaxItems(newCached.taxItems)
+        setJavaSlots(newCached.javaSlots)
+        setDirtyTax(new Map())
+      }
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.")
@@ -522,7 +515,13 @@ export function MediaStep() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
       setSaveMsg({ ok: true, text: `초기화 완료 (${data.deleted}건 삭제)` })
-      await loadCompare(year, activeRec)
+      const newCached = await loadCompare(year, activeRec)
+      if (newCached) {
+        setSectConfig(newCached.sectConfig)
+        setTaxItems(newCached.taxItems)
+        setJavaSlots(newCached.javaSlots)
+        setDirtyTax(new Map())
+      }
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "초기화 중 오류가 발생했습니다.")
@@ -711,8 +710,37 @@ export function MediaStep() {
     return m
   }, [taxItems])
 
+  // 레코드별 바이트 합 — compareCache에서 그리드와 동일한 로직으로 산출
+  // (D 제외 + editedRaw 파싱 우선 적용). 서버 summary(taxBytes/javaBytes)와 달리
+  // M 편집으로 변경된 길이도 반영되어 배지 값과 그리드 누적이 일치한다.
+  const recCacheBytes = useMemo(() => {
+    const out: Record<string, { tax: number; java: number }> = {}
+    for (const [rec, cached] of Object.entries(compareCache)) {
+      let tc = 0, jc = 0
+      const len = Math.max(cached.taxItems.length, cached.javaSlots.length)
+      for (let i = 0; i < len; i++) {
+        tc += cached.taxItems[i]?.길이 ?? 0
+        const slot = cached.javaSlots[i]
+        if (slot?.cmd !== "D") {
+          const parsed = slot?.editedRaw ? parseMakeStr(slot.editedRaw) : null
+          jc += parsed?.len ?? slot?.field?.len ?? 0
+        }
+      }
+      out[rec] = { tax: tc, java: jc }
+    }
+    return out
+  }, [compareCache])
+
   const finalTaxBytes  = cumData[maxLen - 1]?.tc ?? 0
   const finalJavaBytes = cumData[maxLen - 1]?.jc ?? 0
+
+  const hasChanges =
+    hasCancelledFromDB ||
+    dirtyTax.size > 0 ||
+    javaSlots.some(s =>
+      (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
+      (s.field && canonicalize(s.editedRaw) !== canonicalize(s.loadedRaw))
+    )
 
   // ── JSX ───────────────────────────────────────────────────────
 
@@ -730,7 +758,7 @@ export function MediaStep() {
 
         {/* HWP 상태 */}
         <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-orange-50">
-          {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+          {comparing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
           <span className="text-xs text-orange-800 font-medium shrink-0">HWP</span>
@@ -741,7 +769,7 @@ export function MediaStep() {
 
         {/* Java 상태 */}
         <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-blue-50">
-          {checking ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+          {comparing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
            : <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
           <span className="text-xs text-blue-800 font-medium shrink-0">Java</span>
@@ -751,9 +779,9 @@ export function MediaStep() {
         </div>
 
         <Button variant="outline" size="sm" className="shrink-0 h-8"
-          onClick={() => { loadSummary(year); setCompareCache({}); loadAllCompare(year) }}
-          disabled={checking || comparing}>
-          <RefreshCw className={cn("h-3 w-3 mr-1", (checking || comparing) && "animate-spin")} />
+          onClick={() => { setCompareCache({}); loadAllCompare(year) }}
+          disabled={comparing}>
+          <RefreshCw className={cn("h-3 w-3 mr-1", comparing && "animate-spin")} />
           새로고침
         </Button>
 
@@ -791,6 +819,27 @@ export function MediaStep() {
                       <p className="text-muted-foreground leading-relaxed">
                         HWP 항목과 Java makeStr을 나란히 비교하고, 항목명·makeStr을 직접 수정하여 저장합니다.
                       </p>
+                      <div>
+                        <p className="font-semibold mb-1.5">비교 대상</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-medium w-28">서식항목명</td><td className="px-2 py-1.5 text-muted-foreground">HWP↔Java 항목명 불일치 시 <span className="text-orange-600 font-medium">주황색</span> 강조 + 상단 뱃지 카운트</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">데이터타입·길이</td><td className="px-2 py-1.5 text-muted-foreground">타입(X/9) 또는 byte 길이 불일치 시 <span className="text-red-600 font-medium">적색</span> 강조 + 상단 뱃지 카운트</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">누적 바이트</td><td className="px-2 py-1.5 text-muted-foreground">HWP·Java 누적 합계가 다른 행은 <span className="text-red-600 font-medium">적색</span> 표시, 레코드별 차이는 상단 배지에 표시</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">편집 방법</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center bg-red-50 text-red-600">D</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 삭제</strong> — Java 행을 소스에서 제외. 클릭 시 해당 행이 취소선으로 표시되고 다음 Java 행이 위 HWP 행과 매치됨</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-yellow-50 text-yellow-600">I</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 추가</strong> — Java 빈 행 삽입. makeStr을 직접 입력하면 해당 HWP 항목에 새 Java 코드가 추가됨</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-blue-50 text-blue-600">M</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">수정 자동 표시</strong> — makeStr 셀을 직접 수정하면 자동으로 M 상태가 됨. 저장 전 변경취소로 원본 복원 가능</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium text-center">항목명</td><td className="px-2 py-1.5 text-muted-foreground">HWP 서식항목 셀을 직접 클릭하여 수정. 수정값은 저장 시 DB에 반영되며 원본은 별도 보존됨</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
                       <div>
                         <p className="font-semibold mb-1.5">사용 순서</p>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
@@ -871,8 +920,10 @@ export function MediaStep() {
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
           <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
-            const t = taxBytes[r] ?? 0
-            const j = javaBytes[r] ?? 0
+            // compareCache 기반 값만 사용 — summary fallback 제거
+            // (summary javaBytes는 LINE_NO=0 I행 포함/미반영으로 값이 다를 수 있음)
+            const t = r === activeRec ? finalTaxBytes  : (recCacheBytes[r]?.tax  ?? 0)
+            const j = r === activeRec ? finalJavaBytes : (recCacheBytes[r]?.java ?? 0)
             const ok = t > 0 && j > 0 && t === j
             const none = !t && !j
             return (
@@ -892,7 +943,7 @@ export function MediaStep() {
             <div className="flex items-end gap-0.5 min-w-0">
               {recList.map(r => {
                 const isActive = r === activeRec
-                const isHbf   = allSectConfigs[r]?.sectMode === "hbf"
+                const isHbf   = compareCache[r]?.sectConfig?.sectMode === "hbf"
                 const baseBg  = isHbf ? "bg-purple-100 text-purple-700" : "bg-sky-50 text-sky-700"
                 const hoverBg = isHbf ? "hover:bg-purple-200" : "hover:bg-sky-100"
                 const topLine = isHbf ? "border-t-[3px] border-t-purple-500" : "border-t-[3px] border-t-sky-500"
@@ -916,14 +967,6 @@ export function MediaStep() {
                 <span className={`text-xs ${saveMsg.ok ? "text-green-600" : "text-destructive"}`}>{saveMsg.text}</span>
               )}
               {(() => {
-                const hasChanges =
-                  hasCancelledFromDB ||
-                  dirtyTax.size > 0 ||
-                  javaSlots.some(s =>
-                    (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
-                    (s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw)) ||
-                    (s.field && canonicalize(s.editedRaw) === canonicalize(s.field.raw) && canonicalize(s.loadedRaw) !== canonicalize(s.field.raw))
-                  )
                 return (
                   <>
                     <Button size="sm" variant="outline"
@@ -955,7 +998,7 @@ export function MediaStep() {
               {sectConfig?.sectMode === "hbf" && taxItems.some(t => bodyIdx(t?.sect ?? "") > 1) && (
                 <Button size="sm" variant="outline"
                   className="h-7 text-xs text-purple-700 border-purple-300 hover:bg-purple-50"
-                  onClick={handleCopyBody1ToAll} disabled={saving}
+                  onClick={handleCopyBody1ToAll} disabled={saving || hasChanges}
                   title="body_1 Java 내용을 body_2 이후 모든 body 영역에 복사">
                   Body 동기화
                 </Button>
@@ -1199,7 +1242,7 @@ export function MediaStep() {
       )}
 
       {/* 데이터 없을 때 안내 */}
-      {recList.length === 0 && !checking && (
+      {recList.length === 0 && !comparing && (
         <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           HWP 파일과 Java 소스를 먼저 업로드하세요.
         </div>

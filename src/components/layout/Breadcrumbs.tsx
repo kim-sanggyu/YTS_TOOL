@@ -8,7 +8,7 @@ const PATH_LABELS: Record<string, string> = {
   "tools":          "전산매체",
   "hwp-layout":     ".hwp파일 업로드",
   "java-layout":    ".java소스 업로드",
-  "media-layout":   "전산매체 비교·검증",
+  "media-layout":   "전산매체 비교·편집",
   "media-generate": "전산매체 소스 생성",
   "settings":       "설정",
 }

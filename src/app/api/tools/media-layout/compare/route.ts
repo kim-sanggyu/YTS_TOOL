@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
-  getHwpFile, getLatestHwpFile,
+  getHwpFile, getLatestHwpFile, getJavaFile,
   getTaxRows, getJavaRows, getJavaCodeEdits,
   getTaxSectConfig, getAllTaxSectConfigs,
   buildCompareRowsFromMap, calcSummary,
@@ -43,11 +43,12 @@ export async function GET(req: NextRequest) {
   }
 
   // 전체 레코드 모드
-  const [allTaxRows, allJavaRows, allEdits, allSectConfigs] = await Promise.all([
+  const [allTaxRows, allJavaRows, allEdits, allSectConfigs, javaFile] = await Promise.all([
     getTaxRows(hwp.year, userId),
     getJavaRows(hwp.year, userId),
     getJavaCodeEdits(hwp.year, userId),
     getAllTaxSectConfigs(hwp.year, userId, "TAX"),
+    getJavaFile(hwp.year, userId),
   ])
 
   // 레코드별 그룹화 (SEQ 기반 — lineNo 불필요)
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     if (rows.length > 0) byRecord[rec] = { rows, sectConfig: allSectConfigs[rec] ?? null }
   }))
 
-  return NextResponse.json({ byRecord, year: hwp.year })
+  return NextResponse.json({ byRecord, year: hwp.year, hwpFile: hwp, javaFile })
 }
 
 // DELETE: 현재 레코드 편집 초기화 (MLAY_JAVA_EDIT 삭제)

@@ -1,4 +1,5 @@
 import type { JavaField } from "../types"
+import { cleanText } from "./hwp-parser"
 
 export type { JavaField }   // 하위 호환 re-export
 
@@ -214,7 +215,7 @@ export function parseJavaLayout(source: string): JavaParseResult {
 
     if (makeM && commentM) {
       const no     = commentM[1]
-      const name   = commentM[2].replace(/\/\*.*?\*\//g, "").trim()
+      const name   = cleanText(commentM[2].replace(/\/\*.*?\*\//g, "")).replace(/\s/g, "")
       const record = no[0]
       const dtype  = makeM[1].toLowerCase()
       const len    = parseInt(makeM[2])

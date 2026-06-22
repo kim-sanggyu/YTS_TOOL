@@ -14,23 +14,24 @@ export interface HwpField {
 
 // ── 텍스트 정제 ──────────────────────────────────────────────
 const HWP_OBJ_RE         = /\x02[一-鿿]{1,4}[\x00]{0,8}\x02/g
-const CTRL_RE            = /[\x00-\x1F\x7F]/g
+const CTRL_RE            = /[\x00-\x1F\x7F\u200B-\u200F\u2060\uFEFF\u3164\uFFA0]/g
 const LEADING_CJK_RE     = /^[一-鿿\s]+/
-const LEADING_CIRCLED_RE = /^[①-⒇]+\s*/   // ①-⒇ 원문자 제거
-const DASH_CIRCLED_RE    = /\s*-[①-⒇ⓐ-ⓩ가나다라마바사아자차카타파하]/g  // '-원문자/-가나다' 제거
-const DASH_NUM_FIELD_RE  = /^-[12]\s?([A-Za-z]\d{2})/  // '-1 A01...' → 'A01...'
+const LEADING_CIRCLED_RE    = /^[①-⒇]+\s*/   // ①-⒇ 원문자 제거
+const DASH_CIRCLED_RE       = /\s*-[①-⒇ⓐ-ⓩ가나다라마바사아자차카타파하](?![가-힣])/g  // '-원문자/-가나다' 제거 (단어 내부 '-사립' 등은 제외)
+const DASH_NUM_FIELD_RE     = /^-\d+\s?([A-Za-z]\d{2})/  // '-5 G01...' → 'G01...'
+const LEADING_DASH_CKH_RE   = /^-[㉠-㉻]\s?/  // '-㉮공적연금...' → '공적연금...'
 
 // HWP 아티팩트·제어문자·한자 접두사만 제거 (마커 제거 제외)
 function cleanBasic(s: string): string {
   return s.replace(HWP_OBJ_RE, "").replace(CTRL_RE, "").replace(LEADING_CJK_RE, "").trim()
 }
 // 원문자·가나다 마커 + 숫자접두필드 마커까지 완전 제거
-function cleanText(s: string): string {
+export function cleanText(s: string): string {
   return cleanBasic(s)
     .replace(LEADING_CIRCLED_RE, "")
     .replace(DASH_CIRCLED_RE, "")
     .replace(DASH_NUM_FIELD_RE, "$1")
-    .trim()
+    .replace(LEADING_DASH_CKH_RE, "")
 }
 
 // ── 파싱 패턴 ────────────────────────────────────────────────
@@ -93,8 +94,10 @@ function extractTexts(data: Buffer): string[] {
 }
 
 export interface ParseLogEntry {
-  origText:  string
-  cleanText: string
+  recordType: string
+  code:       string
+  origText:   string
+  cleanText:  string
 }
 
 export interface ParseResult {
@@ -209,10 +212,10 @@ export function parseHwpBuffer(buffer: Buffer): ParseResult {
           const gm2 = GUBUN_RE.exec(texts[k])
           if (gm2 && !RECORD_HDR_RE.test(texts[k])) currentGubun = gm2[0].replace(/\s+/g, "")
         }
-        const fieldName    = texts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
+        const fieldName    = texts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ").replace(/\s/g, "")
         const rawFieldName = rawTexts.slice(i + 1, dtypeIdx).filter(t => t && !GUBUN_RE.test(t)).join(" ")
         if (rawFieldName && fieldName !== rawFieldName)
-          parseLogs.push({ origText: rawFieldName, cleanText: fieldName })
+          parseLogs.push({ recordType: currentRecord, code: fieldNo, origText: rawFieldName, cleanText: fieldName })
         // 누적 불일치 시 proposedCum으로 재동기화 (HWP 원본 오타 대응)
         if (accumulated + dlen !== proposedCum) accumulated = proposedCum - dlen
 

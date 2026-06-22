@@ -3,13 +3,37 @@
 import { useRef, useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, CheckCircle2, AlertCircle, Loader2, Save, Trash2, RotateCcw, HelpCircle } from "lucide-react"
+import { FileText, CheckCircle2, AlertCircle, Loader2, Save, Trash2, RotateCcw, HelpCircle, Table2, X } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { TaxRow, HwpFileRow, TaxSectConfigRow, ItemNoteRow } from "@/lib/tax-oracle"
 import { ItemNoteSticker, NoteMarkButton } from "./ItemNoteSticker"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
+
+// ── 파싱 변환 diff (원본 → 변환값, 제거된 문자 강조) ────────────
+
+function diffOrig(orig: string, clean: string | null): { text: string; removed: boolean }[] {
+  if (!clean) return [{ text: orig, removed: true }]
+  const m = orig.length, n = clean.length
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = orig[i-1] === clean[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1])
+  const segs: { text: string; removed: boolean }[] = []
+  let i = m, j = n
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && orig[i-1] === clean[j-1]) { segs.unshift({ text: orig[i-1], removed: false }); i--; j-- }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) j--
+    else { segs.unshift({ text: orig[i-1], removed: true }); i-- }
+  }
+  // 연속 같은 타입 병합
+  return segs.reduce<{ text: string; removed: boolean }[]>((acc, s) => {
+    const last = acc[acc.length - 1]
+    if (last && last.removed === s.removed) { last.text += s.text; return acc }
+    return [...acc, { ...s }]
+  }, [])
+}
 
 // ── 일괄 섹션 적용 ─────────────────────────────────────────────
 
@@ -34,18 +58,22 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
     }
   }
 
-  // ── 전략 1: GUBUN 반복 감지 (E/F/G/K 레코드 등) ──────────────
-  // body 단위마다 동일 GUBUN 레이블이 붙는 경우, 가장 신뢰도 높음
-  const gubunPos = new Map<string, number[]>()
+  // ── 전략 1: GUBUN 변경점 기반 반복 감지 ──────────────────────
+  // currentGubun이 행마다 전파되므로, 같은 값이 연속되는 것은 무시하고
+  // GUBUN 값이 바뀌는 시점의 위치만 수집한다.
+  const gubunChangePos = new Map<string, number[]>()
+  let prevG = ""
   for (let i = 0; i < rows.length; i++) {
-    const g = rows[i].gubun?.trim()
-    if (!g) continue
-    const arr = gubunPos.get(g) ?? []
-    arr.push(i)
-    gubunPos.set(g, arr)
+    const g = rows[i].gubun?.trim() ?? ""
+    if (g && g !== prevG) {
+      const arr = gubunChangePos.get(g) ?? []
+      arr.push(i)
+      gubunChangePos.set(g, arr)
+      prevG = g
+    }
   }
 
-  for (const positions of gubunPos.values()) {
+  for (const positions of gubunChangePos.values()) {
     if (positions.length < 2) continue
     const s       = positions[0]
     const unitLen = positions[1] - s
@@ -59,7 +87,7 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
 
   // ── 전략 2: 항목명 + fieldLen 시퀀스 일치 (GUBUN 없는 레코드 대비) ──
   const items  = rows.map(r => (r.item ?? "").replace(/\s+/g, " ").trim())
-  const PADDING = new Set(["공란", "예비", "여백", "미사용", "사용안함", "reserved"])
+  const PADDING = new Set(["공란", "예비", "여백", "미사용", "사용안함", "reserved", "계"])
 
   const itemPos = new Map<string, number[]>()
   for (let i = 0; i < items.length; i++) {
@@ -74,16 +102,14 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
     if (positions.length < 2) continue
     const s       = positions[0]
     const unitLen = positions[1] - s
-    if (unitLen <= 0) continue
+    // 항목명 시퀀스 일치 검증, 불일치 시 fieldLen 시퀀스로 대체 검증 (항목명이 body마다 미세하게 다른 경우 대비)
+    const unitItems = items.slice(s, s + unitLen).join("|")
+    const unitLens  = lens.slice(s, s + unitLen).join(",")
+    const itemSeqOk = items.slice(positions[1], positions[1] + unitLen).join("|") === unitItems
+    const lenSeqOk  = lens.slice(positions[1], positions[1] + unitLen).join(",") === unitLens
+    if (!itemSeqOk && !lenSeqOk) continue
 
-    const unitKey = lens.slice(s, s + unitLen).join(",")
-    let repeatCount = 0, pos = s
-    while (pos + unitLen <= rows.length &&
-           lens.slice(pos, pos + unitLen).join(",") === unitKey) {
-      repeatCount++; pos += unitLen
-    }
-    if (repeatCount < 2) continue
-
+    // bodyStart를 앞으로 확장 (BODY_1의 실제 시작점 탐색)
     let actualStart = s
     while (actualStart > 0) {
       const prev = actualStart - 1
@@ -91,6 +117,16 @@ function detectInterval(rows: TaxRow[]): BulkConfig | null {
       if (lens[prev] !== lens[prev + unitLen]) break
       actualStart--
     }
+
+    // actualStart 기준 BODY_1 fieldLen으로 재카운팅 → 나머지는 FOOTER
+    const actualUnitLens = lens.slice(actualStart, actualStart + unitLen).join(",")
+    let repeatCount = 0, pos = actualStart
+    while (pos + unitLen <= rows.length &&
+           lens.slice(pos, pos + unitLen).join(",") === actualUnitLens) {
+      repeatCount++; pos += unitLen
+    }
+    if (repeatCount < 2) continue
+
     selectBest({ bodyStart: actualStart + 1, bodyEnd: actualStart + unitLen * repeatCount, divideBy: repeatCount })
   }
 
@@ -320,6 +356,63 @@ export function HwpStep() {
   const [notes,       setNotes]       = useState<Record<string, ItemNoteRow>>({}) // key: `${rec}-${code}`
   const [openNoteKey, setOpenNoteKey] = useState<string | null>(null)
 
+  // 파싱 변환 로그
+  const [parseLogOpen,    setParseLogOpen]    = useState(false)
+  const [logicOpen,       setLogicOpen]       = useState(false)
+  const [parseLogs,       setParseLogs]       = useState<{ recordType: string; code: string; origText: string; cleanText: string | null }[]>([])
+  const [parseLogLoading, setParseLogLoading] = useState(false)
+  const [parseLogSelIdx,  setParseLogSelIdx]  = useState<number | null>(null)
+  const [logPos,  setLogPos]  = useState({ x: 0, y: 0 })
+  const [logSize, setLogSize] = useState({ w: 640, h: 500 })
+  const logDragRef = useRef<null | {
+    type: "drag";   ox: number; oy: number; px: number; py: number
+  } | {
+    type: "resize"; dir: string; ox: number; oy: number; px: number; py: number; pw: number; ph: number
+  }>(null)
+
+  // 파싱 로그 모달 드래그·리사이즈
+  useEffect(() => {
+    const MIN_W = 400, MIN_H = 260
+    function onMove(e: MouseEvent) {
+      const d = logDragRef.current; if (!d) return
+      if (d.type === "drag") {
+        setLogPos({ x: d.px + e.clientX - d.ox, y: d.py + e.clientY - d.oy })
+      } else {
+        const dx = e.clientX - d.ox, dy = e.clientY - d.oy
+        let x = d.px, y = d.py, w = d.pw, h = d.ph
+        if (d.dir.includes("e")) w = Math.max(MIN_W, d.pw + dx)
+        if (d.dir.includes("s")) h = Math.max(MIN_H, d.ph + dy)
+        if (d.dir.includes("w")) { w = Math.max(MIN_W, d.pw - dx); x = d.px + d.pw - w }
+        if (d.dir.includes("n")) { h = Math.max(MIN_H, d.ph - dy); y = d.py + d.ph - h }
+        setLogPos({ x, y }); setLogSize({ w, h })
+      }
+    }
+    function onUp() { logDragRef.current = null }
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup",   onUp)
+    return () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp) }
+  }, [])
+
+  async function handleParseLogOpen() {
+    if (!parseLogOpen) {
+      const W = Math.min(640, window.innerWidth  - 80)
+      const H = Math.min(500, window.innerHeight - 80)
+      setLogSize({ w: W, h: H })
+      setLogPos({ x: Math.round((window.innerWidth  - W) / 2), y: Math.round((window.innerHeight - H) / 2) })
+    }
+    setParseLogOpen(true)
+    setLogicOpen(false)
+    if (parseLogs.length > 0) return
+    setParseLogLoading(true)
+    try {
+      const res = await fetch(`/api/tools/media-layout/parse-log?year=${year}`)
+      const data = await res.json()
+      setParseLogs(data.logs ?? [])
+    } finally {
+      setParseLogLoading(false)
+    }
+  }
+
   const hasRows = Object.keys(byRecord).length > 0
   const recList = RECORD_TYPES.filter(r => byRecord[r]?.length)
 
@@ -331,6 +424,7 @@ export function HwpStep() {
       scrollPosRef.current[activeRec] = scrollDivRef.current.scrollTop
     }
     setActiveRec(rec)
+    setParseLogSelIdx(null)
     setTimeout(() => {
       if (scrollDivRef.current) {
         scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0
@@ -599,19 +693,13 @@ export function HwpStep() {
   async function handleAutoDetect() {
     if (!hasRows) return
 
-    // 레코드별 감지 + 새 행 계산
-    const detections: { rec: string; cfg: BulkConfig; newRows: TaxRow[] }[] = []
+    // 레코드별 감지 + 새 행 계산 (감지 안 된 레코드는 전체 header로 초기화)
+    const detections:  { rec: string; cfg: BulkConfig | null; newRows: TaxRow[] }[] = []
     for (const rec of recList) {
       const rows = byRecord[rec] ?? []
       const cfg  = detectInterval(rows)
-      if (!cfg) continue
-      detections.push({ rec, cfg, newRows: applyBulk(rows, cfg) })
-    }
-
-    if (detections.length === 0) {
-      setAutoMsg({ ok: false, text: "반복 구간을 감지하지 못했습니다" })
-      setTimeout(() => setAutoMsg(null), 3000)
-      return
+      const newRows = cfg ? applyBulk(rows, cfg) : rows.map(r => ({ ...r, sect: "header" }))
+      detections.push({ rec, cfg, newRows })
     }
 
     // byRecord 일괄 업데이트
@@ -630,10 +718,10 @@ export function HwpStep() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             year, record: rec, target: "TAX",
-            sectMode:    "hbf",
-            bodyStart:   cfg.bodyStart,
-            bodyEnd:     cfg.bodyEnd,
-            repeatCount: cfg.divideBy,
+            sectMode:    cfg ? "hbf" : "body",
+            bodyStart:   cfg?.bodyStart ?? null,
+            bodyEnd:     cfg?.bodyEnd   ?? null,
+            repeatCount: cfg?.divideBy  ?? null,
             sectRows:    newRows.map(r => ({ seq: r.seq, sect: r.sect })),
           }),
         }).then(r => { if (!r.ok) throw new Error(`${rec} 저장 실패`) })
@@ -645,18 +733,19 @@ export function HwpStep() {
         for (const { rec, cfg } of detections) {
           next[rec] = {
             year, userId: 0, record: rec, target: "TAX" as const,
-            sectMode: "hbf",
-            bodyStart:   cfg.bodyStart,
-            bodyEnd:     cfg.bodyEnd,
-            repeatCount: cfg.divideBy,
+            sectMode:    cfg ? "hbf" : "body",
+            bodyStart:   cfg?.bodyStart ?? null,
+            bodyEnd:     cfg?.bodyEnd   ?? null,
+            repeatCount: cfg?.divideBy  ?? null,
           }
         }
         return next
       })
 
       setPanelKey(k => k + 1)
-      const summary = detections.map(d => `${d.rec}(×${d.cfg.divideBy})`).join("  ")
-      setAutoMsg({ ok: true, text: `${detections.length}개 레코드 적용 — ${summary}` })
+      const detected = detections.filter(d => d.cfg)
+      const summary  = detected.map(d => `${d.rec}(×${d.cfg!.divideBy})`).join("  ")
+      setAutoMsg({ ok: true, text: `${recList.length}개 레코드 적용 — ${summary || "반복구간 없음"}` })
       setTimeout(() => setAutoMsg(null), 5000)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "구조 설정 저장 중 오류가 발생했습니다.")
@@ -673,13 +762,6 @@ export function HwpStep() {
     let prevGubun = ""
     let cumBytes  = 0
     const maxBody = rows.reduce((m, r) => Math.max(m, bodyIdx(r.sect)), 0)
-    // 원본 항목명 중복 카운트 (수정 시 전체 일괄 반영 경고용 — 패딩 항목 제외)
-    const PADDING_ITEMS = new Set(["공란", "예비", "여백", "미사용", "사용안함", "reserved"])
-    const itemDupeMap = new Map<string, number>()
-    for (const r of rows) {
-      const key = r.원본항목 ?? r.item
-      if (key && !PADDING_ITEMS.has(key)) itemDupeMap.set(key, (itemDupeMap.get(key) ?? 0) + 1)
-    }
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
       if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
@@ -712,8 +794,8 @@ export function HwpStep() {
             <div className="flex items-center justify-center gap-1">
               <input
                 className={cn(
-                  "w-14 font-mono font-semibold text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none text-center",
-                  (isDirty || r.원본코드) ? "text-amber-700 font-bold" : ""
+                  "w-full font-mono font-semibold text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none text-center",
+                  (isDirty || r.원본코드) ? "text-sky-600 font-bold" : ""
                 )}
                 value={r.code}
                 spellCheck={false}
@@ -721,7 +803,7 @@ export function HwpStep() {
               />
               {r.원본코드 && !dirty.has(r.seq) && (
                 <span title={`원본: ${r.원본코드}`}
-                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-amber-100 text-amber-700 font-medium select-none">수정</span>
+                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
               )}
             </div>
           </td>
@@ -749,25 +831,17 @@ export function HwpStep() {
               <input
                 className={cn(
                   "flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none",
-                  (isDirty || r.원본항목) ? "text-amber-700 font-bold" : ""
+                  (isDirty || r.원본항목) ? "text-sky-600 font-bold" : ""
                 )}
                 value={r.item}
                 spellCheck={false}
+                title={(() => { const o = dirty.get(r.seq)?.원본항목 ?? r.원본항목; return o ? `원본: ${o}` : undefined })()}
                 onChange={e => editRow(activeRec, r.seq, { item: e.target.value })}
               />
               {r.원본항목 && !dirty.has(r.seq) && (
                 <span title={`원본: ${r.원본항목}`}
-                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-amber-100 text-amber-700 font-medium select-none">수정</span>
+                  className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
               )}
-              {(() => {
-                const origText  = r.원본항목 ?? r.item
-                const dupeCount = origText ? (itemDupeMap.get(origText) ?? 0) : 0
-                return dupeCount > 1 ? (
-                  <span
-                    title={`이 항목명("${origText}")이 이 레코드에 ${dupeCount}개 있습니다.\n수정 시 같은 원본 항목명을 가진 행 모두에 동일하게 반영됩니다.`}
-                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-orange-100 text-orange-600 font-medium select-none cursor-help ml-0.5">중복</span>
-                ) : null
-              })()}
             </div>
           </td>
           {/* 데이터타입 */}
@@ -798,13 +872,138 @@ export function HwpStep() {
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-4">
 
+      {/* 파싱 변환 로그 모달 */}
+      {parseLogOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setParseLogOpen(false)} />
+          <div
+            className="fixed z-[51] flex flex-col bg-background rounded-lg shadow-2xl border border-border overflow-hidden"
+            style={{ left: logPos.x, top: logPos.y, width: logSize.w, height: logSize.h }}
+          >
+            {/* 드래그 핸들 (헤더) */}
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 shrink-0 cursor-grab active:cursor-grabbing select-none"
+              onMouseDown={e => {
+                e.preventDefault()
+                logDragRef.current = { type: "drag", ox: e.clientX, oy: e.clientY, px: logPos.x, py: logPos.y }
+              }}
+            >
+              <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+                <span className="font-semibold text-sm">파싱 변환 로그 — {activeRec}레코드 ({year})</span>
+                <button
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={() => setLogicOpen(v => !v)}
+                  className="pointer-events-auto shrink-0 flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <span>{logicOpen ? "▾" : "▸"}</span>
+                  <span>변환 로직</span>
+                </button>
+              </div>
+              <button
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => setParseLogOpen(false)}
+                className="pointer-events-auto p-1 rounded hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {logicOpen && (
+              <div className="px-4 py-2.5 border-b bg-muted/30 text-[11px] text-muted-foreground space-y-0.5 shrink-0">
+                <div>① HWP 아티팩트 · 제어문자 · 보이지 않는 문자 제거 <span className="font-mono">(\x00-\x1F, ​-‏, ㅤ 등)</span></div>
+                <div>② 선행 한자 접두사 제거 <span className="font-mono">(一-鿿)</span></div>
+                <div>③ 선행 원문자 제거 <span className="font-mono">(①-⒇)</span></div>
+                <div>④ <span className="font-mono">-원문자 / -가나다</span> 마커 제거 — 단어 내부 <span className="font-mono">(-사립)</span> 등은 제외</div>
+                <div>⑤ 숫자 접두 필드 마커 제거 <span className="font-mono">(-5 G01… → G01…)</span></div>
+                <div>⑥ 원형 한글 접두 마커 제거 <span className="font-mono">(-㉮공적연금… → 공적연금…)</span></div>
+                <div>⑦ 최종 공백 전체 제거</div>
+              </div>
+            )}
+
+            <div className="overflow-auto flex-1">
+              {parseLogLoading ? (
+                <div className="flex items-center justify-center py-10 text-muted-foreground text-sm gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> 불러오는 중…
+                </div>
+              ) : (() => {
+                const filtered = parseLogs.filter(l => l.recordType === activeRec)
+                return filtered.length === 0 ? (
+                  <div className="py-10 text-center text-muted-foreground text-sm">변환 로그가 없습니다.</div>
+                ) : (
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 bg-muted">
+                      <tr>
+                        <th className="px-2 py-1.5 border-b border-r text-center w-14">코드</th>
+                        <th className="px-2 py-1.5 border-b border-r text-left">원본</th>
+                        <th className="px-2 py-1.5 border-b text-left">변환값</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filtered.map((l, i) => {
+                        const sel = parseLogSelIdx === i
+                        return (
+                          <tr key={i}
+                            onClick={() => setParseLogSelIdx(sel ? null : i)}
+                            className={cn("cursor-pointer transition-colors", sel ? "bg-blue-100" : "hover:bg-muted")}
+                          >
+                            <td className="px-2 py-1.5 border-r text-center font-mono">{l.code}</td>
+                            <td className="px-2 py-1.5 border-r break-all">
+                              {diffOrig(l.origText, l.cleanText).map((seg, si) =>
+                                seg.removed
+                                  ? <span key={si} className="bg-red-100 text-red-600 line-through rounded-sm">{seg.text}</span>
+                                  : <span key={si} className="text-muted-foreground">{seg.text}</span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1.5 break-all">{l.cleanText ?? <span className="text-muted-foreground/50 italic">삭제됨</span>}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )
+              })()}
+            </div>
+
+            {/* 리사이즈 핸들 (4방향 모서리) */}
+            {(["n","s","e","w"] as const).map(dir => (
+              <div key={dir}
+                className={cn("absolute z-10",
+                  dir === "n" && "top-0    left-2  right-2 h-1 cursor-n-resize",
+                  dir === "s" && "bottom-0 left-2  right-2 h-1 cursor-s-resize",
+                  dir === "w" && "left-0   top-2 bottom-2  w-1 cursor-w-resize",
+                  dir === "e" && "right-0  top-2 bottom-2  w-1 cursor-e-resize",
+                )}
+                onMouseDown={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  logDragRef.current = { type: "resize", dir, ox: e.clientX, oy: e.clientY, px: logPos.x, py: logPos.y, pw: logSize.w, ph: logSize.h }
+                }}
+              />
+            ))}
+            {(["nw","ne","sw","se"] as const).map(dir => (
+              <div key={dir}
+                className={cn("absolute z-10 w-3 h-3",
+                  dir === "nw" && "top-0    left-0  cursor-nw-resize",
+                  dir === "ne" && "top-0    right-0 cursor-ne-resize",
+                  dir === "sw" && "bottom-0 left-0  cursor-sw-resize",
+                  dir === "se" && "bottom-0 right-0 cursor-se-resize",
+                )}
+                onMouseDown={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  logDragRef.current = { type: "resize", dir, ox: e.clientX, oy: e.clientY, px: logPos.x, py: logPos.y, pw: logSize.w, ph: logSize.h }
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
       {/* 업로드 — 한 줄 */}
       <div className="flex items-center gap-2">
 
         {/* 귀속연도 */}
         <select
           value={year}
-          onChange={e => setYear(parseInt(e.target.value))}
+          onChange={e => { setYear(parseInt(e.target.value)); setParseLogs([]) }}
           className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0"
         >
           {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
@@ -889,6 +1088,7 @@ export function HwpStep() {
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                           <li>귀속연도 선택 후 HWP 파일을 클릭하여 선택 → <strong className="text-foreground">업로드</strong></li>
                           <li>레코드 탭(A~K)에서 각 레코드의 항목 목록 확인</li>
+                          <li>서식항목 헤더의 <span className="inline-flex items-center gap-0.5 font-medium text-foreground">🗂 아이콘</span> 클릭 → 파싱 변환 로그 확인 (원본→변환값)</li>
                           <li>구조설정에서 Header / Body / Footer 구간 지정 후 <strong className="text-foreground">설정 적용</strong></li>
                           <li>번호·서식항목 셀을 클릭해 직접 수정 → <strong className="text-foreground">저장</strong></li>
                           <li>세법개정 등 주의 항목은 서식항목 앞 <span className="text-yellow-500 font-medium">📄 아이콘</span> 클릭 → 메모 작성 → <strong className="text-foreground">저장</strong></li>
@@ -905,7 +1105,7 @@ export function HwpStep() {
                           </thead>
                           <tbody className="divide-y">
                             <tr><td className="px-2 py-1.5 border-r font-medium">번호 ✎</td><td className="px-2 py-1.5 text-muted-foreground">레코드 항목 코드 (예: A01) — 직접 수정 가능</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-medium">서식항목 ✎</td><td className="px-2 py-1.5 text-muted-foreground">항목명 — 직접 수정 가능. 좌측 <span className="text-yellow-500">📄</span> 아이콘으로 주목 메모 추가</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">서식항목 ✎ 🗂</td><td className="px-2 py-1.5 text-muted-foreground">항목명 — 직접 수정 가능. 좌측 <span className="text-yellow-500">📄</span> 주목 메모 / 우측 🗂 클릭 시 파싱 변환 로그 팝업</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">데이터타입</td><td className="px-2 py-1.5 text-muted-foreground">HWP에서 파싱된 데이터 유형</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">길이</td><td className="px-2 py-1.5 text-muted-foreground">필드 바이트 길이</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium">누적(HWP)</td><td className="px-2 py-1.5 text-muted-foreground">HWP 원본 누적 바이트</td></tr>
@@ -947,7 +1147,7 @@ export function HwpStep() {
                           <li>OLE(CFB) → BodyText 섹션 → UTF-16LE 텍스트 추출 (압축 시 zlib 해제)</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">제1절 근로소득</span> 영역만 파싱, 제2절 이상 감지 시 중단</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">A레코드【</span> 패턴으로 레코드 전환, 항목번호→항목명→타입→누적 순서로 행 구성. GUBUN(【...】) 추출 시 내부 공백 전체 제거 후 저장</li>
-                          <li>파싱 결과 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveHwpFile()</span> → MLAY_HWP_FILE + MLAY_TAX INSERT</li>
+                          <li>파싱 결과 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveHwpFile()</span> → MLAY_HWP_FILE + MLAY_TAX INSERT. 원본과 달라진 항목명은 MLAY_HWP_PARSE_LOG에 저장</li>
                           <li>화면에서 번호·서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../tax-rows</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows()</span> → MLAY_TAX_EDIT MERGE</li>
                           <li>구조설정 적용 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PUT /api/.../sect-config</span> → MLAY_SECT_CONFIG 저장 + MLAY_TAX.SECT 갱신</li>
                           <li><strong className="text-foreground">구간 자동설정</strong> — 전체 레코드를 순회하며 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">detectInterval()</span>으로 반복 구간 감지 후 병렬 저장</li>
@@ -968,6 +1168,7 @@ export function HwpStep() {
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→TAX), CODE, ITEM, ORG_CODE, ORG_ITEM — 수정값 + HWP 원본값 보존</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_SECT_CONFIG</td><td className="px-2 py-1.5 text-muted-foreground">RECORD, TARGET, SECT_MODE, BODY_START, BODY_END, REPEAT_COUNT — 섹션 구조 설정</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_ITEM_NOTE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, CODE, MEMO, IS_DONE, COLOR — 항목별 주목 메모</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_HWP_PARSE_LOG</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, CODE, LOG_SEQ, ORIG_TEXT, CLEAN_TEXT — 항목명 파싱 변환 로그. 재업로드 시 초기화</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -981,7 +1182,8 @@ export function HwpStep() {
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows()</span> — MLAY_TAX_EDIT MERGE INTO. ORG_CODE/ORG_ITEM은 최초 수정 시 한 번만 기록, 이후 덮어쓰지 않음</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">detectInterval(rows)</span> — item을 앵커로 반복 구간 자동 감지. ① 동일 item이 복수 등장하는 위치로 unitLen 산출 ② fieldLen 시퀀스 일치로 반복 횟수 검증 ③ 앞으로 확장하여 진짜 bodyStart 탐색. 공란·예비 등 패딩 item은 앵커에서 제외</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyBulk()</span> (클라이언트) — bodyStart·bodyEnd·divideBy로 행별 SECT 계산 후 서버에 일괄 저장. MLAY_SECT_CONFIG와 동기화 필수</li>
-                          <li>재업로드 시 MLAY_HWP_FILE CASCADE DELETE → MLAY_TAX·MLAY_TAX_EDIT·MLAY_TAX_JAVA_MAP 전체 삭제됨</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">cleanText()</span> 변환 파이프라인 — ① HWP 아티팩트·제어문자·보이지 않는 문자 제거 ② 한자 접두사 제거 ③ ①-⒇ 원문자 제거 ④ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">-가나다</span> 마커 제거(단어 내부 제외) ⑤ 숫자 접두 마커 제거(<span className="font-mono text-[10px] bg-muted px-0.5 rounded">-5 G01→G01</span>) ⑥ 원형 한글 마커 제거(<span className="font-mono text-[10px] bg-muted px-0.5 rounded">-㉮→</span>) ⑦ 최종 공백 전체 제거. 변환 전후가 다른 경우 MLAY_HWP_PARSE_LOG에 기록</li>
+                          <li>재업로드 시 MLAY_HWP_FILE CASCADE DELETE → MLAY_TAX·MLAY_TAX_EDIT·MLAY_TAX_JAVA_MAP·MLAY_HWP_PARSE_LOG 전체 삭제됨</li>
                         </ul>
                       </div>
                     </>
@@ -1122,6 +1324,13 @@ export function HwpStep() {
                         <span className="flex items-center gap-1">
                           <FileText className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
                           서식항목 <span className="text-muted-foreground/50 inline-block" style={{transform:"scaleX(-1)"}}>✎</span>
+                          <button
+                            onClick={e => { e.stopPropagation(); handleParseLogOpen() }}
+                            title="파싱 변환 로그"
+                            className="ml-0.5 p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <Table2 className="w-3.5 h-3.5" />
+                          </button>
                         </span>
                       </th>
                       <th className="px-2 py-1.5 border-b border-r text-center">데이터타입</th>

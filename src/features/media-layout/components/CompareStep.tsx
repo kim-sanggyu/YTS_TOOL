@@ -29,8 +29,9 @@ function applySectConfig(
   rows: (TaxLayoutRow | null)[],
   cfg: TaxSectConfigRow | null,
 ): (TaxLayoutRow | null)[] {
-  if (!cfg || cfg.sectMode === "body") return rows.map(r => (r ? { ...r, sect: "BODY_1" } : null))
-  const { bodyStart, bodyEnd, repeatCount } = cfg
+  if (!cfg || cfg.sectMode === "body" || cfg.bodyStart == null || cfg.bodyEnd == null || cfg.repeatCount == null)
+    return rows.map(r => (r ? { ...r, sect: "BODY_1" } : null))
+  const { bodyStart, bodyEnd, repeatCount } = cfg as { bodyStart: number; bodyEnd: number; repeatCount: number }
   const bodyLen = Math.max(1, bodyEnd - bodyStart + 1)
   return rows.map((r, i) => {
     if (!r) return null
@@ -364,7 +365,7 @@ export function CompareStep() {
               <th className="px-1 py-1.5 border-b border-r bg-muted text-center w-8">#</th>
               {/* 전산매체 (기준, 고정) */}
               <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-16">번호</th>
-              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">서식항목</th>
+              <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left w-36">서식항목</th>
               <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center w-20">타입(길이)</th>
               <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center w-14">누적</th>
               {/* 조작 */}
@@ -423,8 +424,8 @@ export function CompareStep() {
                     <td className="px-2 py-1 border-r font-mono font-semibold text-center">
                       {tax?.코드 ?? ""}
                     </td>
-                    <td className="px-2 py-1 border-r truncate max-w-[180px]" title={tax?.항목}>
-                      {tax?.항목 ?? ""}
+                    <td className="px-2 py-1 border-r max-w-0 overflow-hidden">
+                      <div className="break-all" title={tax?.항목 ?? ""}>{tax?.항목 ?? ""}</div>
                     </td>
                     <td className={`px-2 py-1 border-r text-center font-mono ${hasMismatch ? "text-red-600 font-bold" : ""}`}>
                       {tax ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
@@ -472,7 +473,7 @@ export function CompareStep() {
                     </td>
 
                     {/* Java 소스 */}
-                    <td className="px-2 py-1 border-r font-mono min-w-[300px]">
+                    <td className="px-2 py-1 border-r font-mono min-w-[300px] overflow-hidden">
                       {isD ? (
                         <span className="line-through text-red-400 whitespace-pre select-none text-[11px]">
                           {alignedRaws[i]}

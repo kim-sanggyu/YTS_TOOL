@@ -68,9 +68,9 @@ export interface TaxSectConfigRow {
   record:      string
   target:      "TAX" | "JAVA"
   sectMode:    "body" | "hbf"
-  bodyStart:   number
-  bodyEnd:     number
-  repeatCount: number
+  bodyStart:   number | null
+  bodyEnd:     number | null
+  repeatCount: number | null
 }
 
 // ── 내부 헬퍼 ─────────────────────────────────────────────────
@@ -142,7 +142,7 @@ export async function saveHwpFile(
   filePath:  string | null,
   hwpData:   Buffer,
   fields:    HwpField[],
-  parseLogs: { origText: string; cleanText: string }[] = [],
+  parseLogs: { recordType: string; code: string; origText: string; cleanText: string }[] = [],
 ): Promise<void> {
   await withConnection("ytts", async (conn) => {
     // 기존 데이터 삭제 (MLAY_TAX CASCADE)
@@ -218,9 +218,9 @@ export async function saveHwpFile(
     // 파싱 변환 로그 저장
     if (parseLogs.length > 0) {
       await conn.executeMany(
-        `INSERT INTO MLAY_HWP_PARSE_LOG (YEAR, USER_ID, LOG_SEQ, ORIG_TEXT, CLEAN_TEXT)
-         VALUES (:1, :2, :3, :4, :5)`,
-        parseLogs.map((l, i) => [year, userId, i + 1, l.origText.slice(0, 2000), (l.cleanText || null)?.slice(0, 2000)])
+        `INSERT INTO MLAY_HWP_PARSE_LOG (YEAR, USER_ID, LOG_SEQ, RECORD_TYPE, CODE, ORIG_TEXT, CLEAN_TEXT)
+         VALUES (:1, :2, :3, :4, :5, :6, :7)`,
+        parseLogs.map((l, i) => [year, userId, i + 1, l.recordType, l.code, l.origText.slice(0, 2000), (l.cleanText || null)?.slice(0, 2000)])
       )
     }
   })
@@ -291,7 +291,7 @@ export async function saveJavaFile(
 export async function getAllJavaRows(year: number, userId: number): Promise<JavaRow[]> {
   const rows = await yttsDb.query<Record<string, unknown>>(
     `SELECT SEQ, RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER
-     FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 ORDER BY SEQ`,
+     FROM MLAY_JAVA WHERE YEAR = :1 AND USER_ID = :2 AND LINE_NO != 0 ORDER BY SEQ`,
     [year, userId]
   )
   return rows.map(r => ({
@@ -1029,6 +1029,7 @@ export async function getMediaSummary(year: number, userId: number): Promise<{
       `SELECT J.RECORD_TYPE, SUM(NVL(J.FIELD_LEN,0)) AS BYTES
        FROM MLAY_JAVA J
        WHERE J.YEAR = :1 AND J.USER_ID = :2
+         AND J.LINE_NO != 0
          AND NOT EXISTS (
            SELECT 1 FROM MLAY_TAX_JAVA_MAP M
            WHERE M.YEAR = :1 AND M.USER_ID = :2
@@ -1075,6 +1076,33 @@ function toNoteRow(r: Record<string, unknown>): ItemNoteRow {
     color:      (r.COLOR      as string) ?? "yellow",
     createdAt:  (r.CREATED_AT as string) ?? "",
     updatedAt:  (r.UPDATED_AT as string) ?? "",
+  }
+}
+
+export interface ParseLogEntry {
+  recordType: string
+  code:       string
+  origText:   string
+  cleanText:  string | null
+}
+
+export async function getParseLogs(year: number, userId: number): Promise<ParseLogEntry[]> {
+  try {
+    const rows = await yttsDb.query<Record<string, unknown>>(
+      `SELECT RECORD_TYPE, CODE, ORIG_TEXT, CLEAN_TEXT
+       FROM MLAY_HWP_PARSE_LOG
+       WHERE YEAR = :1 AND USER_ID = :2
+       ORDER BY LOG_SEQ`,
+      [year, userId]
+    )
+    return rows.map(r => ({
+      recordType: String(r["RECORD_TYPE"] ?? ""),
+      code:       String(r["CODE"] ?? ""),
+      origText:   String(r["ORIG_TEXT"] ?? ""),
+      cleanText:  r["CLEAN_TEXT"] != null ? String(r["CLEAN_TEXT"]) : null,
+    }))
+  } catch {
+    return []
   }
 }
 

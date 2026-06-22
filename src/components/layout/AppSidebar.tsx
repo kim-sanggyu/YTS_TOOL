@@ -41,7 +41,7 @@ const navGroups: NavGroup[] = [
     children: [
       { title: ".hwp파일 업로드",    href: "/tools/hwp-layout",    icon: FileSearch },
       { title: ".java소스 업로드",   href: "/tools/java-layout",   icon: FileCode },
-      { title: "전산매체 비교·검증", href: "/tools/media-layout",  icon: GitCompare },
+      { title: "전산매체 비교·편집", href: "/tools/media-layout",  icon: GitCompare },
       { title: "전산매체 소스 생성", href: "/tools/media-generate", icon: Code2 },
       { title: "전산매체 파일 검증", href: "/tools/data-verify",   icon: Database,  disabled: true },
     ],

@@ -15,8 +15,9 @@ const RECORD_TYPES = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K"]
 // ── 섹션 적용 (미리보기용) ────────────────────────────────────
 
 function applySect(raw: TaxLayoutRow[], cfg: TaxSectConfigRow | null): TaxLayoutRow[] {
-  if (!cfg || cfg.sectMode === "body") return raw.map(r => ({ ...r, sect: "BODY_1" }))
-  const { bodyStart, bodyEnd, repeatCount } = cfg
+  if (!cfg || cfg.sectMode === "body" || cfg.bodyStart == null || cfg.bodyEnd == null || cfg.repeatCount == null)
+    return raw.map(r => ({ ...r, sect: "BODY_1" }))
+  const { bodyStart, bodyEnd, repeatCount } = cfg as { bodyStart: number; bodyEnd: number; repeatCount: number } & typeof cfg
   const bodyLen = Math.max(1, bodyEnd - bodyStart + 1)
   return raw.map((r, i) => {
     const rowNum = i + 1

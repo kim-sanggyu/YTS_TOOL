@@ -229,8 +229,8 @@ export function JavaStep() {
       nodes.push(
         <tr key={r.seq} onClick={() => setSelectedSeq(isSelected ? null : r.seq)}
           className={cn("border-b hover:brightness-95 transition-colors cursor-pointer", rowBg)}>
-          {/* 번호 */}
-          <td className="px-2 py-1 border-r font-mono font-semibold text-xs text-center">{r.code}</td>
+          {/* SEQ */}
+          <td className="px-2 py-1 border-r font-mono text-xs text-center text-muted-foreground">{r.seq}</td>
           {/* 항목명 */}
           <td className="px-2 py-0.5 border-r text-xs">{r.item}</td>
           {/* makeStr */}
@@ -467,7 +467,7 @@ export function JavaStep() {
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
-                      <th className="px-2 py-1.5 border-b border-r text-center w-20">번호</th>
+                      <th className="px-2 py-1.5 border-b border-r text-center w-16">SEQ</th>
                       <th className="px-2 py-1.5 border-b border-r text-left min-w-[120px]">서식항목</th>
                       <th className="px-2 py-1.5 border-b border-r text-left">makeStr</th>
                       <th className="px-1 py-1.5 border-b border-r text-center w-10">타입</th>

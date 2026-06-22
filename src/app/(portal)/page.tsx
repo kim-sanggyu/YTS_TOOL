@@ -8,7 +8,7 @@ const tools = [
   // 전산매체
   { id: "hwp-layout",     name: ".hwp파일 업로드",     href: "/tools/hwp-layout",    icon: FileSearch,     status: "active" as const },
   { id: "java-layout",    name: ".java소스 업로드",     href: "/tools/java-layout",   icon: FileCode,       status: "active" as const },
-  { id: "media-layout",   name: "전산매체 비교·검증",   href: "/tools/media-layout",  icon: GitCompare,     status: "active" as const },
+  { id: "media-layout",   name: "전산매체 비교·편집",   href: "/tools/media-layout",  icon: GitCompare,     status: "active" as const },
   { id: "media-generate", name: "전산매체 소스 생성",   href: "/tools/media-generate", icon: Code2,         status: "active" as const },
   { id: "data-verify",    name: "전산매체 파일 검증",   href: "/tools/data-verify",   icon: Database,       status: "coming" as const },
   // 세액계산
