@@ -24,7 +24,6 @@ function taxSectBg(sect: string, isHbf: boolean) {
 
 // ── 섹션 구분선 ───────────────────────────────────────────────
 
-
 function SectSep({ sect, colSpan }: { sect: string; colSpan: number }) {
   const num  = bodyIdx(sect)
   const isH  = sect === "header"
@@ -72,17 +71,115 @@ function alignMakeStrs(strs: string[]): string[] {
   })
 }
 
-// ── JavaSlot ─────────────────────────────────────────────────
+// ── EditOp: D/I 편집 연산 (추가/제거만, 배열 수정 없음) ──────
 
-interface JavaSlot {
-  field:     JavaField | null
-  cmd:       "D" | "I" | null
-  editedRaw: string
-  loadedRaw: string   // 로드 시점 값 — 세션 중 변경 안 됨 (M 복원 감지용)
-  fromDB:    boolean  // true = MLAY_TAX_JAVA_MAP에서 로드된 이미 저장된 D/I
+type EditOp =
+  | { id: string; type: 'D'; javaSeq: number; fromDB: boolean }
+  | { id: string; type: 'I'; afterJavaSeq: number | null; editedRaw: string; fromDB: boolean }
+
+// ── DisplayRow: computeDisplay의 파생 결과 ────────────────────
+
+interface DisplayRow {
+  key:        string
+  opId:       string | null
+  tax:        TaxLayoutRow | null
+  java:       JavaField | null
+  cmd:        'D' | 'I' | null
+  editedRaw:  string
+  loadedRaw:  string
+  fromDB:     boolean
+  isOverflow: boolean
 }
 
-// ── 구조 분석 (taxItems 기준) ─────────────────────────────────
+// ── applySectConfig ───────────────────────────────────────────
+
+function applySectConfig(rows: (TaxLayoutRow | null)[], cfg: TaxSectConfigRow | null): (TaxLayoutRow | null)[] {
+  if (!cfg || cfg.sectMode === "body" || cfg.bodyStart == null || cfg.bodyEnd == null || cfg.repeatCount == null)
+    return rows.map(r => r ? { ...r, sect: "header" } : null)
+  const { bodyStart, bodyEnd, repeatCount } = cfg as { bodyStart: number; bodyEnd: number; repeatCount: number } & typeof cfg
+  const unitLen = Math.max(1, Math.floor(Math.max(1, bodyEnd - bodyStart + 1) / repeatCount))
+  let taxN = 0
+  return rows.map((r) => {
+    if (!r) return null
+    taxN++
+    if (taxN < bodyStart) return { ...r, sect: "header" }
+    const off = taxN - bodyStart
+    const bn  = Math.min(repeatCount, Math.floor(off / unitLen) + 1)
+    if (taxN <= bodyEnd) return { ...r, sect: `body_${bn}` }
+    return { ...r, sect: "footer" }
+  })
+}
+
+// ── computeDisplay: baseTax + baseJava + ops → DisplayRow[] ──
+
+function computeDisplay(
+  baseTax:  TaxLayoutRow[],
+  baseJava: JavaField[],
+  ops:      EditOp[],
+  mEdits:   Map<number, string>,
+  mLoaded:  Map<number, string>,
+  cfg:      TaxSectConfigRow | null,
+): DisplayRow[] {
+  const deletedSeqs = new Set(
+    ops.filter(o => o.type === 'D').map(o => (o as {type:'D';javaSeq:number}).javaSeq)
+  )
+  const insertMap = new Map<number | null, (EditOp & {type:'I'})[]>()
+  for (const op of ops) {
+    if (op.type !== 'I') continue
+    const k = op.afterJavaSeq
+    if (!insertMap.has(k)) insertMap.set(k, [])
+    insertMap.get(k)!.push(op as EditOp & {type:'I'})
+  }
+
+  type JEntry =
+    | { kind: 'existing'; java: JavaField }
+    | { kind: 'deleted';  java: JavaField; opId: string; fromDB: boolean }
+    | { kind: 'inserted'; op: EditOp & {type:'I'} }
+
+  const jSeq: JEntry[] = []
+  for (const op of (insertMap.get(null) ?? [])) jSeq.push({ kind: 'inserted', op })
+  for (const j of baseJava) {
+    if (deletedSeqs.has(j.seq)) {
+      const dOp = ops.find(o => o.type === 'D' && (o as any).javaSeq === j.seq)!
+      jSeq.push({ kind: 'deleted', java: j, opId: dOp.id, fromDB: dOp.fromDB })
+    } else {
+      jSeq.push({ kind: 'existing', java: j })
+    }
+    for (const op of (insertMap.get(j.seq) ?? [])) jSeq.push({ kind: 'inserted', op })
+  }
+
+  const rawTaxItems: (TaxLayoutRow | null)[] = []
+  const partials: Omit<DisplayRow, 'tax' | 'isOverflow'>[] = []
+  let taxIdx = 0
+
+  for (const entry of jSeq) {
+    if (entry.kind === 'deleted') {
+      rawTaxItems.push(null)
+      partials.push({ key: entry.opId, opId: entry.opId, java: entry.java, cmd: 'D', editedRaw: entry.java.raw, loadedRaw: entry.java.raw, fromDB: entry.fromDB })
+    } else if (entry.kind === 'inserted') {
+      rawTaxItems.push(baseTax[taxIdx] ?? null)
+      taxIdx++
+      const raw = entry.op.editedRaw
+      partials.push({ key: entry.op.id, opId: entry.op.id, java: null, cmd: 'I', editedRaw: raw, loadedRaw: raw, fromDB: entry.op.fromDB })
+    } else {
+      rawTaxItems.push(baseTax[taxIdx] ?? null)
+      taxIdx++
+      const raw    = mEdits.get(entry.java.seq) ?? entry.java.raw
+      const loaded = mLoaded.get(entry.java.seq) ?? entry.java.raw
+      partials.push({ key: `j${entry.java.seq}`, opId: null, java: entry.java, cmd: null, editedRaw: raw, loadedRaw: loaded, fromDB: false })
+    }
+  }
+  while (taxIdx < baseTax.length) {
+    const t = baseTax[taxIdx++]!
+    rawTaxItems.push(t)
+    partials.push({ key: `t${t.seq}-jnull`, opId: null, java: null, cmd: null, editedRaw: '', loadedRaw: '', fromDB: false })
+  }
+
+  const taxWithSect = applySectConfig(rawTaxItems, cfg)
+  return taxWithSect.map((tax, i) => ({ ...partials[i]!, tax, isOverflow: tax?.seq === 0 }))
+}
+
+// ── 구조 분석 ─────────────────────────────────────────────────
 
 function analyzeFromItems(items: (TaxLayoutRow | null)[]) {
   const rows   = items.filter(Boolean) as TaxLayoutRow[]
@@ -97,33 +194,29 @@ function analyzeFromItems(items: (TaxLayoutRow | null)[]) {
   return { isHbf: true as const, maxBody, headRows: headRows.length, body1Rows: body1Rows.length, footRows: footRows.length, bodyStart: body1Rows[0]?.코드 ?? "", bodyEnd: lastBodyRows.at(-1)?.코드 ?? "", total: rows.length }
 }
 
-// ── 구조 표시 + 오류 통계 (읽기전용) ────────────────────────────
+// ── 구조 표시 + 오류 통계 ─────────────────────────────────────
 
-function TaxSectInfo({ items, slots, rightContent }: { items: (TaxLayoutRow | null)[]; slots: JavaSlot[]; rightContent?: React.ReactNode }) {
-  const info = analyzeFromItems(items)
-  if (items.length === 0) return null
+function TaxSectInfo({ rows, rightContent }: { rows: DisplayRow[]; rightContent?: React.ReactNode }) {
+  const info = analyzeFromItems(rows.map(r => r.tax))
+  if (rows.length === 0) return null
 
-  // 오류 통계 (행 기준 — 한 행이 두 오류여도 1행으로 카운트)
-  const maxLen = Math.max(items.length, slots.length)
   let itemDiff = 0, typeDiff = 0
-  for (let i = 0; i < maxLen; i++) {
-    const tax  = items[i]
-    const slot = slots[i]
-    if (!tax || slot?.cmd === "D") continue
-    const parsed   = slot?.editedRaw ? parseMakeStr(slot.editedRaw) : null
-    const effDtype = parsed?.dtype ?? slot?.field?.dtype ?? ""
-    const effLen   = parsed?.len   ?? slot?.field?.len   ?? 0
-    if (slot?.cmd === "I") {
+  for (const row of rows) {
+    const { tax, cmd, editedRaw, java, isOverflow } = row
+    if (!tax || cmd === "D" || isOverflow) continue
+    const parsed   = editedRaw ? parseMakeStr(editedRaw) : null
+    const effDtype = parsed?.dtype ?? java?.dtype ?? ""
+    const effLen   = parsed?.len   ?? java?.len   ?? 0
+    if (cmd === "I") {
       if (effDtype && effLen && (tax.타입 !== effDtype || tax.길이 !== effLen)) typeDiff++
       continue
     }
-    if (!slot?.field) continue
-    if (tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')) itemDiff++
+    if (!java) continue
+    if (tax.항목?.replace(/\s+/g, '') !== java.name?.replace(/\s+/g, '')) itemDiff++
     if (effDtype && effLen && (tax.타입 !== effDtype || tax.길이 !== effLen)) typeDiff++
   }
 
-  // 0이어도 항상 뱃지 표시 — 검증 완료 여부를 한눈에 확인
-  const errBadge = maxLen > 0 ? (
+  const errBadge = rows.length > 0 ? (
     <span className="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
       <span className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold",
@@ -150,7 +243,7 @@ function TaxSectInfo({ items, slots, rightContent }: { items: (TaxLayoutRow | nu
       </div>
     )
   }
-  const recLetter = items.find(Boolean)?.코드[0] ?? ""
+  const recLetter = rows.find(r => r.tax)?.tax?.코드[0] ?? ""
   const toNum = (code: string) => code.startsWith(recLetter) ? code.slice(recLetter.length) : code
   return (
     <div className="flex items-center gap-3 text-xs bg-muted/30 px-3 py-2 border-b text-muted-foreground flex-wrap">
@@ -171,27 +264,6 @@ function TaxSectInfo({ items, slots, rightContent }: { items: (TaxLayoutRow | nu
   )
 }
 
-// ── applySectConfig ───────────────────────────────────────────
-
-function applySectConfig(rows: (TaxLayoutRow | null)[], cfg: TaxSectConfigRow | null): (TaxLayoutRow | null)[] {
-  if (!cfg || cfg.sectMode === "body" || cfg.bodyStart == null || cfg.bodyEnd == null || cfg.repeatCount == null)
-    return rows.map(r => r ? { ...r, sect: "header" } : null)
-  const { bodyStart, bodyEnd, repeatCount } = cfg as { bodyStart: number; bodyEnd: number; repeatCount: number } & typeof cfg
-  // HwpStep의 applyBulk와 동일하게: 전체 body 범위를 repeatCount로 나눠 1개 단위 길이 계산
-  const unitLen = Math.max(1, Math.floor(Math.max(1, bodyEnd - bodyStart + 1) / repeatCount))
-  // D 행(tax=null)은 tax 위치 카운트에서 제외
-  let taxN = 0
-  return rows.map((r) => {
-    if (!r) return null
-    taxN++
-    if (taxN < bodyStart) return { ...r, sect: "header" }
-    const off = taxN - bodyStart
-    const bn  = Math.min(repeatCount, Math.floor(off / unitLen) + 1)
-    if (taxN <= bodyEnd) return { ...r, sect: `body_${bn}` }
-    return { ...r, sect: "footer" }
-  })
-}
-
 // ── MediaStep ─────────────────────────────────────────────────
 
 export function MediaStep() {
@@ -207,7 +279,6 @@ export function MediaStep() {
   // 주목 노트
   const [notes,              setNotes]              = useState<Record<string, ItemNoteRow>>({})
   const [openNoteKey,        setOpenNoteKey]        = useState<string | null>(null)
-  const [hasCancelledFromDB, setHasCancelledFromDB] = useState(false)
   const [showSeq,            setShowSeq]            = useState(false)
   const [isFullscreen,       setIsFullscreen]       = useState(false)
 
@@ -278,17 +349,35 @@ export function MediaStep() {
     await fetch(`/api/tools/media-layout/item-notes?year=${year}&record=${rec}&code=${encodeURIComponent(code)}`, { method: "DELETE" })
   }
 
-  const [activeRec,   setActiveRec]   = useState("A")
-  const [taxItems,    setTaxItems]    = useState<(TaxLayoutRow | null)[]>([])
-  const [javaSlots,   setJavaSlots]   = useState<JavaSlot[]>([])
-  const [sectConfig,     setSectConfig]     = useState<TaxSectConfigRow | null>(null)
-  const [comparing,   setComparing]   = useState(false)
-  const [generating,  setGenerating]  = useState(false)
-  const [dirtyTax,    setDirtyTax]    = useState<Map<string, { orgItem: string; item: string }>>(new Map()) // 코드 → {orgItem, item}
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  const [activeRec,    setActiveRec]    = useState("A")
+  const [sectConfig,   setSectConfig]   = useState<TaxSectConfigRow | null>(null)
+  const [comparing,    setComparing]    = useState(false)
+  const [generating,   setGenerating]   = useState(false)
+  const [dirtyTax,     setDirtyTax]     = useState<Map<string, { orgItem: string; item: string }>>(new Map())
+  const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
 
-  // 레코드별 비교 캐시 — 탭 전환 시 API 호출 없이 즉시 전환
-  type CachedRecord = { taxItems: (TaxLayoutRow | null)[]; javaSlots: JavaSlot[]; sectConfig: TaxSectConfigRow | null }
+  // ── ops 기반 상태 ─────────────────────────────────────────────
+  const [baseTax,  setBaseTax]  = useState<TaxLayoutRow[]>([])
+  const [baseJava, setBaseJava] = useState<JavaField[]>([])
+  const [ops,      setOps]      = useState<EditOp[]>([])
+  const [mEdits,   setMEdits]   = useState<Map<number, string>>(new Map())
+  const [mLoaded,  setMLoaded]  = useState<Map<number, string>>(new Map())
+
+  // displayRows: baseTax + baseJava + ops → 파생 뷰 (절대 직접 세트하지 않음)
+  const displayRows = useMemo(
+    () => computeDisplay(baseTax, baseJava, ops, mEdits, mLoaded, sectConfig),
+    [baseTax, baseJava, ops, mEdits, mLoaded, sectConfig]
+  )
+
+  // 레코드별 비교 캐시
+  type CachedRecord = {
+    baseTax:    TaxLayoutRow[]
+    baseJava:   JavaField[]
+    ops:        EditOp[]
+    mEdits:     Map<number, string>
+    mLoaded:    Map<number, string>
+    sectConfig: TaxSectConfigRow | null
+  }
   const [compareCache, setCompareCache] = useState<Record<string, CachedRecord>>({})
   const [saving,      setSaving]      = useState(false)
   const [saveMsg,     setSaveMsg]     = useState<{ ok: boolean; text: string } | null>(null)
@@ -306,23 +395,34 @@ export function MediaStep() {
 
   const recList = RECORD_TYPES.filter(r => compareCache[r])
 
-  // ── API 응답 → 캐시 항목 변환 헬퍼 ──────────────────────────
+  // ── API 응답 → ops 기반 캐시 항목 변환 ───────────────────────
 
-  function processCompareRows(rows: CompareRow[], cfg: TaxSectConfigRow | null): CachedRecord {
-    return {
-      taxItems:  applySectConfig(rows.map(r => r.tax), cfg),
-      javaSlots: rows.map(r => {
-        const raw = canonicalize(r.editedRaw ?? r.java?.raw ?? "")
-        return {
-          field:     r.java,
-          cmd:       (r.cmd === "D" || r.cmd === "I") ? r.cmd as "D" | "I" : null,
-          editedRaw: raw,
-          loadedRaw: raw,
-          fromDB:    r.cmd === "D" || r.cmd === "I",
-        }
-      }),
-      sectConfig: cfg,
+  function loadOpsFromRows(rows: CompareRow[], cfg: TaxSectConfigRow | null): CachedRecord {
+    const bt: TaxLayoutRow[] = []
+    const bj: JavaField[]    = []
+    const opList: EditOp[]   = []
+    const me = new Map<number, string>()
+    const ml = new Map<number, string>()
+    let lastJavaSeq: number | null = null
+
+    for (const row of rows) {
+      if (row.tax && row.tax.seq !== 0) bt.push(row.tax)
+      if (row.cmd === 'D' && row.java) {
+        bj.push(row.java)
+        lastJavaSeq = row.java.seq
+        opList.push({ id: crypto.randomUUID(), type: 'D', javaSeq: row.java.seq, fromDB: true })
+      } else if (row.cmd === 'I') {
+        const raw = canonicalize(row.editedRaw ?? '')
+        opList.push({ id: crypto.randomUUID(), type: 'I', afterJavaSeq: lastJavaSeq, editedRaw: raw, fromDB: true })
+      } else if (row.java && (row.java.lineNo ?? 0) !== 0) {
+        bj.push(row.java)
+        lastJavaSeq = row.java.seq
+        const raw  = canonicalize(row.editedRaw ?? row.java.raw ?? '')
+        const orig = canonicalize(row.java.raw ?? '')
+        if (raw !== orig) { me.set(row.java.seq, raw); ml.set(row.java.seq, raw) }
+      }
     }
+    return { baseTax: bt, baseJava: bj, ops: opList, mEdits: me, mLoaded: ml, sectConfig: cfg }
   }
 
   // ── 탭 스크롤 위치 복원 ──────────────────────────────────────
@@ -333,7 +433,7 @@ export function MediaStep() {
     setTimeout(() => { if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0 }, 0)
   }
 
-  // ── 전체 레코드 한 번에 로드 (마운트/연도 변경 시) ─────────────
+  // ── 전체 레코드 한 번에 로드 ──────────────────────────────────
 
   const loadAllCompare = useCallback(async (y: number) => {
     setComparing(true)
@@ -346,13 +446,13 @@ export function MediaStep() {
       if (!byRecord) { setCompareCache({}); return }
       const newCache: Record<string, CachedRecord> = {}
       for (const [rec, rd] of Object.entries(byRecord)) {
-        newCache[rec] = processCompareRows(rd.rows, rd.sectConfig)
+        newCache[rec] = loadOpsFromRows(rd.rows, rd.sectConfig)
       }
       setCompareCache(newCache)
     } finally { setComparing(false) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 단일 레코드 로드 (저장 후 캐시 갱신용) ──────────────────
+  // ── 단일 레코드 로드 ──────────────────────────────────────────
 
   const loadCompare = useCallback(async (y: number, rec: string): Promise<CachedRecord | null> => {
     setComparing(true)
@@ -361,21 +461,24 @@ export function MediaStep() {
       const data = await res.json()
       const rows: CompareRow[] = data.rows ?? []
       const cfg:  TaxSectConfigRow | null = data.sectConfig ?? null
-      const cached = processCompareRows(rows, cfg)
+      const cached = loadOpsFromRows(rows, cfg)
       setCompareCache(prev => ({ ...prev, [rec]: cached }))
       return cached
     } catch { return null }
     finally { setComparing(false) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 캐시 → 표시 상태 동기화 (activeRec 변경 or 캐시 갱신 시 자동 반영)
+  // 캐시 → 표시 상태 동기화
   useEffect(() => {
     const cached = compareCache[activeRec]
-    if (!cached) { setTaxItems([]); setJavaSlots([]); setSectConfig(null); return }
-    setSectConfig(cached.sectConfig)
-    setTaxItems(cached.taxItems)
-    setJavaSlots(cached.javaSlots)
-    setDirtyTax(new Map())
+    if (!cached) {
+      setBaseTax([]); setBaseJava([]); setOps([])
+      setMEdits(new Map()); setMLoaded(new Map()); setSectConfig(null)
+      return
+    }
+    setBaseTax(cached.baseTax); setBaseJava(cached.baseJava)
+    setOps(cached.ops); setMEdits(cached.mEdits); setMLoaded(cached.mLoaded)
+    setSectConfig(cached.sectConfig); setDirtyTax(new Map())
   }, [compareCache, activeRec])
 
   useEffect(() => {
@@ -383,7 +486,7 @@ export function MediaStep() {
     loadAllCompare(year)
   }, [year]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 모달 드래그 / 리사이즈 전역 핸들러 (ref 기반 — 렌더 없이 추적)
+  // 모달 드래그 / 리사이즈
   useEffect(() => {
     const MIN_W = 400, MIN_H = 280
     function onMove(e: MouseEvent) {
@@ -408,79 +511,28 @@ export function MediaStep() {
 
   // ── D / I 핸들러 ─────────────────────────────────────────────
 
-  function handleD(idx: number) {
-    const slot = javaSlots[idx]
-    if (!slot) return
-    if (slot.cmd === "D") {
-      if (slot.fromDB) setHasCancelledFromDB(true)
-      setTaxItems(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
-      setJavaSlots(prev => {
-        const restored = prev.map((j, i) => i === idx ? { ...j, cmd: null, fromDB: false } : j)
-        if (!slot.fromDB) return restored
-        // fromDB D 취소: MAP 저장 시 생긴 고아 null-java 슬롯(끝 부분)도 함께 제거
-        // (D 생성 → taxItems 1칸 증가 → MAP 저장 시 마지막에 {taxSeq=T, javaSeq=null} 행 추가됨)
-        let orphanIdx = -1
-        for (let k = restored.length - 1; k >= 0; k--) {
-          if (restored[k].field === null && restored[k].cmd === null) { orphanIdx = k; break }
-        }
-        if (orphanIdx === -1) return restored
-        return [...restored.slice(0, orphanIdx), ...restored.slice(orphanIdx + 1)]
-      })
-    } else if (taxItems[idx]?.seq === 0) {
-      // overflow 행: dummy(seq=0)를 null로 교체 (D 표시) — 새 null 삽입 안 함
-      setTaxItems(prev  => prev.map((t, i) => i === idx ? null : t))
-      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D" } : j))
-    } else if (!slot.fromDB) {
-      setTaxItems(prev  => [...prev.slice(0, idx), null, ...prev.slice(idx)])
-      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D" } : j))
-    }
+  function handleD(javaSeq: number) {
+    setOps(prev => [...prev, { id: crypto.randomUUID(), type: 'D', javaSeq, fromDB: false }])
   }
-
-  function handleI(idx: number) {
-    const slot = javaSlots[idx]
-    if (slot?.cmd === "I") {
-      if (slot.fromDB) setHasCancelledFromDB(true)
-
-      // 저장된 I-행(fromDB) 취소 시:
-      // ROW_TYPE='O' overflow(I 삽입으로 밀린 행)가 있으면 함께 제거, 없으면 I-슬롯만 제거
-      // D는 MAP에 독립적으로 저장되므로 I 취소와 무관
-      if (slot.fromDB) {
-        const overflowIdx = taxItems.findIndex((t, i) => i > idx && t?.seq === 0)
-        if (overflowIdx !== -1) {
-          setTaxItems(prev  => [...prev.slice(0, overflowIdx), ...prev.slice(overflowIdx + 1)])
-        }
-        setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
-      } else {
-        // I 취소: I-슬롯 제거. 삽입 시 overflow dummy를 추가했다면 함께 제거
-        setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
-        if (taxItems[taxItems.length - 1]?.seq === 0) {
-          setTaxItems(prev => prev.slice(0, -1))
-        }
-      }
-    } else if (!slot?.fromDB) {
-      // I 삽입으로 javaSlots이 taxItems를 초과하면 overflow dummy(seq=0) 추가
-      if (javaSlots.length >= taxItems.length) {
-        const lastSect = taxItems[taxItems.length - 1]?.sect ?? ''
-        setTaxItems(prev => [
-          ...prev,
-          { seq: 0, 구분: '', 코드: '', 항목: '', 값: '', sect: lastSect } as TaxLayoutRow,
-        ])
-      }
-      setJavaSlots(prev => [
-        ...prev.slice(0, idx),
-        { field: null, cmd: "I", editedRaw: "", loadedRaw: "", fromDB: false },
-        ...prev.slice(idx),
-      ])
-    }
+  function handleCancelD(opId: string) {
+    setOps(prev => prev.filter(o => o.id !== opId))
   }
-
-  function handleEdit(idx: number, raw: string) {
-    setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, editedRaw: raw } : j))
+  function handleI(afterJavaSeq: number | null) {
+    setOps(prev => [...prev, { id: crypto.randomUUID(), type: 'I', afterJavaSeq, editedRaw: '', fromDB: false }])
+  }
+  function handleCancelI(opId: string) {
+    setOps(prev => prev.filter(o => o.id !== opId))
+  }
+  function handleEditI(opId: string, raw: string) {
+    setOps(prev => prev.map(o => o.id === opId && o.type === 'I' ? { ...o, editedRaw: raw, fromDB: false } : o))
+    setSaveMsg(null)
+  }
+  function handleEditM(javaSeq: number, raw: string) {
+    setMEdits(prev => { const m = new Map(prev); m.set(javaSeq, raw); return m })
     setSaveMsg(null)
   }
 
   function handleTaxItemEdit(code: string, orgItem: string, item: string) {
-    setTaxItems(prev => prev.map(r => r?.코드 === code ? { ...r, 항목: item } : r))
     setDirtyTax(prev => {
       const next = new Map(prev)
       const existing = next.get(code)
@@ -493,8 +545,7 @@ export function MediaStep() {
   // ── 저장 ─────────────────────────────────────────────────────
 
   async function handleSave() {
-    // I 슬롯 유효성 검사 — 비어 있거나 makeStr 형식이 아니면 저장 차단
-    const badI = javaSlots.filter(s => s.cmd === "I" && (!s.editedRaw.trim() || !parseMakeStr(s.editedRaw)))
+    const badI = ops.filter(o => o.type === 'I' && (!o.editedRaw.trim() || !parseMakeStr(o.editedRaw)))
     if (badI.length > 0) {
       toast.error(`I 행 ${badI.length}건: makeStr 입력이 없거나 형식이 올바르지 않습니다.`)
       return
@@ -503,58 +554,43 @@ export function MediaStep() {
     try {
       const y = year
       const taxItemUpdates = Array.from(dirtyTax.entries()).map(([, { orgItem, item }]) => ({ recordType: activeRec, orgItem, item }))
-      const javaCodeUpdates = javaSlots
-        .filter(s => s.field && canonicalize(s.editedRaw) !== canonicalize(s.field.raw) && s.cmd !== "D" && s.cmd !== "I")
-        .map(s => ({ seq: s.field!.seq, javaCode: canonicalize(s.editedRaw) }))
-      // 원본으로 복원된 슬롯 — DB의 M 레코드 삭제 필요
-      const javaCodeResets = javaSlots.filter(s =>
-        s.field &&
-        canonicalize(s.editedRaw) === canonicalize(s.field.raw) &&
-        canonicalize(s.loadedRaw) !== canonicalize(s.field.raw) &&
-        s.cmd !== "D" && s.cmd !== "I"
-      ).map(s => ({ seq: s.field!.seq }))
-      // 새 D/I, 기존 I makeStr 변경, 또는 fromDB D/I 취소 시 MAP 전체 교체
-      const hasNewDI = hasCancelledFromDB || javaSlots.some(s =>
-        (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
-        (s.fromDB && s.cmd === "I" && canonicalize(s.editedRaw) !== canonicalize(s.loadedRaw))
-      )
-      const maxRow  = Math.max(taxItems.length, javaSlots.length)
-      const mapRows = hasNewDI
-        ? Array.from({ length: maxRow }, (_, i) => {
-            const tax  = taxItems[i]  ?? null
-            const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "", loadedRaw: "", fromDB: false }
-            // I 행(새것·기존 모두): javaSeq=null로 전달 → saveMap이 MLAY_JAVA에 삽입 후 SEQ 부여
-            const isI        = slot.cmd === "I"
-            const isD        = slot.cmd === "D"           // 사용자 D클릭 삭제
-            const isOverflow = tax?.seq === 0             // I 삽입 밀림 overflow
-            return {
+      const javaCodeUpdates: { seq: number; javaCode: string }[] = []
+      const javaCodeResets:  { seq: number }[] = []
+      for (const [seq, raw] of mEdits) {
+        const loaded = mLoaded.get(seq) ?? ''
+        if (canonicalize(raw) !== canonicalize(loaded)) javaCodeUpdates.push({ seq, javaCode: canonicalize(raw) })
+      }
+      for (const seq of mLoaded.keys()) {
+        if (!mEdits.has(seq)) javaCodeResets.push({ seq })
+      }
+      const hasOpsChange = ops.length > 0
+      const mapRows = hasOpsChange
+        ? displayRows
+            .map((r, i) => ({
               sortOrder:  i + 1,
               recordType: activeRec,
-              taxSeq:     isOverflow ? null : (tax?.seq ?? null),
-              javaSeq:    isI ? null : (slot.field?.seq ?? null),
-              editedRaw:  isI ? (slot.editedRaw || null) : null,
-              rowType:    isD ? 'D' : isOverflow ? 'O' : null,
-            }
-          }).filter(r => r.taxSeq !== null || r.javaSeq !== null)
+              taxSeq:     r.isOverflow ? null : (r.tax?.seq ?? null),
+              javaSeq:    r.cmd === 'I' ? null : (r.java?.seq ?? null),
+              editedRaw:  r.cmd === 'I' ? (r.editedRaw || null) : null,
+              rowType:    (r.cmd === 'D' ? 'D' : r.isOverflow ? 'O' : null) as 'D' | 'O' | null,
+            }))
+            .filter(r => r.taxSeq !== null || r.javaSeq !== null)
         : undefined
 
-      const res  = await fetch("/api/tools/media-layout/compare", {
+      const res = await fetch("/api/tools/media-layout/compare", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year: y, taxItemUpdates, javaCodeUpdates, javaCodeResets, mapRows }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      setHasCancelledFromDB(false)
       const total = (data.taxUpdated ?? 0) + (data.javaUpdated ?? 0) + (data.mapSaved ?? 0)
       setSaveMsg({ ok: true, text: `저장 완료 (${total}건)` })
       const newCached = await loadCompare(y, activeRec)
-      // saving=false 렌더 전에 javaSlots를 동기화해 hasChanges=false 보장
       if (newCached) {
-        setSectConfig(newCached.sectConfig)
-        setTaxItems(newCached.taxItems)
-        setJavaSlots(newCached.javaSlots)
-        setDirtyTax(new Map())
+        setBaseTax(newCached.baseTax); setBaseJava(newCached.baseJava)
+        setOps(newCached.ops); setMEdits(newCached.mEdits); setMLoaded(newCached.mLoaded)
+        setSectConfig(newCached.sectConfig); setDirtyTax(new Map())
       }
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
@@ -574,10 +610,9 @@ export function MediaStep() {
       setSaveMsg({ ok: true, text: `초기화 완료 (${data.deleted}건 삭제)` })
       const newCached = await loadCompare(year, activeRec)
       if (newCached) {
-        setSectConfig(newCached.sectConfig)
-        setTaxItems(newCached.taxItems)
-        setJavaSlots(newCached.javaSlots)
-        setDirtyTax(new Map())
+        setBaseTax(newCached.baseTax); setBaseJava(newCached.baseJava)
+        setOps(newCached.ops); setMEdits(newCached.mEdits); setMLoaded(newCached.mLoaded)
+        setSectConfig(newCached.sectConfig); setDirtyTax(new Map())
       }
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
@@ -585,107 +620,85 @@ export function MediaStep() {
     } finally { setSaving(false) }
   }
 
+  // ── body_1 → body_N 동기화 ────────────────────────────────────
+
   function handleCopyBody1ToAll() {
-    // ── 1단계: body_1 전체 행 수집 (D행 포함) ────────────────────
-    // D행: tax=null이지만 java 있음 → lastSect로 body_1 구간 판단
-    type BodyRow = { tax: TaxLayoutRow | null; slot: JavaSlot }
-    const body1All: BodyRow[] = []
-    const body1TaxList: TaxLayoutRow[] = []  // non-null tax (j번째 매핑)
-    const body1JavaList: JavaField[]    = []  // non-null java field (k번째 매핑, I행 제외)
-
+    const body1Rows: DisplayRow[] = []
     let lastSect = ""
-    for (let i = 0; i < taxItems.length; i++) {
-      const tax = taxItems[i]
-      if (tax !== null) lastSect = tax.sect
-      if ((tax?.sect ?? lastSect) !== "body_1") continue
-      const slot = javaSlots[i]
-      body1All.push({ tax, slot })
-      if (tax)              body1TaxList.push(tax)
-      if (slot?.field && slot.cmd !== "I") body1JavaList.push(slot.field)
+    for (const row of displayRows) {
+      if (row.tax?.sect) lastSect = row.tax.sect
+      if ((row.tax?.sect ?? lastSect) !== "body_1") continue
+      body1Rows.push(row)
     }
-    if (body1All.length === 0) return
+    if (body1Rows.length === 0) return
 
-    // ── 2단계: body_N별 구간 및 seq 정보 수집 ────────────────────
-    // start~end: body_N의 taxItems 배열 구간 [start, end)
-    // taxList  : non-null tax rows  → j번째 매핑 원본
-    // javaList : non-null java fields (I행 제외) → k번째 매핑 원본
-    type BodyInfo = { start: number; end: number; taxList: TaxLayoutRow[]; javaList: JavaField[] }
-    const bodyInfo = new Map<string, BodyInfo>()
-
+    type BodyInfo = { sect: string; rows: DisplayRow[] }
+    const bodyInfoMap = new Map<string, BodyInfo>()
     lastSect = ""
-    for (let i = 0; i < taxItems.length; i++) {
-      const tax = taxItems[i]
-      if (tax !== null) lastSect = tax.sect
-      const sect = tax?.sect ?? lastSect
+    for (const row of displayRows) {
+      if (row.tax?.sect) lastSect = row.tax.sect
+      const sect = row.tax?.sect ?? lastSect
       if (!/^body_\d+$/.test(sect) || sect === "body_1") continue
-
-      if (!bodyInfo.has(sect)) bodyInfo.set(sect, { start: i, end: i + 1, taxList: [], javaList: [] })
-      const info = bodyInfo.get(sect)!
-      info.end = i + 1
-      if (tax) info.taxList.push(tax)
-      const slot = javaSlots[i]
-      if (slot?.field && slot.cmd !== "I") info.javaList.push(slot.field)
+      if (!bodyInfoMap.has(sect)) bodyInfoMap.set(sect, { sect, rows: [] })
+      bodyInfoMap.get(sect)!.rows.push(row)
     }
-    if (bodyInfo.size === 0) return
+    if (bodyInfoMap.size === 0) return
 
-    if (!confirm(`body_1 구조를 ${[...bodyInfo.keys()].join(", ")} 영역에 복사하시겠습니까?`)) return
+    if (!confirm(`body_1 구조를 ${[...bodyInfoMap.keys()].join(", ")} 영역에 복사하시겠습니까?`)) return
 
-    // ── 3단계: 각 body_N에 대해 배열 재구성 ─────────────────────
-    // 나중 body부터 처리 → 앞 교체 시 인덱스 밀림 방지
-    let nextTax   = [...taxItems]
-    let nextSlots = [...javaSlots]
+    const body1BaseJava = baseJava.filter(j => j.sect === "body_1")
 
-    const sorted = [...bodyInfo.entries()].sort((a, b) => b[1].start - a[1].start)
-    for (const [sect, { start, end, taxList: bodyNTaxList, javaList: bodyNJavaList }] of sorted) {
-      // j번째 tax seq → body_N TaxLayoutRow
-      const taxMap = new Map<number, TaxLayoutRow>()
-      body1TaxList.forEach((t, j) => { if (bodyNTaxList[j]) taxMap.set(t.seq, bodyNTaxList[j]) })
+    let newOps = [...ops]
+    const newMEdits = new Map(mEdits)
 
-      // k번째 java seq → body_N JavaField
-      const javaMap = new Map<number, JavaField>()
-      body1JavaList.forEach((f, k) => { if (bodyNJavaList[k]) javaMap.set(f.seq, bodyNJavaList[k]) })
+    for (const { sect, rows: bodyNRows } of bodyInfoMap.values()) {
+      const bodyNBaseJava = baseJava.filter(j => j.sect === sect)
 
-      const newTax:   (TaxLayoutRow | null)[] = []
-      const newSlots: JavaSlot[]              = []
+      const bodyNAllSeqs = new Set(bodyNRows.map(r => r.java?.seq).filter((s): s is number => s !== undefined))
+      newOps = newOps.filter(op => {
+        if (op.type === 'D') return !bodyNAllSeqs.has(op.javaSeq)
+        if (op.type === 'I') return op.afterJavaSeq === null || !bodyNAllSeqs.has(op.afterJavaSeq)
+        return true
+      })
+      for (const seq of bodyNAllSeqs) newMEdits.delete(seq)
 
-      for (const { tax, slot } of body1All) {
-        // Tax 변환: D행은 null 유지, 나머지는 j번째 매핑
-        if (tax === null) {
-          newTax.push(null)
-        } else {
-          const mapped = taxMap.get(tax.seq)
-          newTax.push(mapped ? { ...mapped, sect } : null)
-        }
-        // Java slot 변환: I행·java=null은 field=null 유지, 나머지는 k번째 매핑
-        if (!slot?.field || slot.cmd === "I") {
-          newSlots.push({ ...(slot ?? { field: null, cmd: null, editedRaw: "", loadedRaw: "", fromDB: false }), field: null, fromDB: false })
-        } else {
-          const mappedField = javaMap.get(slot.field.seq)
-          newSlots.push({ ...slot, field: mappedField ?? null, fromDB: false })
+      let lastBodyNSeq: number | null = null
+      for (const row of body1Rows) {
+        if (row.cmd === 'D' && row.java) {
+          const allIdx = body1BaseJava.findIndex(j => j.seq === row.java!.seq)
+          const bodyNSeq = bodyNBaseJava[allIdx]?.seq
+          if (bodyNSeq !== undefined) {
+            newOps.push({ id: crypto.randomUUID(), type: 'D', javaSeq: bodyNSeq, fromDB: false })
+            lastBodyNSeq = bodyNSeq
+          }
+        } else if (row.cmd === 'I') {
+          newOps.push({ id: crypto.randomUUID(), type: 'I', afterJavaSeq: lastBodyNSeq, editedRaw: row.editedRaw, fromDB: false })
+        } else if (row.java) {
+          const allIdx = body1BaseJava.findIndex(j => j.seq === row.java!.seq)
+          const bodyNSeq = bodyNBaseJava[allIdx]?.seq
+          if (bodyNSeq !== undefined) {
+            lastBodyNSeq = bodyNSeq
+            if (mEdits.has(row.java.seq)) newMEdits.set(bodyNSeq, mEdits.get(row.java.seq)!)
+          }
         }
       }
-
-      // 배열 교체
-      nextTax   = [...nextTax.slice(0, start),   ...newTax,   ...nextTax.slice(end)]
-      nextSlots = [...nextSlots.slice(0, start), ...newSlots, ...nextSlots.slice(end)]
     }
 
-    setTaxItems(nextTax)
-    setJavaSlots(nextSlots)
+    setOps(newOps)
+    setMEdits(newMEdits)
     setSaveMsg(null)
   }
 
   function handleCancel() {
-    // 캐시에 저장된 마지막 확정 상태로 복원 (없으면 서버 재조회)
     const cached = compareCache[activeRec]
     if (cached) {
+      setBaseTax(cached.baseTax); setBaseJava(cached.baseJava)
+      setOps(cached.ops); setMEdits(cached.mEdits); setMLoaded(cached.mLoaded)
       setSectConfig(cached.sectConfig)
-      setTaxItems(cached.taxItems)
-      setJavaSlots(cached.javaSlots)
     } else {
       loadCompare(year, activeRec)
     }
-    setDirtyTax(new Map()); setHasCancelledFromDB(false); setSaveMsg(null)
+    setDirtyTax(new Map()); setSaveMsg(null)
   }
 
   // ── Java 소스 생성 + 다운로드 ─────────────────────────────────
@@ -723,64 +736,60 @@ export function MediaStep() {
 
   // ── 파생 계산 ─────────────────────────────────────────────────
 
-  const maxLen = Math.max(taxItems.length, javaSlots.length)
+  const maxLen = displayRows.length
 
-  // makeStr 파싱 결과를 한 번만 계산 — 렌더 함수에서 매 행 정규식 재실행 방지
   const parsedSlots = useMemo(
-    () => javaSlots.map(s => s.editedRaw ? parseMakeStr(s.editedRaw) : null),
-    [javaSlots],
+    () => displayRows.map(r => r.editedRaw ? parseMakeStr(r.editedRaw) : null),
+    [displayRows],
   )
 
   const cumData = useMemo(() => {
     let tc = 0, jc = 0
-    return Array.from({ length: maxLen }, (_, i) => {
-      tc += taxItems[i]?.길이 ?? 0
-      if (javaSlots[i]?.cmd !== "D") {
-        jc += parsedSlots[i]?.len ?? javaSlots[i]?.field?.len ?? 0
+    return displayRows.map((r, i) => {
+      if (!r.isOverflow && r.tax?.길이) tc += r.tax.길이
+      if (r.cmd !== 'D' && (r.java || r.cmd === 'I')) {
+        jc += parsedSlots[i]?.len ?? r.java?.len ?? 0
       }
       return { tc, jc }
     })
-  }, [taxItems, javaSlots, parsedSlots, maxLen])
+  }, [displayRows, parsedSlots])
 
   const alignedRaws = useMemo(
-    () => alignMakeStrs(javaSlots.map(s => s.editedRaw)),
-    [javaSlots],
+    () => alignMakeStrs(displayRows.map(r => r.editedRaw)),
+    [displayRows],
   )
 
   const sectBounds = useMemo(() => {
     const s = new Set<number>()
     let prev = ""
-    for (let i = 0; i < taxItems.length; i++) {
-      const sect = taxItems[i]?.sect ?? ""
+    for (let i = 0; i < displayRows.length; i++) {
+      const sect = displayRows[i].tax?.sect ?? ""
       if (sect && sect !== prev) { s.add(i); prev = sect }
     }
     return s
-  }, [taxItems])
+  }, [displayRows])
 
   const gubunBounds = useMemo(() => {
     const m = new Map<number, string>()
     let prev = ""
-    for (let i = 0; i < taxItems.length; i++) {
-      const g = taxItems[i]?.구분 ?? ""
+    for (let i = 0; i < displayRows.length; i++) {
+      const g = displayRows[i].tax?.구분 ?? ""
       if (g && g !== prev) { m.set(i, g); prev = g }
     }
     return m
-  }, [taxItems])
+  }, [displayRows])
 
-  // 레코드별 바이트 합 — compareCache에서 그리드와 동일한 로직으로 산출
-  // (D 제외 + editedRaw 파싱 우선 적용). 서버 summary(taxBytes/javaBytes)와 달리
-  // M 편집으로 변경된 길이도 반영되어 배지 값과 그리드 누적이 일치한다.
   const recCacheBytes = useMemo(() => {
     const out: Record<string, { tax: number; java: number }> = {}
     for (const [rec, cached] of Object.entries(compareCache)) {
+      const rows = computeDisplay(cached.baseTax, cached.baseJava, cached.ops, cached.mEdits, cached.mLoaded, cached.sectConfig)
       let tc = 0, jc = 0
-      const len = Math.max(cached.taxItems.length, cached.javaSlots.length)
-      for (let i = 0; i < len; i++) {
-        tc += cached.taxItems[i]?.길이 ?? 0
-        const slot = cached.javaSlots[i]
-        if (slot?.cmd !== "D") {
-          const parsed = slot?.editedRaw ? parseMakeStr(slot.editedRaw) : null
-          jc += parsed?.len ?? slot?.field?.len ?? 0
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i]
+        if (!r.isOverflow && r.tax?.길이) tc += r.tax.길이
+        if (r.cmd !== 'D' && (r.java || r.cmd === 'I')) {
+          const parsed = r.editedRaw ? parseMakeStr(r.editedRaw) : null
+          jc += parsed?.len ?? r.java?.len ?? 0
         }
       }
       out[rec] = { tax: tc, java: jc }
@@ -791,13 +800,17 @@ export function MediaStep() {
   const finalTaxBytes  = cumData[maxLen - 1]?.tc ?? 0
   const finalJavaBytes = cumData[maxLen - 1]?.jc ?? 0
 
-  const hasChanges =
-    hasCancelledFromDB ||
-    dirtyTax.size > 0 ||
-    javaSlots.some(s =>
-      (!s.fromDB && (s.cmd === "D" || s.cmd === "I")) ||
-      (s.field && canonicalize(s.editedRaw) !== canonicalize(s.loadedRaw))
-    )
+  const hasChanges = useMemo(() => {
+    if (dirtyTax.size > 0) return true
+    if (ops.some(o => !o.fromDB)) return true
+    for (const [seq, raw] of mEdits) {
+      if (canonicalize(raw) !== canonicalize(mLoaded.get(seq) ?? '')) return true
+    }
+    for (const seq of mLoaded.keys()) {
+      if (!mEdits.has(seq)) return true
+    }
+    return false
+  }, [dirtyTax, ops, mEdits, mLoaded])
 
   // ── JSX ───────────────────────────────────────────────────────
 
@@ -813,7 +826,6 @@ export function MediaStep() {
           ))}
         </select>
 
-        {/* HWP 상태 */}
         <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-orange-50">
           {comparing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : hwpFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -824,7 +836,6 @@ export function MediaStep() {
           </span>
         </div>
 
-        {/* Java 상태 */}
         <div className="flex items-center gap-1.5 h-8 px-3 border rounded text-sm flex-1 min-w-0 bg-blue-50">
           {comparing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
            : javaFile ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -842,7 +853,6 @@ export function MediaStep() {
           새로고침
         </Button>
 
-        {/* 사용법 아이콘 */}
         <div className="relative shrink-0">
           <button
             type="button"
@@ -934,11 +944,11 @@ export function MediaStep() {
                         <p className="font-semibold mb-1.5">주요 처리사항</p>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadAllCompare()</span> — 전체 레코드 비교 데이터 한 번에 로드, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span>에 레코드별 캐시</li>
-                          <li>화면 표시: MLAY_TAX_JAVA_MAP 순서 + MLAY_JAVA_EDIT(D/I/M) 덮어씌운 CompareRow[] 렌더링</li>
-                          <li>서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">dirtyTax Map</span> 업데이트 / makeStr 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">javaSlots[i].editedRaw</span> 업데이트</li>
-                          <li>M 감지: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadedRaw</span>(로드 시점 고정) ≠ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">editedRaw</span>(현재 값) → M 상태</li>
+                          <li>화면 표시: baseTax + baseJava + ops → computeDisplay() → DisplayRow[] 렌더링</li>
+                          <li>서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">dirtyTax Map</span> 업데이트 / makeStr 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mEdits Map</span> 업데이트</li>
+                          <li>M 감지: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mLoaded</span>(로드 시점 고정) ≠ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mEdits</span>(현재 값) → M 상태</li>
                           <li>저장 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../compare</span> — taxItemUpdates + javaCodeUpdates + javaCodeResets + mapRows 동시 전송</li>
-                          <li>변경취소 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → JAVA_EDIT 삭제 + MAP 1:1 리셋 → 화면 재로드</li>
+                          <li>편집초기화 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → MAP 1:1 리셋 → 화면 재로드</li>
                         </ol>
                       </div>
                       <div>
@@ -946,20 +956,18 @@ export function MediaStep() {
                         <table className="w-full border rounded text-[11px]">
                           <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER — 행 매핑 순서. D/I 저장 후 새 순서로 재저장</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, CMD(D/I/M), EDITED_RAW, LINE_NO — makeStr 수정·D/I 편집 이력 통합</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, ITEM, ORG_ITEM — 서식항목 수정값 + 원본 보존</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE.CONTENT</td><td className="px-2 py-1.5 text-muted-foreground">원본 소스 패치 다운로드 기능에서만 참조 (이 화면에서는 직접 사용 안 함)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER, ROW_TYPE — 행 매핑 순서. D/I 저장 후 새 순서로 재저장</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, JAVA_CODE — makeStr 수정값 보관</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_ITEM_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">ORG_ITEM, ITEM — 서식항목 수정값 + 원본 보존</td></tr>
                           </tbody>
                         </table>
                       </div>
                       <div>
                         <p className="font-semibold mb-1.5">핵심적인 로직</p>
                         <ul className="space-y-1.5 text-muted-foreground">
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">JavaSlot.fromDB</span> — MLAY_JAVA_EDIT에서 로드된 기존 편집이면 true. 변경취소 대상 여부 판별에 사용</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">javaCodeResets</span> — M 상태였다가 원본으로 되돌린 행. PATCH 시 MLAY_JAVA_EDIT에서 해당 SEQ 삭제</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">TaxSectInfo</span> (컴포넌트) — 오류 집계 UI. 항목명 공백 제거 비교 + makeStr 파싱으로 타입·길이 비교. 저장 없이 화면 계산만</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span> — 레코드별 비교 결과 클라이언트 캐시 (Record&lt;string, ...&gt;). 탭 전환 시 캐시 있으면 재요청 없음</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">EditOp[]</span> — D/I 연산 목록. 추가/제거만 하며 배열 직접 수정 없음. D 취소 = filter(id), I 취소 = filter(id)</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">computeDisplay()</span> — baseTax+baseJava+ops를 받아 DisplayRow[]를 파생 계산. 상태 세트 없음</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span> — 레코드별 비교 결과 클라이언트 캐시 (Record&lt;string, CachedRecord&gt;). 탭 전환 시 캐시 있으면 재요청 없음</li>
                         </ul>
                       </div>
                     </>
@@ -977,8 +985,6 @@ export function MediaStep() {
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
           <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
-            // compareCache 기반 값만 사용 — summary fallback 제거
-            // (summary javaBytes는 LINE_NO=0 I행 포함/미반영으로 값이 다를 수 있음)
             const t = r === activeRec ? finalTaxBytes  : (recCacheBytes[r]?.tax  ?? 0)
             const j = r === activeRec ? finalJavaBytes : (recCacheBytes[r]?.java ?? 0)
             const ok = t > 0 && j > 0 && t === j
@@ -994,7 +1000,6 @@ export function MediaStep() {
           })}
         </div>
 
-        {/* 탭 + 비교 테이블 */}
         <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-0 z-40 bg-background p-3")}>
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
@@ -1018,41 +1023,33 @@ export function MediaStep() {
               })}
             </div>
 
-            {/* 우측 액션 */}
             <div className="ml-auto flex items-center gap-2 pb-0.5 shrink-0">
               {saveMsg && (
                 <span className={`text-xs ${saveMsg.ok ? "text-green-600" : "text-destructive"}`}>{saveMsg.text}</span>
               )}
-              {(() => {
-                return (
-                  <>
-                    <Button size="sm" variant="outline"
-                      className={cn("h-7 text-xs", showSeq && "bg-slate-100 border-slate-400")}
-                      onClick={() => setShowSeq(v => !v)}>
-                      키값보기
-                    </Button>
-                    {hasChanges && <Badge variant="outline" className="text-xs">미저장</Badge>}
-                    <Button size="sm" variant="default" className="h-7 text-xs" onClick={handleSave}
-                      disabled={saving || !hasChanges}>
-                      {saving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />저장 중...</> : <><Save className="h-3 w-3 mr-1" />저장</>}
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleCancel}
-                      disabled={saving || !hasChanges}>
-                      <RotateCcw className="h-3 w-3 mr-1" />변경취소
-                    </Button>
-                  </>
-                )
-              })()}
-              {(() => {
-                const hasEdits = javaSlots.some(s => s.fromDB)
-                return hasEdits ? (
-                  <Button size="sm" variant="outline" className="h-7 text-xs text-destructive hover:text-destructive"
-                    onClick={handleReset} disabled={saving}>
-                    <RotateCcw className="h-3 w-3 mr-1" />편집초기화
-                  </Button>
-                ) : null
-              })()}
-              {sectConfig?.sectMode === "hbf" && taxItems.some(t => bodyIdx(t?.sect ?? "") > 1) && (
+              <>
+                <Button size="sm" variant="outline"
+                  className={cn("h-7 text-xs", showSeq && "bg-slate-100 border-slate-400")}
+                  onClick={() => setShowSeq(v => !v)}>
+                  키값보기
+                </Button>
+                {hasChanges && <Badge variant="outline" className="text-xs">미저장</Badge>}
+                <Button size="sm" variant="default" className="h-7 text-xs" onClick={handleSave}
+                  disabled={saving || !hasChanges}>
+                  {saving ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />저장 중...</> : <><Save className="h-3 w-3 mr-1" />저장</>}
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={handleCancel}
+                  disabled={saving || !hasChanges}>
+                  <RotateCcw className="h-3 w-3 mr-1" />변경취소
+                </Button>
+              </>
+              {ops.some(o => o.fromDB) && (
+                <Button size="sm" variant="outline" className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={handleReset} disabled={saving}>
+                  <RotateCcw className="h-3 w-3 mr-1" />편집초기화
+                </Button>
+              )}
+              {sectConfig?.sectMode === "hbf" && displayRows.some(r => bodyIdx(r.tax?.sect ?? "") > 1) && (
                 <Button size="sm" variant="outline"
                   className="h-7 text-xs text-purple-700 border-purple-300 hover:bg-purple-50"
                   onClick={handleCopyBody1ToAll} disabled={saving || hasChanges}
@@ -1070,7 +1067,7 @@ export function MediaStep() {
           </div>
 
           <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
-            <TaxSectInfo items={taxItems} slots={javaSlots} rightContent={maxLen > 0 ? (
+            <TaxSectInfo rows={displayRows} rightContent={maxLen > 0 ? (
               <>
                 <span className={cn("text-xs font-mono", finalTaxBytes !== finalJavaBytes ? "text-red-500 font-bold" : "text-green-600")}>
                   HWP {finalTaxBytes} {finalTaxBytes !== finalJavaBytes ? <><AlertTriangle className="inline h-3 w-3" /> Java {finalJavaBytes}</> : "= Java"}
@@ -1097,7 +1094,6 @@ export function MediaStep() {
                 </colgroup>
                 <thead className="sticky top-0 z-10">
                   <tr>
-                    {/* HWP */}
                     <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center">번호</th>
                     <th className="pl-1 pr-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-left">
                       <span className="flex items-center gap-1">
@@ -1107,9 +1103,7 @@ export function MediaStep() {
                     </th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-50 text-orange-800 text-center whitespace-nowrap">데이터타입</th>
                     <th className="px-2 py-1.5 border-b border-r bg-orange-100 text-orange-800 text-center">누적</th>
-                    {/* D·I·M */}
                     <th className="px-1 py-1.5 border-b border-r bg-muted text-center">D·I·M</th>
-                    {/* Java */}
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left">서식항목</th>
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-left whitespace-nowrap">makeStr <span className="opacity-40 inline-block" style={{transform:"scaleX(-1)"}}>✎</span></th>
                     <th className="px-2 py-1.5 border-b border-r bg-blue-50 text-blue-800 text-center whitespace-nowrap">데이터타입</th>
@@ -1127,29 +1121,34 @@ export function MediaStep() {
                       데이터가 없습니다. HWP와 Java 소스를 먼저 업로드하세요.
                     </td></tr>
                   ) : (
-                    Array.from({ length: maxLen }).flatMap((_, i) => {
-                      const tax  = taxItems[i] ?? null
-                      const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "" }
-                      const isD        = slot.cmd === "D"
-                      const isI        = slot.cmd === "I"
-                      const isOverflow = !isD && !isI && tax?.seq === 0  // I 삽입으로 밀린 overflow Java 행
-                      const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
+                    displayRows.flatMap((row, i) => {
+                      const { tax, java, cmd, editedRaw, loadedRaw, fromDB, isOverflow, key, opId } = row
+                      const isD = cmd === 'D'
+                      const isI = cmd === 'I'
+                      const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(loadedRaw)
                       const parsedMake   = parsedSlots[i]
-                      const makeValid    = !slot.editedRaw || parsedMake !== null
-                      const effDtype     = parsedMake?.dtype ?? slot.field?.dtype ?? ""
-                      const effLen       = parsedMake?.len   ?? slot.field?.len   ?? 0
+                      const makeValid    = !editedRaw || parsedMake !== null
+                      const effDtype     = parsedMake?.dtype ?? java?.dtype ?? ""
+                      const effLen       = parsedMake?.len   ?? java?.len   ?? 0
                       const mismatch     = !isD && !isOverflow && !!tax && !!effDtype && !!effLen &&
                         (tax.타입 !== effDtype || tax.길이 !== effLen)
-                      const itemMismatch = !isD && !isI && !isOverflow && !!tax && !!slot.field &&
-                        tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')
+                      const itemMismatch = !isD && !isI && !isOverflow && !!tax && !!java &&
+                        tax.항목?.replace(/\s+/g, '') !== java.name?.replace(/\s+/g, '')
                       const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
-                      const cumMismatch = !isD && !isI && !isOverflow && !!slot.field && tc > 0 && jc > 0 && tc !== jc
-                      const anyMismatch = mismatch || itemMismatch || cumMismatch
-                      const isSelected = selectedIdx === i
+                      const cumMismatch = !isD && !isI && !isOverflow && !!java && tc > 0 && jc > 0 && tc !== jc
+                      const isSelected  = selectedIdx === i
                       const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : isOverflow ? "bg-pink-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
 
-                      const noteKey  = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
-                      const note     = noteKey ? notes[noteKey] : undefined
+                      const noteKey = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
+                      const note    = noteKey ? notes[noteKey] : undefined
+
+                      const onClickD   = isD ? () => { if (opId) handleCancelD(opId) } : (java ? () => handleD(java.seq) : undefined)
+                      const dDisabled  = isI || (!java && !isD)
+                      const onClickI   = isI ? () => { if (opId) handleCancelI(opId) } : () => handleI(java?.seq ?? null)
+                      const iDisabled  = isD
+                      const onChangeMakeStr = isI
+                        ? (e: React.ChangeEvent<HTMLInputElement>) => { if (opId) handleEditI(opId, e.target.value) }
+                        : (java ? (e: React.ChangeEvent<HTMLInputElement>) => handleEditM(java.seq, e.target.value) : undefined)
 
                       const nodes = []
                       if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
@@ -1163,7 +1162,7 @@ export function MediaStep() {
                         )
                       }
                       nodes.push(
-                        <tr key={i} onClick={() => setSelectedIdx(isSelected ? null : i)}
+                        <tr key={key} onClick={() => setSelectedIdx(isSelected ? null : i)}
                           className={cn(
                             "border-b hover:brightness-[0.97] transition-colors cursor-pointer group",
                             noteKey && openNoteKey === noteKey ? "relative z-[25]" : "",
@@ -1239,10 +1238,10 @@ export function MediaStep() {
                           {/* D·I·M */}
                           <td className="px-1 py-0.5 border-r cursor-default">
                             <div className="flex gap-0.5 justify-center">
-                              <button onClick={() => handleD(i)} disabled={isI || (slot.field === null && !isD)}
+                              <button onClick={onClickD} disabled={dDisabled}
                                 className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
                                   isD ? "bg-red-500 text-white" : "border border-border text-muted-foreground hover:border-red-400 hover:text-red-500")}>D</button>
-                              <button onClick={() => handleI(i)} disabled={isD || (slot.fromDB && !isI)}
+                              <button onClick={onClickI} disabled={iDisabled}
                                 className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
                                   isI ? "bg-yellow-500 text-white" : "border border-border text-muted-foreground hover:border-yellow-400 hover:text-yellow-600")}>I</button>
                               <span className={cn("w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center select-none",
@@ -1250,11 +1249,10 @@ export function MediaStep() {
                             </div>
                           </td>
                           {/* Java */}
-                          {/* Java 서식항목 */}
                           <td className={cn("px-1 py-0.5 border-r text-xs break-keep cursor-default", itemMismatch && "text-orange-600 font-medium")}>
                             <span className="flex items-start gap-0.5">
-                              {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 mt-0.5">{slot.field?.seq ?? ""}</span>}
-                              <span className="break-keep">{slot.field?.name ?? ""}</span>
+                              {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 mt-0.5">{java?.seq ?? ""}</span>}
+                              <span className="break-keep">{java?.name ?? ""}</span>
                             </span>
                           </td>
                           {/* makeStr */}
@@ -1262,17 +1260,17 @@ export function MediaStep() {
                             {isD ? (
                               <span className="line-through text-red-400 text-[11px]">{alignedRaws[i]}</span>
                             ) : isI ? (
-                              <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
+                              <input value={editedRaw} onChange={onChangeMakeStr}
                                 placeholder='makeStr("9"|"X", 길이(4자리이하), 값/메소드)'
                                 spellCheck={false}
                                 className={cn(
                                   "w-full rounded px-1 py-0.5 font-mono text-[11px] outline-none",
-                                  slot.editedRaw.trim() && !parseMakeStr(slot.editedRaw)
+                                  editedRaw.trim() && !parseMakeStr(editedRaw)
                                     ? "bg-red-50 border border-red-400 focus:border-red-500"
                                     : "bg-yellow-50 border border-yellow-300 focus:border-yellow-500"
                                 )} />
-                            ) : slot.field ? (
-                              <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
+                            ) : java ? (
+                              <input value={editedRaw} onChange={onChangeMakeStr}
                                 spellCheck={false}
                                 className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-0.5",
                                   makeValid
@@ -1286,9 +1284,9 @@ export function MediaStep() {
                             {effDtype && effLen ? `${effDtype}(${effLen})` : ""}
                             {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
                           </td>
-                          <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{slot.field?.lineNo ?? ""}</td>
-                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : (slot.field || isI) && tc !== jc && jc > 0 ? "text-red-600 font-bold" : (slot.field || isI) && jc > 0 ? "text-green-700" : "")}>
-                            {isD ? "-" : (slot.field || isI) && jc > 0 ? jc : ""}
+                          <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{java?.lineNo ?? ""}</td>
+                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : (java || isI) && tc !== jc && jc > 0 ? "text-red-600 font-bold" : (java || isI) && jc > 0 ? "text-green-700" : "")}>
+                            {isD ? "-" : (java || isI) && jc > 0 ? jc : ""}
                           </td>
                         </tr>
                       )
@@ -1313,15 +1311,11 @@ export function MediaStep() {
       {/* Java 소스 미리보기 — 드래그·리사이즈 가능 */}
       {previewCode !== null && (
         <>
-          {/* 배경 딤 */}
           <div className="fixed inset-0 z-50 bg-black/40" />
-
-          {/* 모달 */}
           <div
             className="fixed z-[51] flex flex-col bg-white rounded-lg shadow-2xl border border-border overflow-hidden"
             style={{ left: modalPos.x, top: modalPos.y, width: modalSize.w, height: modalSize.h }}
           >
-            {/* ── 드래그 핸들 (헤더) ── */}
             <div
               className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/30 shrink-0 rounded-t-lg cursor-grab active:cursor-grabbing select-none"
               onMouseDown={e => {
@@ -1341,14 +1335,12 @@ export function MediaStep() {
               </div>
             </div>
 
-            {/* ── 섹션별 코드 박스 ── */}
             <div className="flex-1 min-h-0 overflow-auto p-3 space-y-3 bg-gray-50">
               {previewSections.map((sec, si) => (
                 <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} />
               ))}
             </div>
 
-            {/* ── 리사이즈 핸들 (8방향) ── */}
             {(["n","s","e","w"] as const).map(dir => (
               <div key={dir}
                 className={cn("absolute z-10",
