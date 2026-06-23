@@ -371,9 +371,10 @@ export function JavaStep() {
                         <table className="w-full border rounded text-[11px]">
                           <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, FILE_NAME, CONTENT(원본 소스 전문) — 패치 다운로드의 원본 텍스트</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(PK), RECORD, NO, NAME, DTYPE, LEN, LINE_NO, RAW, SECT — 파싱 결과</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">RECORD_TYPE, TAX_SEQ, JAVA_SEQ, SORT_ORDER — 비교/전산매체/소스생성 화면의 행 순서 원천</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, JAVA_FILE_NAME, JAVA_DATA(원본 소스 전문), ROW_COUNT — 패치 다운로드의 원본 텍스트</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(PK), RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, LINE_NO, JAVA_CODE, SECT, BODY_ITER — 파싱 결과. LINE_NO=0은 비교편집에서 사용자가 삽입한 I행</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, SEQ(FK→JAVA), JAVA_CODE — 비교편집 화면 M 수정값. Java 재업로드 시 삭제</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">SORT_ORDER, RECORD_TYPE, TAX_SEQ, JAVA_SEQ, ROW_TYPE(D/O/null) — 비교·소스생성 화면의 행 순서 원천. Java 재업로드 시 전체 재생성</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -382,8 +383,9 @@ export function JavaStep() {
                         <ul className="space-y-1.5 text-muted-foreground">
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">flushRecord()</span> — repeat≤1이면 블록 순서대로 단순 누적. repeat&gt;1이면 첫 블록=HEAD, 중간=BODY×N회 반복, Footer 블록=FOOT로 분배. 반복 레코드(E/F/G/K) 처리의 핵심</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">{"} else {"}</span> 브랜치 — nextBlockIsElse 플래그로 다음 bw.write 블록을 패딩으로 마킹 후 flushRecord에서 제외</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">LINE_NO</span> — 파싱 시 소스 라인 번호를 MLAY_JAVA에 저장. 원본 패치 시 이 번호로 교체/삭제 위치 특정</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">initMapFromDB()</span> — HWP 재업로드 또는 Java 재업로드 시 항상 호출되어 MAP 초기화. D/I 편집 이력(MLAY_JAVA_EDIT)도 함께 삭제</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">LINE_NO</span> — 파싱 시 소스 라인 번호를 MLAY_JAVA에 저장. 원본 패치 시 이 번호로 교체/삭제 위치 특정. 사용자 삽입 행(I)은 LINE_NO=0으로 구분</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">initMapFromDB()</span> — HWP·Java 재업로드 시 호출. MLAY_TAX_JAVA_MAP 전체 삭제 후 TAX_SEQ ↔ JAVA_SEQ 1:1 ZIP 매핑으로 재생성. ROW_TYPE은 null(정상)로 초기화</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveJavaFile()</span> — Java 재업로드 시 MLAY_JAVA_FILE CASCADE → MLAY_JAVA, MLAY_JAVA_CODE_EDIT, MLAY_TAX_JAVA_MAP 전체 삭제 후 재저장</li>
                         </ul>
                       </div>
                     </>

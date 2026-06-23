@@ -357,11 +357,13 @@ export function MediaStep() {
   const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
 
   // ── ops 기반 상태 ─────────────────────────────────────────────
-  const [baseTax,  setBaseTax]  = useState<TaxLayoutRow[]>([])
-  const [baseJava, setBaseJava] = useState<JavaField[]>([])
-  const [ops,      setOps]      = useState<EditOp[]>([])
-  const [mEdits,   setMEdits]   = useState<Map<number, string>>(new Map())
-  const [mLoaded,  setMLoaded]  = useState<Map<number, string>>(new Map())
+  const [baseTax,     setBaseTax]     = useState<TaxLayoutRow[]>([])
+  const [baseJava,    setBaseJava]    = useState<JavaField[]>([])
+  const [ops,         setOps]         = useState<EditOp[]>([])
+  const [mEdits,      setMEdits]      = useState<Map<number, string>>(new Map())
+  const [mLoaded,     setMLoaded]     = useState<Map<number, string>>(new Map())
+  // 로드 시 fromDB op 수 — hasChanges에서 compareCache 의존성 제거용
+  const [baseOpsLen,  setBaseOpsLen]  = useState(0)
 
   // displayRows: baseTax + baseJava + ops → 파생 뷰 (절대 직접 세트하지 않음)
   const displayRows = useMemo(
@@ -369,7 +371,7 @@ export function MediaStep() {
     [baseTax, baseJava, ops, mEdits, mLoaded, sectConfig]
   )
 
-  // 레코드별 비교 캐시
+  // 레코드별 비교 캐시 (taxBytes/javaBytes는 로드 시 1회 계산)
   type CachedRecord = {
     baseTax:    TaxLayoutRow[]
     baseJava:   JavaField[]
@@ -377,6 +379,8 @@ export function MediaStep() {
     mEdits:     Map<number, string>
     mLoaded:    Map<number, string>
     sectConfig: TaxSectConfigRow | null
+    taxBytes:   number
+    javaBytes:  number
   }
   const [compareCache, setCompareCache] = useState<Record<string, CachedRecord>>({})
   const [saving,      setSaving]      = useState(false)
@@ -422,7 +426,17 @@ export function MediaStep() {
         if (raw !== orig) { me.set(row.java.seq, raw); ml.set(row.java.seq, raw) }
       }
     }
-    return { baseTax: bt, baseJava: bj, ops: opList, mEdits: me, mLoaded: ml, sectConfig: cfg }
+    // 바이트 합계를 로드 시 1회 계산 (recCacheBytes에서 재연산 방지)
+    const previewRows = computeDisplay(bt, bj, opList, me, ml, cfg)
+    let taxB = 0, javaB = 0
+    for (const r of previewRows) {
+      if (!r.isOverflow && r.tax?.길이) taxB += r.tax.길이
+      if (r.cmd !== 'D' && (r.java || r.cmd === 'I')) {
+        const p = r.editedRaw ? parseMakeStr(r.editedRaw) : null
+        javaB += p?.len ?? r.java?.len ?? 0
+      }
+    }
+    return { baseTax: bt, baseJava: bj, ops: opList, mEdits: me, mLoaded: ml, sectConfig: cfg, taxBytes: taxB, javaBytes: javaB }
   }
 
   // ── 탭 스크롤 위치 복원 ──────────────────────────────────────
@@ -474,11 +488,13 @@ export function MediaStep() {
     if (!cached) {
       setBaseTax([]); setBaseJava([]); setOps([])
       setMEdits(new Map()); setMLoaded(new Map()); setSectConfig(null)
+      setBaseOpsLen(0)
       return
     }
     setBaseTax(cached.baseTax); setBaseJava(cached.baseJava)
     setOps(cached.ops); setMEdits(cached.mEdits); setMLoaded(cached.mLoaded)
     setSectConfig(cached.sectConfig); setDirtyTax(new Map())
+    setBaseOpsLen(cached.ops.length)
   }, [compareCache, activeRec])
 
   useEffect(() => {
@@ -563,7 +579,10 @@ export function MediaStep() {
       for (const seq of mLoaded.keys()) {
         if (!mEdits.has(seq)) javaCodeResets.push({ seq })
       }
-      const hasOpsChange = ops.length > 0
+      // ops가 캐시와 달라진 경우 MAP 재저장 필요
+      // (새 op 추가 또는 fromDB op 취소(제거))
+      const cachedOpsLen = compareCache[activeRec]?.ops.length ?? 0
+      const hasOpsChange = ops.some(o => !o.fromDB) || ops.filter(o => o.fromDB).length !== cachedOpsLen
       const mapRows = hasOpsChange
         ? displayRows
             .map((r, i) => ({
@@ -779,20 +798,11 @@ export function MediaStep() {
     return m
   }, [displayRows])
 
+  // 로드 시 캐시에 미리 계산된 값을 그대로 읽음 (computeDisplay 재호출 없음)
   const recCacheBytes = useMemo(() => {
     const out: Record<string, { tax: number; java: number }> = {}
     for (const [rec, cached] of Object.entries(compareCache)) {
-      const rows = computeDisplay(cached.baseTax, cached.baseJava, cached.ops, cached.mEdits, cached.mLoaded, cached.sectConfig)
-      let tc = 0, jc = 0
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i]
-        if (!r.isOverflow && r.tax?.길이) tc += r.tax.길이
-        if (r.cmd !== 'D' && (r.java || r.cmd === 'I')) {
-          const parsed = r.editedRaw ? parseMakeStr(r.editedRaw) : null
-          jc += parsed?.len ?? r.java?.len ?? 0
-        }
-      }
-      out[rec] = { tax: tc, java: jc }
+      out[rec] = { tax: cached.taxBytes, java: cached.javaBytes }
     }
     return out
   }, [compareCache])
@@ -803,6 +813,8 @@ export function MediaStep() {
   const hasChanges = useMemo(() => {
     if (dirtyTax.size > 0) return true
     if (ops.some(o => !o.fromDB)) return true
+    // fromDB op이 취소(제거)된 경우: 로드 시점 수 대비 현재 fromDB op 수가 다르면 변경
+    if (ops.filter(o => o.fromDB).length !== baseOpsLen) return true
     for (const [seq, raw] of mEdits) {
       if (canonicalize(raw) !== canonicalize(mLoaded.get(seq) ?? '')) return true
     }
@@ -810,7 +822,7 @@ export function MediaStep() {
       if (!mEdits.has(seq)) return true
     }
     return false
-  }, [dirtyTax, ops, mEdits, mLoaded])
+  }, [dirtyTax, ops, mEdits, mLoaded, baseOpsLen])
 
   // ── JSX ───────────────────────────────────────────────────────
 
@@ -900,9 +912,9 @@ export function MediaStep() {
                         <p className="font-semibold mb-1.5">편집 방법</p>
                         <table className="w-full border rounded text-[11px]">
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center bg-red-50 text-red-600">D</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 삭제</strong> — Java 행을 소스에서 제외. 클릭 시 해당 행이 취소선으로 표시되고 다음 Java 행이 위 HWP 행과 매치됨</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-yellow-50 text-yellow-600">I</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 추가</strong> — Java 빈 행 삽입. makeStr을 직접 입력하면 해당 HWP 항목에 새 Java 코드가 추가됨</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-blue-50 text-blue-600">M</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">수정 자동 표시</strong> — makeStr 셀을 직접 수정하면 자동으로 M 상태가 됨. 저장 전 변경취소로 원본 복원 가능</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center bg-red-50 text-red-600">D</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 삭제</strong> — Java 행을 소스에서 제외. 클릭 시 해당 행이 취소선으로 표시되고 다음 Java 행이 위 HWP 행과 매치됨. 재클릭으로 취소</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-yellow-50 text-yellow-600">I</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">행 추가</strong> — Java 빈 행 삽입. makeStr을 직접 입력하면 해당 HWP 항목에 새 Java 코드가 추가됨. 재클릭으로 취소</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-bold text-center bg-blue-50 text-blue-600">M</td><td className="px-2 py-1.5 text-muted-foreground"><strong className="text-foreground">수정 표시</strong> — makeStr 셀을 직접 수정하면 자동으로 M 상태가 됨. <strong className="text-foreground">저장 후에도 원본 Java 소스 대비 변경된 행은 M 표시 유지</strong></td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-medium text-center">항목명</td><td className="px-2 py-1.5 text-muted-foreground">HWP 서식항목 셀을 직접 클릭하여 수정. 수정값은 저장 시 DB에 반영되며 원본은 별도 보존됨</td></tr>
                           </tbody>
                         </table>
@@ -914,15 +926,17 @@ export function MediaStep() {
                           <li>HWP·Java 양쪽 항목 비교 — 서식항목·데이터타입 불일치 확인</li>
                           <li>D·I 버튼으로 Java 행 위치 조정</li>
                           <li>항목명·makeStr 셀 직접 수정 → <strong className="text-foreground">저장</strong></li>
+                          <li>HBF 구조 레코드: body_1 편집 완료 후 <strong className="text-foreground">Body 동기화</strong> → body_2 이후에 동일 D/I/M 패턴 복사</li>
                         </ol>
                       </div>
                       <div>
-                        <p className="font-semibold mb-1.5">D · I · M 버튼</p>
+                        <p className="font-semibold mb-1.5">버튼 설명</p>
                         <table className="w-full border rounded text-[11px]">
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-bold w-6 text-center">D</td><td className="px-2 py-1.5 text-muted-foreground">Java 행 삭제 — 다음 Java 행이 이 국세청 행과 매치됨</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-bold text-center">I</td><td className="px-2 py-1.5 text-muted-foreground">Java 빈 행 삽입 — 아래 Java 행이 한 칸 밀림</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-bold text-center">M</td><td className="px-2 py-1.5 text-muted-foreground">makeStr 내용 수정됨 (셀 편집 시 자동 표시)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium w-20">저장</td><td className="px-2 py-1.5 text-muted-foreground">D/I/M 편집 + 서식항목 수정을 DB에 반영. 미저장 뱃지가 사라짐</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">변경취소</td><td className="px-2 py-1.5 text-muted-foreground">마지막 저장 상태로 복원 (DB 미변경)</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">편집초기화</td><td className="px-2 py-1.5 text-muted-foreground">저장된 D/I/M 편집 내역 전체 삭제 + MAP 1:1 재생성. 되돌릴 수 없음</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">Body 동기화</td><td className="px-2 py-1.5 text-muted-foreground">HBF 구조 레코드에서만 활성화. body_1의 D/I/M 패턴을 body_2+ 에 복사</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -943,12 +957,13 @@ export function MediaStep() {
                       <div>
                         <p className="font-semibold mb-1.5">주요 처리사항</p>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadAllCompare()</span> — 전체 레코드 비교 데이터 한 번에 로드, <span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span>에 레코드별 캐시</li>
-                          <li>화면 표시: baseTax + baseJava + ops → computeDisplay() → DisplayRow[] 렌더링</li>
-                          <li>서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">dirtyTax Map</span> 업데이트 / makeStr 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mEdits Map</span> 업데이트</li>
-                          <li>M 감지: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mLoaded</span>(로드 시점 고정) ≠ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mEdits</span>(현재 값) → M 상태</li>
-                          <li>저장 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../compare</span> — taxItemUpdates + javaCodeUpdates + javaCodeResets + mapRows 동시 전송</li>
-                          <li>편집초기화 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → MAP 1:1 리셋 → 화면 재로드</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadAllCompare()</span> — 전체 레코드 비교 데이터 한 번에 로드 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadOpsFromRows()</span>로 ops 복원 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span>에 캐시</li>
+                          <li>화면 표시: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">computeDisplay(baseTax, baseJava, ops, mEdits, mLoaded, cfg)</span> → DisplayRow[] 파생. 상태 직접 변이 없음</li>
+                          <li>D 클릭 → ops에 D op 추가 / D 재클릭 → ops에서 해당 id 제거. I도 동일. 배열 수정 없음</li>
+                          <li>makeStr 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">mEdits Map</span> 업데이트. M 표시 기준: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">editedRaw ≠ java.raw</span>(원본 소스). 저장 후에도 M 유지</li>
+                          <li>미저장 감지: ops에 fromDB=false op 존재 OR fromDB op 수가 캐시보다 줄었을 때 → <strong className="text-foreground">미저장</strong> 뱃지 표시, 저장 버튼 활성화</li>
+                          <li>저장 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../compare</span> — taxItemUpdates + javaCodeUpdates + javaCodeResets + mapRows 동시 전송. ops가 캐시 대비 변경됐을 때만 mapRows 포함</li>
+                          <li>편집초기화 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">DELETE /api/.../compare?record=A</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">resetJavaEdits()</span> — MAP·LINE_NO=0 행·MLAY_JAVA_CODE_EDIT 삭제 후 MAP 1:1 재생성</li>
                         </ol>
                       </div>
                       <div>
@@ -956,18 +971,21 @@ export function MediaStep() {
                         <table className="w-full border rounded text-[11px]">
                           <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">테이블</th><th className="px-2 py-1 text-left border-b font-semibold">주요 컬럼 / 역할</th></tr></thead>
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">TAX_SEQ, JAVA_SEQ, SORT_ORDER, ROW_TYPE — 행 매핑 순서. D/I 저장 후 새 순서로 재저장</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ, JAVA_CODE — makeStr 수정값 보관</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_ITEM_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">ORG_ITEM, ITEM — 서식항목 수정값 + 원본 보존</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">SORT_ORDER, RECORD_TYPE, TAX_SEQ(null=Tax없음), JAVA_SEQ, ROW_TYPE(D/O/null) — 행 매핑 순서. D/I 저장 시 전체 교체</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, SEQ(FK→MLAY_JAVA), JAVA_CODE — makeStr M 수정값. 원본과 같아지면 자동 삭제</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, ORG_CODE, CODE — 번호(코드) 수정값 + 원본 보존</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_ITEM_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, ORG_ITEM, ITEM — 서식항목명 수정값 + 원본 보존</td></tr>
                           </tbody>
                         </table>
                       </div>
                       <div>
                         <p className="font-semibold mb-1.5">핵심적인 로직</p>
                         <ul className="space-y-1.5 text-muted-foreground">
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">EditOp[]</span> — D/I 연산 목록. 추가/제거만 하며 배열 직접 수정 없음. D 취소 = filter(id), I 취소 = filter(id)</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">computeDisplay()</span> — baseTax+baseJava+ops를 받아 DisplayRow[]를 파생 계산. 상태 세트 없음</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">compareCache</span> — 레코드별 비교 결과 클라이언트 캐시 (Record&lt;string, CachedRecord&gt;). 탭 전환 시 캐시 있으면 재요청 없음</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">loadOpsFromRows(CompareRow[])</span> — API 응답을 baseTax(불변)·baseJava(불변)·ops(fromDB:true)·mEdits·mLoaded로 분해. D행→D op, I행→I op(afterJavaSeq 복원), 일반행→baseJava + M편집 감지</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">computeDisplay()</span> — ops의 D/I를 baseJava 시퀀스에 적용해 DisplayRow[]를 파생. Tax는 I행이 소비, D행은 Tax 없음(null). 순수함수이므로 상태 변이 없음</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">hasChanges</span> — ① dirtyTax 있음 ② ops에 fromDB=false op ③ fromDB op 수가 캐시 대비 감소(D/I 취소) ④ mEdits≠mLoaded 중 하나라도 해당 시 true</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveMap()</span> — MLAY_TAX_JAVA_MAP 레코드 단위 DELETE+INSERT. I행(javaSeq=null)은 MLAY_JAVA에 LINE_NO=0으로 삽입 후 seq 부여</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">handleCopyBody1ToAll()</span> — displayRows에서 body_1 D/I/M 패턴 추출 → baseJava 위치 기반으로 body_N에 동일 패턴 ops 재구성</li>
                         </ul>
                       </div>
                     </>
@@ -1125,7 +1143,7 @@ export function MediaStep() {
                       const { tax, java, cmd, editedRaw, loadedRaw, fromDB, isOverflow, key, opId } = row
                       const isD = cmd === 'D'
                       const isI = cmd === 'I'
-                      const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(loadedRaw)
+                      const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(java.raw ?? '')
                       const parsedMake   = parsedSlots[i]
                       const makeValid    = !editedRaw || parsedMake !== null
                       const effDtype     = parsedMake?.dtype ?? java?.dtype ?? ""
@@ -1208,7 +1226,7 @@ export function MediaStep() {
                                 </div>
                                 <textarea
                                   ref={el => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px` } }}
-                                  value={tax.항목 ?? ""}
+                                  value={dirtyTax.get(tax.코드)?.item ?? tax.항목 ?? ""}
                                   onChange={e => {
                                     e.target.style.height = "auto"
                                     e.target.style.height = `${e.target.scrollHeight}px`

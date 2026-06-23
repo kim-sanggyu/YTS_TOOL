@@ -1148,7 +1148,7 @@ export function HwpStep() {
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">제1절 근로소득</span> 영역만 파싱, 제2절 이상 감지 시 중단</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">A레코드【</span> 패턴으로 레코드 전환, 항목번호→항목명→타입→누적 순서로 행 구성. GUBUN(【...】) 추출 시 내부 공백 전체 제거 후 저장</li>
                           <li>파싱 결과 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">saveHwpFile()</span> → MLAY_HWP_FILE + MLAY_TAX INSERT. 원본과 달라진 항목명은 MLAY_HWP_PARSE_LOG에 저장</li>
-                          <li>화면에서 번호·서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../tax-rows</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows()</span> → MLAY_TAX_EDIT MERGE</li>
+                          <li>화면에서 번호·서식항목 수정 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PATCH /api/.../tax-rows</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows() + upsertTaxEdit()</span> → MLAY_TAX_CODE_EDIT / MLAY_TAX_ITEM_EDIT MERGE</li>
                           <li>구조설정 적용 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PUT /api/.../sect-config</span> → MLAY_SECT_CONFIG 저장 + MLAY_TAX.SECT 갱신</li>
                           <li><strong className="text-foreground">구간 자동설정</strong> — 전체 레코드를 순회하며 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">detectInterval()</span>으로 반복 구간 감지 후 병렬 저장</li>
                           <li>주목 메모 → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">PUT /api/.../item-notes</span> → MLAY_ITEM_NOTE UPSERT. 외부 클릭 닫힘 시 빈 메모는 자동 DELETE</li>
@@ -1165,7 +1165,8 @@ export function HwpStep() {
                           <tbody className="divide-y">
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_HWP_FILE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, FILE_NAME, ROW_COUNT, UPLOADED_AT — 파일 메타</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(PK), RECORD_TYPE, CODE, ITEM, FIELD_TYPE, FIELD_LEN, HWP_CUM, GUBUN, SECT — 파싱 항목 원본. GUBUN은 공백 제거된 값으로 저장</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→TAX), CODE, ITEM, ORG_CODE, ORG_ITEM — 수정값 + HWP 원본값 보존</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, ORG_CODE, CODE — 번호(코드) 수정값 + 원본 보존</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_ITEM_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, ORG_ITEM, ITEM — 서식항목명 수정값 + 원본 보존</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_SECT_CONFIG</td><td className="px-2 py-1.5 text-muted-foreground">RECORD, TARGET, SECT_MODE, BODY_START, BODY_END, REPEAT_COUNT — 섹션 구조 설정</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_ITEM_NOTE</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, CODE, MEMO, IS_DONE, COLOR — 항목별 주목 메모</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_HWP_PARSE_LOG</td><td className="px-2 py-1.5 text-muted-foreground">YEAR, USER_ID, RECORD_TYPE, CODE, LOG_SEQ, ORIG_TEXT, CLEAN_TEXT — 항목명 파싱 변환 로그. 재업로드 시 초기화</td></tr>
@@ -1179,11 +1180,11 @@ export function HwpStep() {
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">isValidNext(prev, curr)</span> — 항목번호 연속성 검증. A01→A02, A02→A02ⓐ→A03 등 규칙 처리. 비연속이면 해당 행 스킵</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">GUBUN 공백 제거</span> — <span className="font-mono text-[10px] bg-muted px-0.5 rounded">gm[0].replace(/\s+/g, "")</span> 적용. HWP 텍스트에서 추출된 【 자료 관리 번호 】 → 【자료관리번호】로 정규화. <span className="font-mono text-[10px] bg-muted px-0.5 rounded">currentGubun</span>이 설정되는 3곳 모두 적용</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">accumulated + dlen !== proposedCum</span> — HWP 원본 오타 대응. 누적 불일치 시 HWP 값으로 재동기화</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">updateTaxRows()</span> — MLAY_TAX_EDIT MERGE INTO. ORG_CODE/ORG_ITEM은 최초 수정 시 한 번만 기록, 이후 덮어쓰지 않음</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">upsertTaxEdit()</span> — MLAY_TAX_CODE_EDIT / MLAY_TAX_ITEM_EDIT MERGE INTO. ORG_CODE/ORG_ITEM은 최초 수정 시 한 번만 기록, 이후 덮어쓰지 않음. 수정값이 원본과 같아지면 해당 EDIT 행 자동 삭제</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">detectInterval(rows)</span> — item을 앵커로 반복 구간 자동 감지. ① 동일 item이 복수 등장하는 위치로 unitLen 산출 ② fieldLen 시퀀스 일치로 반복 횟수 검증 ③ 앞으로 확장하여 진짜 bodyStart 탐색. 공란·예비 등 패딩 item은 앵커에서 제외</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyBulk()</span> (클라이언트) — bodyStart·bodyEnd·divideBy로 행별 SECT 계산 후 서버에 일괄 저장. MLAY_SECT_CONFIG와 동기화 필수</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">cleanText()</span> 변환 파이프라인 — ① HWP 아티팩트·제어문자·보이지 않는 문자 제거 ② 한자 접두사 제거 ③ ①-⒇ 원문자 제거 ④ <span className="font-mono text-[10px] bg-muted px-0.5 rounded">-가나다</span> 마커 제거(단어 내부 제외) ⑤ 숫자 접두 마커 제거(<span className="font-mono text-[10px] bg-muted px-0.5 rounded">-5 G01→G01</span>) ⑥ 원형 한글 마커 제거(<span className="font-mono text-[10px] bg-muted px-0.5 rounded">-㉮→</span>) ⑦ 최종 공백 전체 제거. 변환 전후가 다른 경우 MLAY_HWP_PARSE_LOG에 기록</li>
-                          <li>재업로드 시 MLAY_HWP_FILE CASCADE DELETE → MLAY_TAX·MLAY_TAX_EDIT·MLAY_TAX_JAVA_MAP·MLAY_HWP_PARSE_LOG 전체 삭제됨</li>
+                          <li>재업로드 시 MLAY_HWP_FILE CASCADE DELETE → MLAY_TAX·MLAY_TAX_CODE_EDIT·MLAY_TAX_ITEM_EDIT·MLAY_TAX_JAVA_MAP·MLAY_HWP_PARSE_LOG 전체 삭제됨</li>
                         </ul>
                       </div>
                     </>
