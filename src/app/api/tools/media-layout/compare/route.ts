@@ -5,7 +5,7 @@ import {
   getTaxSectConfig, getAllTaxSectConfigs,
   buildCompareRowsFromMap, calcSummary,
   upsertTaxEdit, updateJavaCode, deleteJavaCodeEdits,
-  saveMap, resetJavaEdits, initMapForRecord,
+  saveMap, resetJavaEdits,
   type MapSaveRow,
 } from "@/lib/tax-oracle"
 import { auth } from "@/auth"
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ byRecord, year: hwp.year, hwpFile: hwp, javaFile })
 }
 
-// DELETE: 현재 레코드 편집 초기화 (MLAY_JAVA_EDIT 삭제)
+// DELETE: 현재 레코드 편집 초기화 (D/I/M 전체 삭제 후 MAP 1:1 재생성)
 export async function DELETE(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ message: "인증 필요" }, { status: 401 })
@@ -86,7 +86,6 @@ export async function DELETE(req: NextRequest) {
   if (!record || !year) return NextResponse.json({ message: "record, year 필수" }, { status: 400 })
 
   const deleted = await resetJavaEdits(year, userId, record)
-  await initMapForRecord(year, userId, record)
   return NextResponse.json({ ok: true, deleted })
 }
 

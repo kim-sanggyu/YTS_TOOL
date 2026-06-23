@@ -79,7 +79,7 @@ interface JavaSlot {
   cmd:       "D" | "I" | null
   editedRaw: string
   loadedRaw: string   // 로드 시점 값 — 세션 중 변경 안 됨 (M 복원 감지용)
-  fromDB:    boolean  // true = MLAY_JAVA_EDIT에서 로드된 이미 저장된 D/I
+  fromDB:    boolean  // true = MLAY_TAX_JAVA_MAP에서 로드된 이미 저장된 D/I
 }
 
 // ── 구조 분석 (taxItems 기준) ─────────────────────────────────
@@ -249,7 +249,15 @@ export function MediaStep() {
   async function handleNoteSave(rec: string, code: string, patch: Partial<Pick<ItemNoteRow, "memo" | "isDone" | "color">>) {
     const key  = `${rec}-${code}`
     const cur  = notes[key]
-    setNotes(prev => ({ ...prev, [key]: { ...cur, ...patch } as ItemNoteRow }))
+    const next: ItemNoteRow = {
+      year, userId: 0, recordType: rec, code,
+      memo:      patch.memo    ?? cur?.memo    ?? "",
+      isDone:    patch.isDone  ?? cur?.isDone  ?? false,
+      color:     patch.color   ?? cur?.color   ?? "yellow",
+      createdAt: cur?.createdAt ?? "",
+      updatedAt: new Date().toISOString(),
+    }
+    setNotes(prev => ({ ...prev, [key]: next }))
     await fetch("/api/tools/media-layout/item-notes", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -257,9 +265,16 @@ export function MediaStep() {
     })
   }
 
+  async function handleNoteCreate(rec: string, code: string) {
+    const key = `${rec}-${code}`
+    if (!notes[key]) await handleNoteSave(rec, code, { memo: "", isDone: false, color: "yellow" })
+    setOpenNoteKey(key)
+  }
+
   async function handleNoteDelete(rec: string, code: string) {
     const key = `${rec}-${code}`
     setNotes(prev => { const n = { ...prev }; delete n[key]; return n })
+    setOpenNoteKey(null)
     await fetch(`/api/tools/media-layout/item-notes?year=${year}&record=${rec}&code=${encodeURIComponent(code)}`, { method: "DELETE" })
   }
 
@@ -398,8 +413,23 @@ export function MediaStep() {
     if (!slot) return
     if (slot.cmd === "D") {
       if (slot.fromDB) setHasCancelledFromDB(true)
-      setTaxItems(prev  => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
-      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: null, fromDB: false } : j))
+      setTaxItems(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
+      setJavaSlots(prev => {
+        const restored = prev.map((j, i) => i === idx ? { ...j, cmd: null, fromDB: false } : j)
+        if (!slot.fromDB) return restored
+        // fromDB D 취소: MAP 저장 시 생긴 고아 null-java 슬롯(끝 부분)도 함께 제거
+        // (D 생성 → taxItems 1칸 증가 → MAP 저장 시 마지막에 {taxSeq=T, javaSeq=null} 행 추가됨)
+        let orphanIdx = -1
+        for (let k = restored.length - 1; k >= 0; k--) {
+          if (restored[k].field === null && restored[k].cmd === null) { orphanIdx = k; break }
+        }
+        if (orphanIdx === -1) return restored
+        return [...restored.slice(0, orphanIdx), ...restored.slice(orphanIdx + 1)]
+      })
+    } else if (taxItems[idx]?.seq === 0) {
+      // overflow 행: dummy(seq=0)를 null로 교체 (D 표시) — 새 null 삽입 안 함
+      setTaxItems(prev  => prev.map((t, i) => i === idx ? null : t))
+      setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D" } : j))
     } else if (!slot.fromDB) {
       setTaxItems(prev  => [...prev.slice(0, idx), null, ...prev.slice(idx)])
       setJavaSlots(prev => prev.map((j, i) => i === idx ? { ...j, cmd: "D" } : j))
@@ -410,8 +440,32 @@ export function MediaStep() {
     const slot = javaSlots[idx]
     if (slot?.cmd === "I") {
       if (slot.fromDB) setHasCancelledFromDB(true)
-      setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
+
+      // 저장된 I-행(fromDB) 취소 시:
+      // ROW_TYPE='O' overflow(I 삽입으로 밀린 행)가 있으면 함께 제거, 없으면 I-슬롯만 제거
+      // D는 MAP에 독립적으로 저장되므로 I 취소와 무관
+      if (slot.fromDB) {
+        const overflowIdx = taxItems.findIndex((t, i) => i > idx && t?.seq === 0)
+        if (overflowIdx !== -1) {
+          setTaxItems(prev  => [...prev.slice(0, overflowIdx), ...prev.slice(overflowIdx + 1)])
+        }
+        setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
+      } else {
+        // I 취소: I-슬롯 제거. 삽입 시 overflow dummy를 추가했다면 함께 제거
+        setJavaSlots(prev => [...prev.slice(0, idx), ...prev.slice(idx + 1)])
+        if (taxItems[taxItems.length - 1]?.seq === 0) {
+          setTaxItems(prev => prev.slice(0, -1))
+        }
+      }
     } else if (!slot?.fromDB) {
+      // I 삽입으로 javaSlots이 taxItems를 초과하면 overflow dummy(seq=0) 추가
+      if (javaSlots.length >= taxItems.length) {
+        const lastSect = taxItems[taxItems.length - 1]?.sect ?? ''
+        setTaxItems(prev => [
+          ...prev,
+          { seq: 0, 구분: '', 코드: '', 항목: '', 값: '', sect: lastSect } as TaxLayoutRow,
+        ])
+      }
       setJavaSlots(prev => [
         ...prev.slice(0, idx),
         { field: null, cmd: "I", editedRaw: "", loadedRaw: "", fromDB: false },
@@ -470,13 +524,16 @@ export function MediaStep() {
             const tax  = taxItems[i]  ?? null
             const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "", loadedRaw: "", fromDB: false }
             // I 행(새것·기존 모두): javaSeq=null로 전달 → saveMap이 MLAY_JAVA에 삽입 후 SEQ 부여
-            const isI  = slot.cmd === "I"
+            const isI        = slot.cmd === "I"
+            const isD        = slot.cmd === "D"           // 사용자 D클릭 삭제
+            const isOverflow = tax?.seq === 0             // I 삽입 밀림 overflow
             return {
               sortOrder:  i + 1,
               recordType: activeRec,
-              taxSeq:     tax?.seq        ?? null,
+              taxSeq:     isOverflow ? null : (tax?.seq ?? null),
               javaSeq:    isI ? null : (slot.field?.seq ?? null),
               editedRaw:  isI ? (slot.editedRaw || null) : null,
+              rowType:    isD ? 'D' : isOverflow ? 'O' : null,
             }
           }).filter(r => r.taxSeq !== null || r.javaSeq !== null)
         : undefined
@@ -931,7 +988,7 @@ export function MediaStep() {
                 "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
                 none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               )}>
-                {r}:{none ? "?" : ok ? "일치" : Math.abs(t - j)}
+                {r}:{none ? "?" : ok ? "일치" : ((j - t) >= 0 ? `+${j - t}` : `${j - t}`)}
               </span>
             )
           })}
@@ -1073,24 +1130,25 @@ export function MediaStep() {
                     Array.from({ length: maxLen }).flatMap((_, i) => {
                       const tax  = taxItems[i] ?? null
                       const slot = javaSlots[i] ?? { field: null, cmd: null as null, editedRaw: "" }
-                      const isD  = slot.cmd === "D"
-                      const isI  = slot.cmd === "I"
+                      const isD        = slot.cmd === "D"
+                      const isI        = slot.cmd === "I"
+                      const isOverflow = !isD && !isI && tax?.seq === 0  // I 삽입으로 밀린 overflow Java 행
                       const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
                       const parsedMake   = parsedSlots[i]
                       const makeValid    = !slot.editedRaw || parsedMake !== null
                       const effDtype     = parsedMake?.dtype ?? slot.field?.dtype ?? ""
                       const effLen       = parsedMake?.len   ?? slot.field?.len   ?? 0
-                      const mismatch     = !isD && !!tax && !!effDtype && !!effLen &&
+                      const mismatch     = !isD && !isOverflow && !!tax && !!effDtype && !!effLen &&
                         (tax.타입 !== effDtype || tax.길이 !== effLen)
-                      const itemMismatch = !isD && !isI && !!tax && !!slot.field &&
+                      const itemMismatch = !isD && !isI && !isOverflow && !!tax && !!slot.field &&
                         tax.항목?.replace(/\s+/g, '') !== slot.field.name?.replace(/\s+/g, '')
                       const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
-                      const cumMismatch = !isD && !isI && tc > 0 && jc > 0 && tc !== jc
+                      const cumMismatch = !isD && !isI && !isOverflow && !!slot.field && tc > 0 && jc > 0 && tc !== jc
                       const anyMismatch = mismatch || itemMismatch || cumMismatch
                       const isSelected = selectedIdx === i
-                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
+                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : isOverflow ? "bg-pink-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
 
-                      const noteKey  = tax ? `${activeRec}-${tax.코드}` : null
+                      const noteKey  = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
                       const note     = noteKey ? notes[noteKey] : undefined
 
                       const nodes = []
@@ -1113,25 +1171,29 @@ export function MediaStep() {
                           )}>
                           {/* HWP */}
                           <td className="px-1 py-1 border-r font-mono font-semibold text-center cursor-default">
-                            <div className="flex items-center gap-1 justify-center">
-                              {showSeq && <span className="text-[9px] text-slate-400 font-normal tabular-nums">{i + 1}</span>}
-                              <span>{tax?.코드 ?? ""}</span>
-                              {tax?.원본코드 && (
-                                <span title={`원본: ${tax.원본코드}`}
-                                  className="text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
-                              )}
-                            </div>
+                            {!isOverflow && (
+                              <div className="flex items-center gap-1 justify-center">
+                                {showSeq && <span className="text-[9px] text-slate-400 font-normal tabular-nums">{i + 1}</span>}
+                                <span>{tax?.코드 ?? ""}</span>
+                                {tax?.원본코드 && (
+                                  <span title={`원본: ${tax.원본코드}`}
+                                    className="text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="pl-1 pr-1 py-0.5 border-r cursor-text align-top">
-                            {tax ? (
+                            {tax && !isOverflow ? (
                               <div className="flex items-start gap-0 min-w-0">
                                 {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 self-center pr-0.5">{tax.seq}</span>}
                                 <div className="relative shrink-0 self-center" data-note-popup onClick={e => e.stopPropagation()}>
                                   <NoteMarkButton
                                     hasNote={!!note}
                                     isDone={note?.isDone}
-                                    hideEmpty
-                                    onClick={() => tax && setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!)}
+                                    onClick={() => tax && (note
+                                      ? setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!)
+                                      : handleNoteCreate(activeRec, tax.코드)
+                                    )}
                                   />
                                   {openNoteKey === noteKey && note && tax && (
                                     <div className="absolute left-0 top-5 z-30">
@@ -1168,11 +1230,11 @@ export function MediaStep() {
                           </td>
                           <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")}
                             title={mismatch ? `Java: ${effDtype}(${effLen})` : undefined}>
-                            {tax ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
+                            {tax && !isOverflow ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
                             {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
                           </td>
-                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", !tax ? "text-muted-foreground/40" : tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
-                            {!tax ? "-" : tc > 0 ? tc : ""}
+                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", !tax || isOverflow ? "text-muted-foreground/40" : tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
+                            {!tax || isOverflow ? "" : tc > 0 ? tc : ""}
                           </td>
                           {/* D·I·M */}
                           <td className="px-1 py-0.5 border-r cursor-default">
@@ -1209,7 +1271,7 @@ export function MediaStep() {
                                     ? "bg-red-50 border border-red-400 focus:border-red-500"
                                     : "bg-yellow-50 border border-yellow-300 focus:border-yellow-500"
                                 )} />
-                            ) : (
+                            ) : slot.field ? (
                               <input value={slot.editedRaw} onChange={e => handleEdit(i, e.target.value)}
                                 spellCheck={false}
                                 className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-0.5",
@@ -1217,7 +1279,7 @@ export function MediaStep() {
                                     ? "border-0 focus:border focus:border-primary focus:rounded focus:px-1"
                                     : "border border-red-400 rounded px-1 bg-red-50",
                                   isM && makeValid && "text-blue-700")} />
-                            )}
+                            ) : null}
                           </td>
                           <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}
                             title={mismatch ? `HWP: ${tax?.타입}(${tax?.길이})` : undefined}>
@@ -1225,8 +1287,8 @@ export function MediaStep() {
                             {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
                           </td>
                           <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{slot.field?.lineNo ?? ""}</td>
-                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : tc !== jc && jc > 0 ? "text-red-600 font-bold" : jc > 0 ? "text-green-700" : "")}>
-                            {isD ? "-" : jc > 0 ? jc : ""}
+                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : (slot.field || isI) && tc !== jc && jc > 0 ? "text-red-600 font-bold" : (slot.field || isI) && jc > 0 ? "text-green-700" : "")}>
+                            {isD ? "-" : (slot.field || isI) && jc > 0 ? jc : ""}
                           </td>
                         </tr>
                       )
