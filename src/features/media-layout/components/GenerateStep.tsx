@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff, HelpCircle } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, Code2, FileDiff, HelpCircle, Maximize2, Minimize2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { SectionBox } from "./SectionBox"
+import { useSidebar } from "@/components/ui/sidebar"
 import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
@@ -14,11 +15,17 @@ type PreviewSection = { sect: string; label: string; lines: string[]; bodyRepeat
 type CachedRecord   = { sections: PreviewSection[]; code: string; bytes: number; lines: number }
 
 export function GenerateStep() {
+  const scrollDivRef = useRef<HTMLDivElement>(null)
+  const scrollPosRef = useRef<Record<string, number>>({})
+
   const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
+  const yearRef = useRef(year)
+  useEffect(() => { yearRef.current = year }, [year])
   const [hwpFile,   setHwpFile]   = useState<HwpFileRow | null>(null)
   const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
-  const [taxBytes,  setTaxBytes]  = useState<Record<string, number>>({})
-  const [javaBytes, setJavaBytes] = useState<Record<string, number>>({})
+  const [taxBytes,     setTaxBytes]     = useState<Record<string, number>>({})
+  const [javaBytes,    setJavaBytes]    = useState<Record<string, number>>({})
+  const [typeMismatch, setTypeMismatch] = useState<Record<string, number>>({})
   const [allSectConfigs, setAllSectConfigs] = useState<Record<string, TaxSectConfigRow>>({})
   const [checking,  setChecking]  = useState(false)
 
@@ -33,6 +40,31 @@ export function GenerateStep() {
   const [patching,   setPatching]   = useState(false)
   const [patchStats, setPatchStats] = useState<{ editCount: number; linesBefore: number; linesAfter: number } | null>(null)
 
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar()
+  const sidebarOpenBeforeFullscreen = useRef<boolean>(true)
+  function handleToggleFullscreen() {
+    if (!isFullscreen) {
+      sidebarOpenBeforeFullscreen.current = sidebarOpen
+      setSidebarOpen(false)
+      sessionStorage.setItem('ytsmfs', '1')
+    } else {
+      setSidebarOpen(sidebarOpenBeforeFullscreen.current)
+      sessionStorage.removeItem('ytsmfs')
+    }
+    setIsFullscreen(v => !v)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem('ytsmfs') === '1') { setIsFullscreen(true); setSidebarOpen(false) }
+  }, [])
+  useEffect(() => {
+    const btn = document.querySelector<HTMLElement>('[data-sidebar="trigger"]')
+    if (!btn) return
+    if (isFullscreen) { btn.style.pointerEvents = "none"; btn.style.opacity = "0.3" }
+    else              { btn.style.pointerEvents = "";     btn.style.opacity = "" }
+  }, [isFullscreen])
+
   const recList = RECORD_TYPES.filter(r => taxBytes[r] || javaBytes[r])
 
   // ── 요약 로드 ──────────────────────────────────────────────
@@ -46,6 +78,7 @@ export function GenerateStep() {
       setJavaFile(data.javaFile ?? null)
       setTaxBytes(data.taxBytes ?? {})
       setJavaBytes(data.javaBytes ?? {})
+      setTypeMismatch(data.typeMismatch ?? {})
       setAllSectConfigs(data.sectConfigs ?? {})
     } finally { setChecking(false) }
   }, [])
@@ -72,12 +105,21 @@ export function GenerateStep() {
       setSections(cached.sections)
       setCode(cached.code)
       setStats({ lines: cached.lines, bytes: cached.bytes })
-    } catch {
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "소스 생성 중 오류가 발생했습니다.")
       setSections([]); setCode(""); setStats(null)
     } finally { setGenerating(false) }
   }, [])
 
-  // ── 탭 전환: 캐시 우선, 없으면 생성 ───────────────────────
+  // ── 탭 전환: 스크롤 복원 + 캐시 우선, 없으면 생성 ──────────
+
+  function handleTabChange(rec: string) {
+    if (scrollDivRef.current) scrollPosRef.current[activeRec] = scrollDivRef.current.scrollTop
+    setActiveRec(rec)
+    setTimeout(() => {
+      if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0
+    }, 0)
+  }
 
   useEffect(() => {
     const cached = genCache[activeRec]
@@ -85,7 +127,7 @@ export function GenerateStep() {
       setSections(cached.sections); setCode(cached.code)
       setStats({ lines: cached.lines, bytes: cached.bytes })
     } else {
-      generateRecord(year, activeRec)
+      generateRecord(yearRef.current, activeRec) // yearRef로 stale closure 방지
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRec])
@@ -93,6 +135,7 @@ export function GenerateStep() {
   useEffect(() => {
     loadSummary(year)
     setGenCache({})
+    setPatchStats(null)
     generateRecord(year, activeRec)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, loadSummary])
@@ -118,6 +161,7 @@ export function GenerateStep() {
         linesBefore: data.linesBefore as number,
         linesAfter:  data.linesAfter  as number,
       })
+      setTimeout(() => setPatchStats(null), 5000)
       // 즉시 다운로드
       const blob = new Blob([data.code as string], { type: "text/plain;charset=utf-8" })
       const url  = URL.createObjectURL(blob)
@@ -139,6 +183,15 @@ export function GenerateStep() {
     a.href = url; a.download = `${activeRec}_record.java`; a.click()
     URL.revokeObjectURL(url)
   }
+
+  // Escape 키: help 팝업 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && helpOpen) setHelpOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [helpOpen])
 
   // ── JSX ───────────────────────────────────────────────────
 
@@ -300,20 +353,24 @@ export function GenerateStep() {
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
           <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
-            const t = taxBytes[r] ?? 0, j = javaBytes[r] ?? 0
-            const ok = t > 0 && j > 0 && t === j
-            const none = !t && !j
+            const t  = taxBytes[r]     ?? 0
+            const j  = javaBytes[r]    ?? 0
+            const dm = typeMismatch[r] ?? 0
+            const none   = !t && !j
+            const byteOk = t > 0 && j > 0 && t === j
+            // 우선순위: 자바길이차이 > 타입불일치 > 일치
+            const label = none ? "?" : !byteOk ? ((j - t) >= 0 ? `+${j - t}` : `${j - t}`) : dm > 0 ? "불일치" : "일치"
+            const cls   = none ? "bg-gray-100 text-gray-400" : (byteOk && !dm) ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
             return (
               <span key={r} className={cn(
-                "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
-                none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-              )}>{r}:{none ? "?" : ok ? "일치" : ((j - t) >= 0 ? `+${j - t}` : `${j - t}`)}</span>
+                "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold", cls
+              )}>{r}:{label}</span>
             )
           })}
         </div>
 
         {/* 탭 + 섹션 박스 */}
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-y-0 right-0 z-40 bg-background p-3 left-(--sidebar-width-icon)")}>
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
               {recList.map(r => {
@@ -324,7 +381,7 @@ export function GenerateStep() {
                 const topLine = isHbf ? "border-t-[3px] border-t-purple-500" : "border-t-[3px] border-t-sky-500"
                 const borderB = isHbf ? "border-b-purple-100" : "border-b-sky-50"
                 return (
-                  <button key={r} type="button" onClick={() => setActiveRec(r)}
+                  <button key={r} type="button" onClick={() => handleTabChange(r)}
                     className={cn(
                       "px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors shrink min-w-[36px] truncate max-w-[80px]",
                       baseBg,
@@ -347,11 +404,17 @@ export function GenerateStep() {
                 onClick={handleDownload} disabled={!code || generating}>
                 <Download className="h-3 w-3 mr-1" />다운로드
               </Button>
+              <Button size="sm" variant="outline"
+                className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
+                onClick={handleToggleFullscreen}
+                title={isFullscreen ? "전체화면 해제" : "전체화면"}>
+                {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
             </div>
           </div>
 
           <div className="border border-t-0 border-border rounded-b bg-white flex flex-col flex-1 min-h-0">
-            <div className="overflow-auto flex-1 p-3 space-y-3 bg-gray-50">
+            <div ref={scrollDivRef} className="overflow-auto flex-1 p-3 space-y-3 bg-gray-50">
               {generating ? (
                 <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />생성 중...
@@ -363,7 +426,7 @@ export function GenerateStep() {
                 </div>
               ) : (
                 sections.map((sec, si) => (
-                  <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} bodyRepeatCount={sec.bodyRepeatCount} />
+                  <SectionBox key={`${sec.sect}-${si}`} sect={sec.sect} label={sec.label} lines={sec.lines} bodyRepeatCount={sec.bodyRepeatCount} />
                 ))
               )}
             </div>

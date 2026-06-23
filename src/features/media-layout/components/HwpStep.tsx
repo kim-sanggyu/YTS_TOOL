@@ -1,13 +1,14 @@
 "use client"
 
-import { useRef, useState, useCallback, useEffect } from "react"
+import { useRef, useState, useCallback, useEffect, useLayoutEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, CheckCircle2, AlertCircle, Loader2, Save, Trash2, RotateCcw, HelpCircle, Table2, X } from "lucide-react"
+import { FileText, CheckCircle2, AlertCircle, Loader2, Save, Trash2, RotateCcw, HelpCircle, Table2, X, Maximize2, Minimize2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { TaxRow, HwpFileRow, TaxSectConfigRow, ItemNoteRow } from "@/lib/tax-oracle"
 import { ItemNoteSticker, NoteMarkButton } from "./ItemNoteSticker"
+import { useSidebar } from "@/components/ui/sidebar"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
@@ -350,7 +351,10 @@ export function HwpStep() {
   const [helpOpen,  setHelpOpen]  = useState(false)
   const [helpTab,   setHelpTab]   = useState<"usage" | "how">("usage")
   const [panelKey,  setPanelKey]  = useState(0)
-  const [autoMsg,   setAutoMsg]   = useState<{ ok: boolean; text: string } | null>(null)
+  const [autoMsg,      setAutoMsg]      = useState<{ ok: boolean; text: string } | null>(null)
+  const [confirmState, setConfirmState] = useState<{
+    title: string; lines: string[]; danger?: string; onConfirm: () => void
+  } | null>(null)
 
   // 주목 노트
   const [notes,       setNotes]       = useState<Record<string, ItemNoteRow>>({}) // key: `${rec}-${code}`
@@ -364,6 +368,31 @@ export function HwpStep() {
   const [parseLogSelIdx,  setParseLogSelIdx]  = useState<number | null>(null)
   const [logPos,  setLogPos]  = useState({ x: 0, y: 0 })
   const [logSize, setLogSize] = useState({ w: 640, h: 500 })
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar()
+  const sidebarOpenBeforeFullscreen = useRef<boolean>(true)
+  function handleToggleFullscreen() {
+    if (!isFullscreen) {
+      sidebarOpenBeforeFullscreen.current = sidebarOpen
+      setSidebarOpen(false)
+      sessionStorage.setItem('ytsmfs', '1')
+    } else {
+      setSidebarOpen(sidebarOpenBeforeFullscreen.current)
+      sessionStorage.removeItem('ytsmfs')
+    }
+    setIsFullscreen(v => !v)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem('ytsmfs') === '1') { setIsFullscreen(true); setSidebarOpen(false) }
+  }, [])
+  useEffect(() => {
+    const btn = document.querySelector<HTMLElement>('[data-sidebar="trigger"]')
+    if (!btn) return
+    if (isFullscreen) { btn.style.pointerEvents = "none"; btn.style.opacity = "0.3" }
+    else              { btn.style.pointerEvents = "";     btn.style.opacity = "" }
+  }, [isFullscreen])
   const logDragRef = useRef<null | {
     type: "drag";   ox: number; oy: number; px: number; py: number
   } | {
@@ -465,6 +494,17 @@ export function HwpStep() {
   // 마운트 및 연도 변경 시 기존 데이터 자동 로드
   useEffect(() => { loadRows(year) }, [year, loadRows])
 
+  // Escape 키: confirm 다이얼로그 → 파싱 로그 팝업 순으로 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (confirmState)  { setConfirmState(null);   return }
+      if (parseLogOpen)  { setParseLogOpen(false) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmState, parseLogOpen])
+
   const notesRef = useRef(notes)
   useEffect(() => { notesRef.current = notes }, [notes])
 
@@ -543,17 +583,8 @@ export function HwpStep() {
     setFile(f); setUploadErr("")
   }
 
-  async function handleUpload() {
+  async function doUpload() {
     if (!file) return
-    if (hwpFile) {
-      const ok = confirm(
-        `이미 ${year}년 데이터가 존재합니다.\n\n` +
-        `현재 파일: ${hwpFile.hwpFileName} (${hwpFile.rowCount.toLocaleString()}행)\n` +
-        `새 파일:   ${file.name}\n\n` +
-        `기존 데이터를 모두 삭제하고 새 파일로 덮어쓰시겠습니까?`
-      )
-      if (!ok) return
-    }
     setUploading(true); setUploadErr(""); setSaveMsg(null)
     try {
       const form = new FormData()
@@ -562,37 +593,58 @@ export function HwpStep() {
       const res  = await fetch("/api/tools/media-layout/upload", { method: "POST", body: form })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
-      // 리스트 초기화 후 재로드 — 갱신 느낌 명확히
-      setByRecord({})
-      setSectConfigs({})
-      setDirty(new Map())
-      setSaveMsg(null)
-      setSectMsg(null)
+      setByRecord({}); setSectConfigs({}); setDirty(new Map())
+      setSaveMsg(null); setSectMsg(null)
       await loadRows(year)
       setFile(null)
       if (fileRef.current) fileRef.current.value = ""
+      setParseLogs([])
     } catch (err) {
       setUploadErr(err instanceof Error ? err.message : "업로드 오류")
     } finally { setUploading(false) }
   }
 
+  function handleUpload() {
+    if (!file) return
+    if (hwpFile) {
+      setConfirmState({
+        title: `${year}년 HWP 데이터 덮어쓰기`,
+        lines: [
+          `현재: ${hwpFile.hwpFileName} (${hwpFile.rowCount.toLocaleString()}행)`,
+          `새 파일: ${file.name}`,
+        ],
+        danger: '기존 데이터를 모두 삭제하고 덮어씁니다.',
+        onConfirm: doUpload,
+      })
+      return
+    }
+    doUpload()
+  }
+
   // ── 삭제 ───────────────────────────────────────────────────
 
-  async function handleDelete() {
-    if (!confirm(`${year}년 HWP 업로드 데이터를 삭제하시겠습니까?\n(MLAY_TAX 전체 삭제)`)) return
+  async function doDelete() {
     setDeleting(true)
     try {
       const res = await fetch(`/api/tools/media-layout/upload?year=${year}`, { method: "DELETE" })
       if (!res.ok) { const d = await res.json(); throw new Error(d.message) }
       setHwpFile(null)
-      setByRecord({})
-      setDirty(new Map())
-      setSaveMsg(null)
+      setByRecord({}); setSectConfigs({}); setDirty(new Map())
+      setSaveMsg(null); setParseLogs([])
       setFile(null)
       if (fileRef.current) fileRef.current.value = ""
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "삭제 중 오류가 발생했습니다.")
     } finally { setDeleting(false) }
+  }
+
+  function handleDelete() {
+    setConfirmState({
+      title: `${year}년 HWP 데이터 삭제`,
+      lines: [],
+      danger: 'MLAY_TAX 전체를 삭제합니다. 이 작업은 되돌릴 수 없습니다.',
+      onConfirm: doDelete,
+    })
   }
 
   // ── 셀 편집 ────────────────────────────────────────────────
@@ -681,6 +733,7 @@ export function HwpStep() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
       setSaveMsg({ ok: true, text: `${data.updated}행 저장 완료` })
+      setTimeout(() => setSaveMsg(null), 3000)
       setDirty(new Map())
       await loadRows(year)
     } catch (err) {
@@ -871,6 +924,28 @@ export function HwpStep() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-4">
+
+      {/* 커스텀 확인 다이얼로그 */}
+      {confirmState && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="font-semibold text-sm mb-3">{confirmState.title}</h3>
+            {confirmState.lines.map((line, i) => (
+              <p key={i} className="text-xs text-muted-foreground font-mono mb-1">{line}</p>
+            ))}
+            {confirmState.danger && (
+              <p className="text-xs text-destructive font-medium mt-2">{confirmState.danger}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="outline" size="sm" onClick={() => setConfirmState(null)}>취소</Button>
+              <Button variant="destructive" size="sm"
+                onClick={() => { confirmState.onConfirm(); setConfirmState(null) }}>
+                확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 파싱 변환 로그 모달 */}
       {parseLogOpen && (
@@ -1235,7 +1310,7 @@ export function HwpStep() {
           </div>
 
           {/* 탭 + 콘텐츠 */}
-          <div className="flex flex-col flex-1 min-h-0">
+          <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-y-0 right-0 z-40 bg-background p-3 left-(--sidebar-width-icon)")}>
             <div className="flex items-end border-b border-border gap-0.5">
               {/* 탭 목록 — 공간 부족 시 줄임표 */}
               <div className="flex items-end gap-0.5 min-w-0">
@@ -1289,6 +1364,12 @@ export function HwpStep() {
                 </Button>
                 <Button onClick={() => loadRows(year)} disabled={dirty.size === 0 || checking} size="sm" variant="outline">
                   <RotateCcw className="h-3 w-3 mr-1" />변경취소
+                </Button>
+                <Button size="sm" variant="outline"
+                  className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
+                  onClick={handleToggleFullscreen}
+                  title={isFullscreen ? "전체화면 해제" : "전체화면"}>
+                  {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                 </Button>
               </div>
             </div>

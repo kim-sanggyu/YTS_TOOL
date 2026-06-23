@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useCallback, useEffect, useMemo } from "react"
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, XCircle, Loader2, RefreshCw, Download, AlertTriangle, Save, RotateCcw, Code2, X, HelpCircle, FileText, Maximize2, Minimize2 } from "lucide-react"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import type { HwpFileRow, JavaFileRow, TaxSectConfigRow, ItemNoteRow } from "@/lib/tax-oracle"
 import type { TaxLayoutRow, JavaField, CompareRow } from "../types"
 import { ItemNoteSticker, NoteMarkButton } from "./ItemNoteSticker"
+import { useSidebar } from "@/components/ui/sidebar"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
@@ -140,7 +141,8 @@ function computeDisplay(
   for (const op of (insertMap.get(null) ?? [])) jSeq.push({ kind: 'inserted', op })
   for (const j of baseJava) {
     if (deletedSeqs.has(j.seq)) {
-      const dOp = ops.find(o => o.type === 'D' && (o as any).javaSeq === j.seq)!
+      let dOp!: Extract<EditOp, {type:'D'}>
+      for (const o of ops) { if (o.type === 'D' && o.javaSeq === j.seq) { dOp = o; break } }
       jSeq.push({ kind: 'deleted', java: j, opId: dOp.id, fromDB: dOp.fromDB })
     } else {
       jSeq.push({ kind: 'existing', java: j })
@@ -282,6 +284,38 @@ export function MediaStep() {
   const [showSeq,            setShowSeq]            = useState(false)
   const [isFullscreen,       setIsFullscreen]       = useState(false)
 
+  // 사이드바 — 전체보기 시 접힌 상태로, 해제 시 원복
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar()
+  const sidebarOpenBeforeFullscreen = useRef<boolean>(true)
+  function handleToggleFullscreen() {
+    if (!isFullscreen) {
+      sidebarOpenBeforeFullscreen.current = sidebarOpen
+      setSidebarOpen(false)
+      sessionStorage.setItem('ytsmfs', '1')
+    } else {
+      setSidebarOpen(sidebarOpenBeforeFullscreen.current)
+      sessionStorage.removeItem('ytsmfs')
+    }
+    setIsFullscreen(v => !v)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem('ytsmfs') === '1') { setIsFullscreen(true); setSidebarOpen(false) }
+  }, [])
+
+  // 전체보기 중 사이드바 접기/펼치기 버튼만 비활성화
+  useEffect(() => {
+    const btn = document.querySelector<HTMLElement>('[data-sidebar="trigger"]')
+    if (!btn) return
+    if (isFullscreen) {
+      btn.style.pointerEvents = "none"
+      btn.style.opacity = "0.3"
+    } else {
+      btn.style.pointerEvents = ""
+      btn.style.opacity = ""
+    }
+  }, [isFullscreen])
+
   const loadNotes = useCallback(async (y: number) => {
     try {
       const res  = await fetch(`/api/tools/media-layout/item-notes?year=${y}`)
@@ -291,7 +325,7 @@ export function MediaStep() {
         map[`${n.recordType}-${n.code}`] = n
       }
       setNotes(map)
-    } catch {}
+    } catch (e) { console.error("loadNotes failed", e) }
   }, [])
 
   useEffect(() => { loadNotes(year) }, [year, loadNotes])
@@ -355,6 +389,9 @@ export function MediaStep() {
   const [generating,   setGenerating]   = useState(false)
   const [dirtyTax,     setDirtyTax]     = useState<Map<string, { orgItem: string; item: string }>>(new Map())
   const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
+  const [confirmState, setConfirmState] = useState<{
+    title: string; lines: string[]; danger?: string; onConfirm: () => void
+  } | null>(null)
 
   // ── ops 기반 상태 ─────────────────────────────────────────────
   const [baseTax,     setBaseTax]     = useState<TaxLayoutRow[]>([])
@@ -379,8 +416,9 @@ export function MediaStep() {
     mEdits:     Map<number, string>
     mLoaded:    Map<number, string>
     sectConfig: TaxSectConfigRow | null
-    taxBytes:   number
-    javaBytes:  number
+    taxBytes:     number
+    javaBytes:    number
+    typeMismatch: number
   }
   const [compareCache, setCompareCache] = useState<Record<string, CachedRecord>>({})
   const [saving,      setSaving]      = useState(false)
@@ -426,17 +464,22 @@ export function MediaStep() {
         if (raw !== orig) { me.set(row.java.seq, raw); ml.set(row.java.seq, raw) }
       }
     }
-    // 바이트 합계를 로드 시 1회 계산 (recCacheBytes에서 재연산 방지)
+    // 바이트 합계·타입불일치 수를 로드 시 1회 계산 (recCacheBytes에서 재연산 방지)
     const previewRows = computeDisplay(bt, bj, opList, me, ml, cfg)
-    let taxB = 0, javaB = 0
+    let taxB = 0, javaB = 0, typeMismatch = 0
     for (const r of previewRows) {
       if (!r.isOverflow && r.tax?.길이) taxB += r.tax.길이
       if (r.cmd !== 'D' && (r.java || r.cmd === 'I')) {
         const p = r.editedRaw ? parseMakeStr(r.editedRaw) : null
         javaB += p?.len ?? r.java?.len ?? 0
+        if (r.tax && !r.isOverflow) {
+          const effDtype = p?.dtype ?? r.java?.dtype ?? ""
+          const effLen   = p?.len   ?? r.java?.len   ?? 0
+          if (effDtype && effLen && (r.tax.타입 !== effDtype || r.tax.길이 !== effLen)) typeMismatch++
+        }
       }
     }
-    return { baseTax: bt, baseJava: bj, ops: opList, mEdits: me, mLoaded: ml, sectConfig: cfg, taxBytes: taxB, javaBytes: javaB }
+    return { baseTax: bt, baseJava: bj, ops: opList, mEdits: me, mLoaded: ml, sectConfig: cfg, taxBytes: taxB, javaBytes: javaB, typeMismatch }
   }
 
   // ── 탭 스크롤 위치 복원 ──────────────────────────────────────
@@ -444,6 +487,7 @@ export function MediaStep() {
   function handleTabChange(rec: string) {
     if (scrollDivRef.current) scrollPosRef.current[activeRec] = scrollDivRef.current.scrollTop
     setActiveRec(rec)
+    setSelectedIdx(null)
     setTimeout(() => { if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0 }, 0)
   }
 
@@ -501,6 +545,17 @@ export function MediaStep() {
     setCompareCache({})
     loadAllCompare(year)
   }, [year]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 서식항목 textarea 자동 높이: 매 렌더마다 ref 콜백을 개별 실행하면
+  // 행 수만큼 동기 reflow가 발생해 메인스레드를 블로킹함.
+  // displayRows가 바뀔 때만 한 번 배치(read 전에 write 완료)로 처리.
+  useLayoutEffect(() => {
+    const div = scrollDivRef.current
+    if (!div) return
+    const els = Array.from(div.querySelectorAll<HTMLTextAreaElement>("textarea[data-ar]"))
+    els.forEach(el => { el.style.height = "auto" })          // 쓰기 일괄
+    els.forEach(el => { el.style.height = `${el.scrollHeight}px` }) // 읽기+쓰기 (reflow 1회)
+  }, [displayRows])
 
   // 모달 드래그 / 리사이즈
   useEffect(() => {
@@ -619,8 +674,7 @@ export function MediaStep() {
 
   // ── 편집 초기화 ───────────────────────────────────────────────
 
-  async function handleReset() {
-    if (!confirm(`${activeRec}-레코드의 D/I/M 편집 내역을 모두 초기화하시겠습니까?`)) return
+  async function doResetEdits() {
     setSaving(true); setSaveMsg(null)
     try {
       const res  = await fetch(`/api/tools/media-layout/compare?record=${activeRec}&year=${year}`, { method: "DELETE" })
@@ -628,15 +682,25 @@ export function MediaStep() {
       if (!res.ok) throw new Error(data.message)
       setSaveMsg({ ok: true, text: `초기화 완료 (${data.deleted}건 삭제)` })
       const newCached = await loadCompare(year, activeRec)
+      setDirtyTax(new Map()) // newCached null 여부와 관계없이 항상 초기화
       if (newCached) {
         setBaseTax(newCached.baseTax); setBaseJava(newCached.baseJava)
         setOps(newCached.ops); setMEdits(newCached.mEdits); setMLoaded(newCached.mLoaded)
-        setSectConfig(newCached.sectConfig); setDirtyTax(new Map())
+        setSectConfig(newCached.sectConfig)
       }
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "초기화 중 오류가 발생했습니다.")
     } finally { setSaving(false) }
+  }
+
+  function handleReset() {
+    setConfirmState({
+      title: `${activeRec}-레코드 편집 초기화`,
+      lines: [],
+      danger: 'D/I/M 편집 내역을 모두 삭제하고 MAP을 1:1로 재생성합니다. 되돌릴 수 없습니다.',
+      onConfirm: doResetEdits,
+    })
   }
 
   // ── body_1 → body_N 동기화 ────────────────────────────────────
@@ -663,16 +727,29 @@ export function MediaStep() {
     }
     if (bodyInfoMap.size === 0) return
 
-    if (!confirm(`body_1 구조를 ${[...bodyInfoMap.keys()].join(", ")} 영역에 복사하시겠습니까?`)) return
+    const targets = [...bodyInfoMap.keys()].join(", ")
+    const snapshot = { body1Rows, bodyInfoMap, body1BaseJava: baseJava.filter(j => j.sect === "body_1"), ops, mEdits, baseJava }
+    setConfirmState({
+      title: 'Body 구조 동기화',
+      lines: [`body_1 → ${targets} 에 D/I/M 패턴 복사`],
+      danger: '해당 영역의 기존 편집 내역이 덮어쓰입니다.',
+      onConfirm: () => doCopyBody1ToAll(snapshot),
+    })
+  }
 
-    const body1BaseJava = baseJava.filter(j => j.sect === "body_1")
-
-    let newOps = [...ops]
-    const newMEdits = new Map(mEdits)
+  function doCopyBody1ToAll({ body1Rows, bodyInfoMap, body1BaseJava, ops: snapOps, mEdits: snapMEdits, baseJava: snapJava }: {
+    body1Rows: DisplayRow[]
+    bodyInfoMap: Map<string, { sect: string; rows: DisplayRow[] }>
+    body1BaseJava: JavaField[]
+    ops: EditOp[]
+    mEdits: Map<number, string>
+    baseJava: JavaField[]
+  }) {
+    let newOps = [...snapOps]
+    const newMEdits = new Map(snapMEdits)
 
     for (const { sect, rows: bodyNRows } of bodyInfoMap.values()) {
-      const bodyNBaseJava = baseJava.filter(j => j.sect === sect)
-
+      const bodyNBaseJava = snapJava.filter(j => j.sect === sect)
       const bodyNAllSeqs = new Set(bodyNRows.map(r => r.java?.seq).filter((s): s is number => s !== undefined))
       newOps = newOps.filter(op => {
         if (op.type === 'D') return !bodyNAllSeqs.has(op.javaSeq)
@@ -697,7 +774,7 @@ export function MediaStep() {
           const bodyNSeq = bodyNBaseJava[allIdx]?.seq
           if (bodyNSeq !== undefined) {
             lastBodyNSeq = bodyNSeq
-            if (mEdits.has(row.java.seq)) newMEdits.set(bodyNSeq, mEdits.get(row.java.seq)!)
+            if (snapMEdits.has(row.java.seq)) newMEdits.set(bodyNSeq, snapMEdits.get(row.java.seq)!)
           }
         }
       }
@@ -728,7 +805,7 @@ export function MediaStep() {
       const res  = await fetch("/api/tools/media-layout/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ record: activeRec }),
+        body: JSON.stringify({ record: activeRec, year }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)
@@ -761,6 +838,19 @@ export function MediaStep() {
     () => displayRows.map(r => r.editedRaw ? parseMakeStr(r.editedRaw) : null),
     [displayRows],
   )
+
+  const activeTypeMismatch = useMemo(() => {
+    let count = 0
+    for (let i = 0; i < displayRows.length; i++) {
+      const r = displayRows[i]
+      if (r.cmd === 'D' || r.isOverflow || !r.tax || !(r.java || r.cmd === 'I')) continue
+      const p = parsedSlots[i]
+      const effDtype = p?.dtype ?? r.java?.dtype ?? ""
+      const effLen   = p?.len   ?? r.java?.len   ?? 0
+      if (effDtype && effLen && (r.tax.타입 !== effDtype || r.tax.길이 !== effLen)) count++
+    }
+    return count
+  }, [displayRows, parsedSlots])
 
   const cumData = useMemo(() => {
     let tc = 0, jc = 0
@@ -824,10 +914,160 @@ export function MediaStep() {
     return false
   }, [dirtyTax, ops, mEdits, mLoaded, baseOpsLen])
 
+  // Escape 키: confirm 다이얼로그 → help 팝업 순으로 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (confirmState) { setConfirmState(null); return }
+      if (helpOpen)     { setHelpOpen(false) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmState, helpOpen])
+
+  // 테이블 행 — 무관한 상태 변경(saving, helpOpen 등)에서 재계산 방지
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tableRows = useMemo(() => displayRows.flatMap((row, i) => {
+    const { tax, java, cmd, editedRaw, isOverflow, key, opId } = row
+    const isD = cmd === 'D', isI = cmd === 'I'
+    const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(java.raw ?? '')
+    const parsedMake   = parsedSlots[i]
+    const makeValid    = !editedRaw || parsedMake !== null
+    const effDtype     = parsedMake?.dtype ?? java?.dtype ?? ""
+    const effLen       = parsedMake?.len   ?? java?.len   ?? 0
+    const mismatch     = !isD && !isOverflow && !!tax && !!effDtype && !!effLen && (tax.타입 !== effDtype || tax.길이 !== effLen)
+    const itemMismatch = !isD && !isI && !isOverflow && !!tax && !!java && tax.항목?.replace(/\s+/g, '') !== java.name?.replace(/\s+/g, '')
+    const { tc, jc }   = cumData[i] ?? { tc: 0, jc: 0 }
+    const cumMismatch  = !isD && !isI && !isOverflow && !!java && tc > 0 && jc > 0 && tc !== jc
+    const isSelected   = selectedIdx === i
+    const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : isOverflow ? "bg-pink-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
+    const noteKey = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
+    const note    = noteKey ? notes[noteKey] : undefined
+    const onClickD = isD ? () => { if (opId) handleCancelD(opId) } : (java ? () => handleD(java.seq) : undefined)
+    const dDisabled = isI || (!java && !isD)
+    const onClickI = isI ? () => { if (opId) handleCancelI(opId) } : () => handleI(java?.seq ?? null)
+    const iDisabled = isD
+    const onChangeMakeStr = isI
+      ? (e: React.ChangeEvent<HTMLInputElement>) => { if (opId) handleEditI(opId, e.target.value) }
+      : (java ? (e: React.ChangeEvent<HTMLInputElement>) => handleEditM(java.seq, e.target.value) : undefined)
+
+    const nodes: React.ReactNode[] = []
+    if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
+    if (gubunBounds.has(i)) {
+      nodes.push(
+        <tr key={`gubun-${i}`} className="bg-sky-50 border-y border-sky-200">
+          <td colSpan={10} className="px-3 py-0.5 text-[11px] font-semibold text-sky-700 select-none">
+            {gubunBounds.get(i)}
+          </td>
+        </tr>
+      )
+    }
+    nodes.push(
+      <tr key={key} onClick={() => setSelectedIdx(isSelected ? null : i)}
+        className={cn("border-b hover:brightness-[0.97] transition-colors cursor-pointer group", noteKey && openNoteKey === noteKey ? "relative z-[25]" : "", rowBg)}>
+        <td className="px-1 py-1 border-r font-mono font-semibold text-center cursor-default">
+          {!isOverflow && (
+            <div className="flex items-center gap-1 justify-center">
+              {showSeq && <span className="text-[9px] text-slate-400 font-normal tabular-nums">{i + 1}</span>}
+              <span>{tax?.코드 ?? ""}</span>
+              {tax?.원본코드 && <span title={`원본: ${tax.원본코드}`} className="text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>}
+            </div>
+          )}
+        </td>
+        <td className={cn("pl-1 pr-1 py-0.5 border-r align-top", tax && !isOverflow ? "cursor-text" : "cursor-default")}>
+          {tax && !isOverflow ? (
+            <div className="flex items-start gap-0 min-w-0">
+              {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 self-center pr-0.5">{tax.seq}</span>}
+              <div className="relative shrink-0 self-center" data-note-popup onClick={e => e.stopPropagation()}>
+                <NoteMarkButton hasNote={!!note} isDone={note?.isDone}
+                  onClick={() => tax && (note ? setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!) : handleNoteCreate(activeRec, tax.코드))} />
+                {openNoteKey === noteKey && note && tax && (
+                  <div className="absolute left-0 top-5 z-30">
+                    <ItemNoteSticker note={note} item={tax.항목}
+                      onSave={patch => handleNoteSave(activeRec, tax.코드, patch)}
+                      onDelete={() => handleNoteDelete(activeRec, tax.코드)}
+                      onClose={() => setOpenNoteKey(null)} />
+                  </div>
+                )}
+              </div>
+              <textarea data-ar value={dirtyTax.get(tax.코드)?.item ?? tax.항목 ?? ""}
+                onChange={e => { e.target.style.height = "auto"; e.target.style.height = `${e.target.scrollHeight}px`; handleTaxItemEdit(tax.코드, tax.원본항목 ?? tax.항목, e.target.value) }}
+                spellCheck={false} rows={1}
+                className={cn("flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none resize-none overflow-hidden leading-tight break-keep",
+                  itemMismatch && "text-orange-600 font-medium", dirtyTax.has(tax.코드) && "bg-amber-50")} />
+              {tax.원본항목 && !dirtyTax.has(tax.코드) && (
+                <span title={`원본: ${tax.원본항목}`} className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none mt-0.5">수정</span>
+              )}
+            </div>
+          ) : ""}
+        </td>
+        <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")} title={mismatch ? `Java: ${effDtype}(${effLen})` : undefined}>
+          {tax && !isOverflow ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
+          {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
+        </td>
+        <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", !tax || isOverflow ? "text-muted-foreground/40" : tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
+          {!tax || isOverflow ? "" : tc > 0 ? tc : ""}
+        </td>
+        <td className="px-1 py-0.5 border-r cursor-default">
+          <div className="flex gap-0.5 justify-center">
+            <button onClick={onClickD} disabled={dDisabled} className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20", isD ? "bg-red-500 text-white" : "border border-border text-muted-foreground hover:border-red-400 hover:text-red-500")}>D</button>
+            <button onClick={onClickI} disabled={iDisabled} className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20", isI ? "bg-yellow-500 text-white" : "border border-border text-muted-foreground hover:border-yellow-400 hover:text-yellow-600")}>I</button>
+            <span className={cn("w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center select-none", isM ? "bg-blue-500 text-white" : "border border-border text-muted-foreground/30")}>M</span>
+          </div>
+        </td>
+        <td className={cn("px-1 py-0.5 border-r text-xs break-keep cursor-default", itemMismatch && "text-orange-600 font-medium")}>
+          <span className="flex items-start gap-0.5">
+            {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 mt-0.5">{java?.seq ?? ""}</span>}
+            <span className="break-keep">{java?.name ?? ""}</span>
+          </span>
+        </td>
+        <td className={cn("px-2 py-0 border-r font-mono whitespace-nowrap", !isD && (isI || java) ? "cursor-text" : "cursor-default")}>
+          {isD ? <span className="line-through text-red-400 text-[11px]">{alignedRaws[i]}</span>
+           : isI ? <input value={editedRaw} onChange={onChangeMakeStr} placeholder='makeStr("9"|"X", 길이(4자리이하), 값/메소드)' spellCheck={false}
+               className={cn("w-full rounded px-1 py-0.5 font-mono text-[11px] outline-none", editedRaw.trim() && !parseMakeStr(editedRaw) ? "bg-red-50 border border-red-400 focus:border-red-500" : "bg-yellow-50 border border-yellow-300 focus:border-yellow-500")} />
+           : java ? <input value={editedRaw} onChange={onChangeMakeStr} spellCheck={false}
+               className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-0.5", makeValid ? "border-0 focus:border focus:border-primary focus:rounded focus:px-1" : "border border-red-400 rounded px-1 bg-red-50", isM && makeValid && "text-blue-700")} />
+           : null}
+        </td>
+        <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")} title={mismatch ? `HWP: ${tax?.타입}(${tax?.길이})` : undefined}>
+          {effDtype && effLen ? `${effDtype}(${effLen})` : ""}
+          {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
+        </td>
+        <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{java?.lineNo ?? ""}</td>
+        <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : (java || isI) && tc !== jc && jc > 0 ? "text-red-600 font-bold" : (java || isI) && jc > 0 ? "text-green-700" : "")}>
+          {isD ? "-" : (java || isI) && jc > 0 ? jc : ""}
+        </td>
+      </tr>
+    )
+    return nodes
+  }), [displayRows, parsedSlots, cumData, sectBounds, gubunBounds, alignedRaws, notes, openNoteKey, selectedIdx, activeRec, sectConfig, showSeq, dirtyTax])
+
   // ── JSX ───────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-4">
+
+      {/* 커스텀 확인 다이얼로그 */}
+      {confirmState && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="font-semibold text-sm mb-3">{confirmState.title}</h3>
+            {confirmState.lines.map((line, i) => (
+              <p key={i} className="text-xs text-muted-foreground font-mono mb-1">{line}</p>
+            ))}
+            {confirmState.danger && (
+              <p className="text-xs text-destructive font-medium mt-2">{confirmState.danger}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="outline" size="sm" onClick={() => setConfirmState(null)}>취소</Button>
+              <Button variant="destructive" size="sm"
+                onClick={() => { confirmState.onConfirm(); setConfirmState(null) }}>
+                확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 상태 바 */}
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -1003,22 +1243,25 @@ export function MediaStep() {
         <div className="flex flex-wrap items-center gap-1 text-xs shrink-0">
           <span className="text-muted-foreground font-medium shrink-0">레코드별 바이트 차이:</span>
           {recList.map(r => {
-            const t = r === activeRec ? finalTaxBytes  : (recCacheBytes[r]?.tax  ?? 0)
-            const j = r === activeRec ? finalJavaBytes : (recCacheBytes[r]?.java ?? 0)
-            const ok = t > 0 && j > 0 && t === j
-            const none = !t && !j
+            const t  = r === activeRec ? finalTaxBytes      : (recCacheBytes[r]?.tax  ?? 0)
+            const j  = r === activeRec ? finalJavaBytes     : (recCacheBytes[r]?.java ?? 0)
+            const dm = r === activeRec ? activeTypeMismatch : (compareCache[r]?.typeMismatch ?? 0)
+            const none    = !t && !j
+            const byteOk  = t > 0 && j > 0 && t === j
+            // 우선순위: 자바길이차이 > 타입불일치 > 일치
+            const label = none ? "?" : !byteOk ? ((j - t) >= 0 ? `+${j - t}` : `${j - t}`) : dm > 0 ? "불일치" : "일치"
+            const cls   = none ? "bg-gray-100 text-gray-400" : (byteOk && !dm) ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
             return (
               <span key={r} className={cn(
-                "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
-                none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold", cls
               )}>
-                {r}:{none ? "?" : ok ? "일치" : ((j - t) >= 0 ? `+${j - t}` : `${j - t}`)}
+                {r}:{label}
               </span>
             )
           })}
         </div>
 
-        <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-0 z-40 bg-background p-3")}>
+        <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-y-0 right-0 z-40 bg-background p-3 left-(--sidebar-width-icon)")}>
           <div className="flex items-end border-b border-border gap-0.5">
             <div className="flex items-end gap-0.5 min-w-0">
               {recList.map(r => {
@@ -1077,7 +1320,7 @@ export function MediaStep() {
               )}
               <Button size="sm" variant="outline"
                 className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
-                onClick={() => setIsFullscreen(v => !v)}
+                onClick={handleToggleFullscreen}
                 title={isFullscreen ? "전체화면 해제" : "전체화면"}>
                 {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </Button>
@@ -1139,177 +1382,7 @@ export function MediaStep() {
                       데이터가 없습니다. HWP와 Java 소스를 먼저 업로드하세요.
                     </td></tr>
                   ) : (
-                    displayRows.flatMap((row, i) => {
-                      const { tax, java, cmd, editedRaw, loadedRaw, fromDB, isOverflow, key, opId } = row
-                      const isD = cmd === 'D'
-                      const isI = cmd === 'I'
-                      const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(java.raw ?? '')
-                      const parsedMake   = parsedSlots[i]
-                      const makeValid    = !editedRaw || parsedMake !== null
-                      const effDtype     = parsedMake?.dtype ?? java?.dtype ?? ""
-                      const effLen       = parsedMake?.len   ?? java?.len   ?? 0
-                      const mismatch     = !isD && !isOverflow && !!tax && !!effDtype && !!effLen &&
-                        (tax.타입 !== effDtype || tax.길이 !== effLen)
-                      const itemMismatch = !isD && !isI && !isOverflow && !!tax && !!java &&
-                        tax.항목?.replace(/\s+/g, '') !== java.name?.replace(/\s+/g, '')
-                      const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
-                      const cumMismatch = !isD && !isI && !isOverflow && !!java && tc > 0 && jc > 0 && tc !== jc
-                      const isSelected  = selectedIdx === i
-                      const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : isOverflow ? "bg-pink-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
-
-                      const noteKey = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
-                      const note    = noteKey ? notes[noteKey] : undefined
-
-                      const onClickD   = isD ? () => { if (opId) handleCancelD(opId) } : (java ? () => handleD(java.seq) : undefined)
-                      const dDisabled  = isI || (!java && !isD)
-                      const onClickI   = isI ? () => { if (opId) handleCancelI(opId) } : () => handleI(java?.seq ?? null)
-                      const iDisabled  = isD
-                      const onChangeMakeStr = isI
-                        ? (e: React.ChangeEvent<HTMLInputElement>) => { if (opId) handleEditI(opId, e.target.value) }
-                        : (java ? (e: React.ChangeEvent<HTMLInputElement>) => handleEditM(java.seq, e.target.value) : undefined)
-
-                      const nodes = []
-                      if (sectBounds.has(i)) nodes.push(<SectSep key={`sep-${i}`} sect={tax?.sect ?? ""} colSpan={10} />)
-                      if (gubunBounds.has(i)) {
-                        nodes.push(
-                          <tr key={`gubun-${i}`} className="bg-sky-50 border-y border-sky-200">
-                            <td colSpan={10} className="px-3 py-0.5 text-[11px] font-semibold text-sky-700 select-none">
-                              {gubunBounds.get(i)}
-                            </td>
-                          </tr>
-                        )
-                      }
-                      nodes.push(
-                        <tr key={key} onClick={() => setSelectedIdx(isSelected ? null : i)}
-                          className={cn(
-                            "border-b hover:brightness-[0.97] transition-colors cursor-pointer group",
-                            noteKey && openNoteKey === noteKey ? "relative z-[25]" : "",
-                            rowBg
-                          )}>
-                          {/* HWP */}
-                          <td className="px-1 py-1 border-r font-mono font-semibold text-center cursor-default">
-                            {!isOverflow && (
-                              <div className="flex items-center gap-1 justify-center">
-                                {showSeq && <span className="text-[9px] text-slate-400 font-normal tabular-nums">{i + 1}</span>}
-                                <span>{tax?.코드 ?? ""}</span>
-                                {tax?.원본코드 && (
-                                  <span title={`원본: ${tax.원본코드}`}
-                                    className="text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none">수정</span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="pl-1 pr-1 py-0.5 border-r cursor-text align-top">
-                            {tax && !isOverflow ? (
-                              <div className="flex items-start gap-0 min-w-0">
-                                {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 self-center pr-0.5">{tax.seq}</span>}
-                                <div className="relative shrink-0 self-center" data-note-popup onClick={e => e.stopPropagation()}>
-                                  <NoteMarkButton
-                                    hasNote={!!note}
-                                    isDone={note?.isDone}
-                                    onClick={() => tax && (note
-                                      ? setOpenNoteKey(openNoteKey === noteKey ? null : noteKey!)
-                                      : handleNoteCreate(activeRec, tax.코드)
-                                    )}
-                                  />
-                                  {openNoteKey === noteKey && note && tax && (
-                                    <div className="absolute left-0 top-5 z-30">
-                                        <ItemNoteSticker
-                                          note={note}
-                                          item={tax.항목}
-                                          onSave={patch => handleNoteSave(activeRec, tax.코드, patch)}
-                                          onDelete={() => handleNoteDelete(activeRec, tax.코드)}
-                                          onClose={() => setOpenNoteKey(null)}
-                                        />
-                                    </div>
-                                  )}
-                                </div>
-                                <textarea
-                                  ref={el => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px` } }}
-                                  value={dirtyTax.get(tax.코드)?.item ?? tax.항목 ?? ""}
-                                  onChange={e => {
-                                    e.target.style.height = "auto"
-                                    e.target.style.height = `${e.target.scrollHeight}px`
-                                    handleTaxItemEdit(tax.코드, tax.원본항목 ?? tax.항목, e.target.value)
-                                  }}
-                                  spellCheck={false}
-                                  rows={1}
-                                  className={cn("flex-1 min-w-0 text-xs px-1 py-0.5 rounded border-0 bg-transparent focus:border focus:border-primary outline-none resize-none overflow-hidden leading-tight break-keep",
-                                    itemMismatch && "text-orange-600 font-medium",
-                                    dirtyTax.has(tax.코드) && "bg-amber-50")}
-                                />
-                                {tax.원본항목 && !dirtyTax.has(tax.코드) && (
-                                  <span title={`원본: ${tax.원본항목}`}
-                                    className="shrink-0 text-[9px] leading-none px-0.5 rounded bg-sky-100 text-sky-600 font-medium select-none mt-0.5">수정</span>
-                                )}
-                              </div>
-                            ) : ""}
-                          </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold")}
-                            title={mismatch ? `Java: ${effDtype}(${effLen})` : undefined}>
-                            {tax && !isOverflow ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}
-                            {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
-                          </td>
-                          <td className={cn("px-2 py-1 border-r text-right font-mono tabular-nums cursor-default", !tax || isOverflow ? "text-muted-foreground/40" : tc !== jc && tc > 0 ? "text-red-600 font-bold" : tc > 0 ? "text-green-700" : "")}>
-                            {!tax || isOverflow ? "" : tc > 0 ? tc : ""}
-                          </td>
-                          {/* D·I·M */}
-                          <td className="px-1 py-0.5 border-r cursor-default">
-                            <div className="flex gap-0.5 justify-center">
-                              <button onClick={onClickD} disabled={dDisabled}
-                                className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
-                                  isD ? "bg-red-500 text-white" : "border border-border text-muted-foreground hover:border-red-400 hover:text-red-500")}>D</button>
-                              <button onClick={onClickI} disabled={iDisabled}
-                                className={cn("w-5 h-5 rounded text-[10px] font-bold transition-colors disabled:opacity-20",
-                                  isI ? "bg-yellow-500 text-white" : "border border-border text-muted-foreground hover:border-yellow-400 hover:text-yellow-600")}>I</button>
-                              <span className={cn("w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center select-none",
-                                isM ? "bg-blue-500 text-white" : "border border-border text-muted-foreground/30")}>M</span>
-                            </div>
-                          </td>
-                          {/* Java */}
-                          <td className={cn("px-1 py-0.5 border-r text-xs break-keep cursor-default", itemMismatch && "text-orange-600 font-medium")}>
-                            <span className="flex items-start gap-0.5">
-                              {showSeq && <span className="text-[9px] text-slate-400 tabular-nums shrink-0 mt-0.5">{java?.seq ?? ""}</span>}
-                              <span className="break-keep">{java?.name ?? ""}</span>
-                            </span>
-                          </td>
-                          {/* makeStr */}
-                          <td className="px-2 py-0 border-r font-mono whitespace-nowrap cursor-text">
-                            {isD ? (
-                              <span className="line-through text-red-400 text-[11px]">{alignedRaws[i]}</span>
-                            ) : isI ? (
-                              <input value={editedRaw} onChange={onChangeMakeStr}
-                                placeholder='makeStr("9"|"X", 길이(4자리이하), 값/메소드)'
-                                spellCheck={false}
-                                className={cn(
-                                  "w-full rounded px-1 py-0.5 font-mono text-[11px] outline-none",
-                                  editedRaw.trim() && !parseMakeStr(editedRaw)
-                                    ? "bg-red-50 border border-red-400 focus:border-red-500"
-                                    : "bg-yellow-50 border border-yellow-300 focus:border-yellow-500"
-                                )} />
-                            ) : java ? (
-                              <input value={editedRaw} onChange={onChangeMakeStr}
-                                spellCheck={false}
-                                className={cn("w-full bg-transparent outline-none font-mono text-[11px] py-0.5",
-                                  makeValid
-                                    ? "border-0 focus:border focus:border-primary focus:rounded focus:px-1"
-                                    : "border border-red-400 rounded px-1 bg-red-50",
-                                  isM && makeValid && "text-blue-700")} />
-                            ) : null}
-                          </td>
-                          <td className={cn("px-2 py-1 border-r text-center font-mono cursor-default", mismatch && "text-red-600 font-bold", !makeValid && "text-red-400 line-through")}
-                            title={mismatch ? `HWP: ${tax?.타입}(${tax?.길이})` : undefined}>
-                            {effDtype && effLen ? `${effDtype}(${effLen})` : ""}
-                            {mismatch && <span className="ml-0.5 text-[10px]">≠</span>}
-                          </td>
-                          <td className="px-2 py-1 border-r text-center text-muted-foreground/60 tabular-nums cursor-default">{java?.lineNo ?? ""}</td>
-                          <td className={cn("px-2 py-1 text-right font-mono tabular-nums cursor-default", isD ? "text-muted-foreground/40" : (java || isI) && tc !== jc && jc > 0 ? "text-red-600 font-bold" : (java || isI) && jc > 0 ? "text-green-700" : "")}>
-                            {isD ? "-" : (java || isI) && jc > 0 ? jc : ""}
-                          </td>
-                        </tr>
-                      )
-                      return nodes
-                    })
+                    tableRows
                   )}
                 </tbody>
               </table>

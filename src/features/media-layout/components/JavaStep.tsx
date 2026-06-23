@@ -1,12 +1,13 @@
 "use client"
 
-import { useRef, useState, useCallback, useEffect } from "react"
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2, HelpCircle } from "lucide-react"
+import { FileCode, CheckCircle2, AlertCircle, Loader2, Trash2, HelpCircle, Maximize2, Minimize2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { JavaRow, JavaFileRow } from "@/lib/tax-oracle"
+import { useSidebar } from "@/components/ui/sidebar"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
@@ -123,6 +124,35 @@ export function JavaStep() {
   const [activeRec,    setActiveRec]    = useState("A")
   const [deleting,     setDeleting]     = useState(false)
   const [selectedSeq,  setSelectedSeq]  = useState<number | null>(null)
+  const [uploadMsg,    setUploadMsg]    = useState<{ ok: boolean; text: string } | null>(null)
+  const [confirmState, setConfirmState] = useState<{
+    title: string; lines: string[]; danger?: string; onConfirm: () => void
+  } | null>(null)
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { open: sidebarOpen, setOpen: setSidebarOpen } = useSidebar()
+  const sidebarOpenBeforeFullscreen = useRef<boolean>(true)
+  function handleToggleFullscreen() {
+    if (!isFullscreen) {
+      sidebarOpenBeforeFullscreen.current = sidebarOpen
+      setSidebarOpen(false)
+      sessionStorage.setItem('ytsmfs', '1')
+    } else {
+      setSidebarOpen(sidebarOpenBeforeFullscreen.current)
+      sessionStorage.removeItem('ytsmfs')
+    }
+    setIsFullscreen(v => !v)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (sessionStorage.getItem('ytsmfs') === '1') { setIsFullscreen(true); setSidebarOpen(false) }
+  }, [])
+  useEffect(() => {
+    const btn = document.querySelector<HTMLElement>('[data-sidebar="trigger"]')
+    if (!btn) return
+    if (isFullscreen) { btn.style.pointerEvents = "none"; btn.style.opacity = "0.3" }
+    else              { btn.style.pointerEvents = "";     btn.style.opacity = "" }
+  }, [isFullscreen])
 
   const hasRows = Object.keys(byRecord).length > 0
   const recList = RECORD_TYPES.filter(r => byRecord[r]?.length)
@@ -132,6 +162,7 @@ export function JavaStep() {
   function handleTabChange(rec: string) {
     if (scrollDivRef.current) scrollPosRef.current[activeRec] = scrollDivRef.current.scrollTop
     setActiveRec(rec)
+    setSelectedSeq(null)
     setTimeout(() => { if (scrollDivRef.current) scrollDivRef.current.scrollTop = scrollPosRef.current[rec] ?? 0 }, 0)
   }
 
@@ -150,7 +181,10 @@ export function JavaStep() {
         grouped[row.recordType].push(row)
       }
       setByRecord(grouped)
-      if (Object.keys(grouped).length > 0) setActiveRec(Object.keys(grouped).sort()[0])
+      setActiveRec(prev => {
+        const keys = Object.keys(grouped).sort()
+        return keys.includes(prev) ? prev : (keys[0] ?? "A")
+      })
     } finally { setChecking(false) }
   }, [])
 
@@ -167,18 +201,9 @@ export function JavaStep() {
 
   // ── 업로드 ───────────────────────────────────────────────────
 
-  async function handleUpload() {
+  async function doUpload() {
     if (!file) return
-    if (javaFile) {
-      const ok = confirm(
-        `이미 ${year}년 데이터가 존재합니다.\n\n` +
-        `현재 파일: ${javaFile.javaFileName} (${javaFile.rowCount.toLocaleString()}행)\n` +
-        `새 파일:   ${file.name}\n\n` +
-        `기존 데이터를 모두 삭제하고 새 파일로 덮어쓰시겠습니까?`
-      )
-      if (!ok) return
-    }
-    setUploading(true); setUploadErr("")
+    setUploading(true); setUploadErr(""); setUploadMsg(null)
     try {
       const form = new FormData()
       form.append("year", String(year))
@@ -189,15 +214,33 @@ export function JavaStep() {
       setByRecord({}); setFile(null)
       if (fileRef.current) fileRef.current.value = ""
       await loadRows(year)
+      setUploadMsg({ ok: true, text: "업로드 완료" })
+      setTimeout(() => setUploadMsg(null), 3000)
     } catch (err) {
       setUploadErr(err instanceof Error ? err.message : "업로드 오류")
     } finally { setUploading(false) }
   }
 
+  function handleUpload() {
+    if (!file) return
+    if (javaFile) {
+      setConfirmState({
+        title: `${year}년 Java 데이터 덮어쓰기`,
+        lines: [
+          `현재: ${javaFile.javaFileName} (${javaFile.rowCount.toLocaleString()}행)`,
+          `새 파일: ${file.name}`,
+        ],
+        danger: '기존 데이터를 모두 삭제하고 덮어씁니다.',
+        onConfirm: doUpload,
+      })
+      return
+    }
+    doUpload()
+  }
+
   // ── 삭제 ─────────────────────────────────────────────────────
 
-  async function handleDelete() {
-    if (!confirm(`${year}년 Java 소스 데이터를 삭제하시겠습니까?\n(MLAY_JAVA 전체 삭제)`)) return
+  async function doDelete() {
     setDeleting(true)
     try {
       const res = await fetch(`/api/tools/java-layout?year=${year}`, { method: "DELETE" })
@@ -209,17 +252,33 @@ export function JavaStep() {
     } finally { setDeleting(false) }
   }
 
-  // ── 테이블 렌더 ──────────────────────────────────────────────
+  function handleDelete() {
+    setConfirmState({
+      title: `${year}년 Java 데이터 삭제`,
+      lines: [],
+      danger: 'MLAY_JAVA 전체를 삭제합니다. 이 작업은 되돌릴 수 없습니다.',
+      onConfirm: doDelete,
+    })
+  }
 
-  function renderTable(rows: JavaRow[]) {
+  // Escape 키: confirm 다이얼로그 → help 팝업 순으로 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (confirmState) { setConfirmState(null); return }
+      if (helpOpen)     { setHelpOpen(false) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [confirmState, helpOpen])
+
+  // 테이블 행 — byRecord·activeRec·selectedSeq 변경 시만 재계산
+  const tableNodes = useMemo(() => {
+    const rows = byRecord[activeRec] ?? []
     const nodes: React.ReactNode[] = []
-    let prevSect = ""
-    let cumBytes = 0
-    let maxBody  = 0
+    let prevSect = "", cumBytes = 0, maxBody = 0
     for (const r of rows) { const n = bodyNum(r.sect); if (n > maxBody) maxBody = n }
-
     const aligned = alignMakeStrs(rows.map(r => r.javaCode))
-
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]
       if (r.sect !== prevSect) { nodes.push(<SectSep key={`sep-${r.seq}`} sect={r.sect} maxBody={maxBody} />); prevSect = r.sect }
@@ -229,28 +288,44 @@ export function JavaStep() {
       nodes.push(
         <tr key={r.seq} onClick={() => setSelectedSeq(isSelected ? null : r.seq)}
           className={cn("border-b hover:brightness-95 transition-colors cursor-pointer", rowBg)}>
-          {/* SEQ */}
           <td className="px-2 py-1 border-r font-mono text-xs text-center text-muted-foreground">{r.seq}</td>
-          {/* 항목명 */}
           <td className="px-2 py-0.5 border-r text-xs">{r.item}</td>
-          {/* makeStr */}
           <td className="px-2 py-1 border-r font-mono text-[11px] whitespace-pre text-sky-800">{aligned[i]}</td>
-          {/* 타입 */}
           <td className="px-2 py-1 border-r text-center font-mono text-xs">{r.fieldType ?? ""}</td>
-          {/* 길이 */}
           <td className="px-2 py-1 border-r text-right font-mono text-xs">{r.fieldLen ?? ""}</td>
-          {/* 누적 */}
           <td className="px-2 py-1 text-right font-mono text-xs tabular-nums text-muted-foreground/60">{cumBytes > 0 ? cumBytes : ""}</td>
         </tr>
       )
     }
     return nodes
-  }
+  }, [byRecord, activeRec, selectedSeq])
 
   // ── JSX ───────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col flex-1 min-h-0 gap-4">
+
+      {/* 커스텀 확인 다이얼로그 */}
+      {confirmState && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-2xl p-6 w-full max-w-md mx-4">
+            <h3 className="font-semibold text-sm mb-3">{confirmState.title}</h3>
+            {confirmState.lines.map((line, i) => (
+              <p key={i} className="text-xs text-muted-foreground font-mono mb-1">{line}</p>
+            ))}
+            {confirmState.danger && (
+              <p className="text-xs text-destructive font-medium mt-2">{confirmState.danger}</p>
+            )}
+            <div className="flex justify-end gap-2 mt-5">
+              <Button variant="outline" size="sm" onClick={() => setConfirmState(null)}>취소</Button>
+              <Button variant="destructive" size="sm"
+                onClick={() => { confirmState.onConfirm(); setConfirmState(null) }}>
+                확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 업로드 한 줄 */}
       <div className="flex items-center gap-2 shrink-0">
@@ -402,6 +477,11 @@ export function JavaStep() {
           <AlertCircle className="h-4 w-4" />{uploadErr}
         </div>
       )}
+      {uploadMsg && (
+        <div className={cn("flex items-center gap-2 text-sm shrink-0", uploadMsg.ok ? "text-green-600" : "text-destructive")}>
+          <CheckCircle2 className="h-4 w-4" />{uploadMsg.text}
+        </div>
+      )}
 
       {/* 리스트 */}
       {hasRows && (
@@ -431,7 +511,7 @@ export function JavaStep() {
           </div>
 
           {/* 탭 + 테이블 */}
-          <div className="flex flex-col flex-1 min-h-0">
+          <div className={cn("flex flex-col flex-1 min-h-0", isFullscreen && "fixed inset-y-0 right-0 z-40 bg-background p-3 left-(--sidebar-width-icon)")}>
             <div className="flex items-end border-b border-border gap-0.5">
               <div className="flex items-end gap-0.5 min-w-0">
                 {recList.map(r => {
@@ -460,6 +540,12 @@ export function JavaStep() {
                 <Badge variant="outline" className="text-xs">
                   {byRecord[activeRec]?.length ?? 0}행
                 </Badge>
+                <Button size="sm" variant="outline"
+                  className={cn("h-7 w-7 p-0 shrink-0", isFullscreen && "bg-slate-100 border-slate-400")}
+                  onClick={handleToggleFullscreen}
+                  title={isFullscreen ? "전체화면 해제" : "전체화면"}>
+                  {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                </Button>
               </div>
             </div>
 
@@ -478,7 +564,7 @@ export function JavaStep() {
                     </tr>
                   </thead>
                   <tbody>
-                    {renderTable(byRecord[activeRec] ?? [])}
+                    {tableNodes}
                   </tbody>
                 </table>
               </div>
