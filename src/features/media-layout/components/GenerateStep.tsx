@@ -10,7 +10,7 @@ import type { HwpFileRow, JavaFileRow, TaxSectConfigRow } from "@/lib/tax-oracle
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
-type PreviewSection = { sect: string; label: string; lines: string[] }
+type PreviewSection = { sect: string; label: string; lines: string[]; bodyRepeatCount?: number }
 type CachedRecord   = { sections: PreviewSection[]; code: string; bytes: number; lines: number }
 
 export function GenerateStep() {
@@ -306,7 +306,7 @@ export function GenerateStep() {
               <span key={r} className={cn(
                 "inline-flex items-center rounded-full px-1.5 py-0.5 font-mono font-semibold",
                 none ? "bg-gray-100 text-gray-400" : ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-              )}>{r}:{none ? "?" : ok ? "일치" : Math.abs(t - j)}</span>
+              )}>{r}:{none ? "?" : ok ? "일치" : ((j - t) >= 0 ? `+${j - t}` : `${j - t}`)}</span>
             )
           })}
         </div>
@@ -339,7 +339,7 @@ export function GenerateStep() {
               {stats && (
                 <>
                   <span className="text-xs text-muted-foreground tabular-nums">{stats.lines}줄</span>
-                  <span className="text-xs font-mono text-muted-foreground tabular-nums">{stats.bytes.toLocaleString()} byte</span>
+                  <span className="text-xs font-mono text-muted-foreground tabular-nums">{stats.bytes} byte</span>
                 </>
               )}
               <Button size="sm" variant="outline" className="h-7 text-xs"
@@ -362,7 +362,7 @@ export function GenerateStep() {
                 </div>
               ) : (
                 sections.map((sec, si) => (
-                  <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} />
+                  <SectionBox key={si} sect={sec.sect} label={sec.label} lines={sec.lines} bodyRepeatCount={sec.bodyRepeatCount} />
                 ))
               )}
             </div>

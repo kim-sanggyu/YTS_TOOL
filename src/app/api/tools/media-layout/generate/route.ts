@@ -5,6 +5,13 @@ import {
 } from "@/lib/tax-oracle"
 import { auth } from "@/auth"
 
+const MAKE_STR_LEN_RE = /^makeStr\s*\(\s*"[xX9]"\s*,\s*(\d{1,4})\s*,/
+
+function parseMakeStrLen(raw: string): number | null {
+  const m = MAKE_STR_LEN_RE.exec(raw.trim())
+  return m ? parseInt(m[1]) : null
+}
+
 // 섹션 배열의 모든 makeStr 라인을 일괄 정렬
 // 포맷: makeStr("X", len, arg); // comment
 function alignSections(sections: { sect: string; label: string; lines: string[] }[]): void {
@@ -79,10 +86,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 전체 섹션 빌드 (body 반복 포함) — 다운로드용 code 생성 ──
-  type Section = { sect: string; label: string; lines: string[] }
+  type Section = { sect: string; label: string; lines: string[]; bodyRepeatCount?: number }
   const allSections: Section[] = []
   let curSect = ""
-  let totalBytes = 0
 
   for (const row of rows) {
     if (!row.tax || !row.java) continue
@@ -96,11 +102,15 @@ export async function POST(req: NextRequest) {
     const javaCode = (row.editedRaw || row.java.raw).trimEnd()
     const parts    = [row.tax.코드, row.tax.구분, row.tax.항목].filter(Boolean)
     allSections.at(-1)!.lines.push(`${javaCode} + // ${parts.join(" ")}`)
-    totalBytes += row.java.len
   }
 
   // 전체 makeStr 라인 열 정렬 (다운로드 포함)
   alignSections(allSections)
+
+  // 바이트 수: 정렬 완료된 실제 생성 코드에서 makeStr 2번째 인자를 합산
+  const totalBytes = allSections
+    .flatMap(s => s.lines)
+    .reduce((sum, line) => sum + (parseMakeStrLen(line) ?? 0), 0)
 
   allSections.forEach((s, i) => {
     s.lines.push(i < allSections.length - 1 ? '    + ""' : '    + "\\n"')
@@ -150,8 +160,9 @@ export async function POST(req: NextRequest) {
       return `    makeStr("${dtype}", ${g.len.toString().padStart(padW)}, ${fill}) // ${range}  (${dtype}타입 ${g.count}행 합산)`
     })
 
+    const bodyRepeatCount = allSections.filter(s => /^body_\d+$/.test(s.sect)).length
     const idx = dispSections.findIndex(s => s.sect === "body_1")
-    dispSections.splice(idx + 1, 0, { sect: "body_sum", label: "Body 합산", lines: sumLines })
+    dispSections.splice(idx + 1, 0, { sect: "body_sum", label: "body_1 타입별 길이 합산", lines: sumLines, bodyRepeatCount })
   }
 
   // \n 라인 마지막 표시 섹션에 추가

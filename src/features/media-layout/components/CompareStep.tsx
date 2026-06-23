@@ -331,12 +331,12 @@ export function CompareStep() {
 
       {/* 요약 바 */}
       <div className="flex items-center gap-4 text-sm flex-wrap">
-        <span>국세청: <strong>{taxBytes.toLocaleString()} byte</strong></span>
-        <span>Java: <strong>{javaBytes.toLocaleString()} byte</strong></span>
+        <span>국세청: <strong>{taxBytes} byte</strong></span>
+        <span>Java: <strong>{javaBytes} byte</strong></span>
         {taxBytes !== javaBytes ? (
           <Badge variant="destructive" className="gap-1">
             <AlertTriangle className="h-3 w-3" />
-            차이: {Math.abs(taxBytes - javaBytes).toLocaleString()} byte
+            {(javaBytes - taxBytes) >= 0 ? `+${javaBytes - taxBytes}` : `${javaBytes - taxBytes}`}
           </Badge>
         ) : taxBytes > 0 ? (
           <Badge className="bg-green-600">일치</Badge>
@@ -398,6 +398,12 @@ export function CompareStep() {
                 const lengthMismatch = !isD && !isI && !!tax && !!slot.field && tax.길이 !== slot.field.len
                 const hasMismatch    = typeMismatch || lengthMismatch
 
+                // 서식항목 수정 여부 (원본항목이 있으면 MLAY_TAX_EDIT로 수정된 것)
+                const isTaxEdited     = !!tax?.원본항목
+                // 수정된 서식항목이 Java 항목명과 다른지 (java name이 빈 문자열이면 비교 제외)
+                const javaName        = slot.field?.name ?? ""
+                const taxItemDiffJava = isTaxEdited && !!javaName && tax?.항목 !== javaName
+
                 const { tc, jc } = cumData[i] ?? { tc: 0, jc: 0 }
 
                 const rowBg = isD
@@ -425,7 +431,22 @@ export function CompareStep() {
                       {tax?.코드 ?? ""}
                     </td>
                     <td className="px-2 py-1 border-r max-w-0 overflow-hidden">
-                      <div className="break-all" title={tax?.항목 ?? ""}>{tax?.항목 ?? ""}</div>
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span
+                          className="break-all min-w-0"
+                          style={
+                            !isTaxEdited    ? undefined :
+                            taxItemDiffJava ? { color: "#dc2626", fontWeight: 600 } :
+                                              { color: "#1d4ed8", fontWeight: 600 }
+                          }
+                          title={tax?.항목 ?? ""}
+                        >{tax?.항목 ?? ""}</span>
+                        {isTaxEdited && (
+                          <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-bold leading-none bg-blue-100 text-blue-600">
+                            수정
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className={`px-2 py-1 border-r text-center font-mono ${hasMismatch ? "text-red-600 font-bold" : ""}`}>
                       {tax ? `${tax.타입 ?? "?"}(${tax.길이 ?? "?"})` : ""}

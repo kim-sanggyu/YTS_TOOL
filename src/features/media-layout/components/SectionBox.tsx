@@ -22,15 +22,38 @@ export function sectColors(sect: string): { boxBg: string; hdrCls: string } {
   }
 }
 
+const MAKE_STR_LEN_RE = /^[\s+]*makeStr\s*\(\s*"[xX9]"\s*,\s*(\d{1,4})\s*,/
+
+function sumMakeStrBytes(lines: string[]): number {
+  return lines.reduce((sum, line) => {
+    const m = MAKE_STR_LEN_RE.exec(line)
+    return sum + (m ? parseInt(m[1]) : 0)
+  }, 0)
+}
+
 export function sectionLineCount(sect: string, lines: string[]): string {
   const nonNewline = lines.filter(l => !l.includes('+ "\\n"')).length
   return sect === "body_sum" ? `${nonNewline}그룹` : `${nonNewline}행`
 }
 
-export function SectionBox({ sect, label, lines }: { sect: string; label: string; lines: string[] }) {
+interface SectionBoxProps {
+  sect:             string
+  label:            string
+  lines:            string[]
+  bodyRepeatCount?: number   // body_sum 전용: body 반복 횟수
+}
+
+export function SectionBox({ sect, label, lines, bodyRepeatCount }: SectionBoxProps) {
   const [copied, setCopied] = useState(false)
   const { boxBg, hdrCls } = sectColors(sect)
-  const lineCount = sectionLineCount(sect, lines)
+
+  const contentLines  = lines.filter(l => !l.includes('+ "\\n"'))
+  const lineCount     = contentLines.length
+  const sectionBytes  = sumMakeStrBytes(contentLines)
+
+  // body_sum: N그룹 · Mbyte × repeatCount = Totalbyte
+  const isBodySum = sect === "body_sum"
+  const repeatCount = bodyRepeatCount ?? 1
 
   function handleCopy() {
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
@@ -43,7 +66,15 @@ export function SectionBox({ sect, label, lines }: { sect: string; label: string
     <div className={cn("rounded-md border overflow-hidden shadow-sm", boxBg)}>
       <div className={cn("px-3 py-1.5 text-[11px] font-semibold flex items-center gap-2 select-none", hdrCls)}>
         <span>▸ {label}</span>
-        <span className="font-normal opacity-70">{lineCount}</span>
+        {isBodySum ? (
+          <span className="font-normal opacity-70">
+            {sectionBytes}byte × {repeatCount} = {sectionBytes * repeatCount}byte
+          </span>
+        ) : (
+          <span className="font-normal opacity-70">
+            {lineCount}행 · {sectionBytes}byte
+          </span>
+        )}
         <button
           onClick={handleCopy}
           className="ml-auto flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium opacity-70 hover:opacity-100 transition-opacity"
