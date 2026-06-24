@@ -927,7 +927,9 @@ export function MediaStep() {
 
   // 테이블 행 — 무관한 상태 변경(saving, helpOpen 등)에서 재계산 방지
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const tableRows = useMemo(() => displayRows.flatMap((row, i) => {
+  const tableRows = useMemo(() => {
+    let prevJavaSeq: number | null = null   // I 삽입 위치: 클릭 행 위(= 이전 Java seq 뒤)
+    return displayRows.flatMap((row, i) => {
     const { tax, java, cmd, editedRaw, isOverflow, key, opId } = row
     const isD = cmd === 'D', isI = cmd === 'I'
     const isM = !isD && !isI && !!java && canonicalize(editedRaw) !== canonicalize(java.raw ?? '')
@@ -943,9 +945,12 @@ export function MediaStep() {
     const rowBg = isSelected ? "bg-blue-100" : isD ? "bg-red-50" : isI ? "bg-yellow-50" : isOverflow ? "bg-pink-50" : (mismatch || cumMismatch) ? "bg-gray-300" : isM ? "bg-blue-50" : taxSectBg(tax?.sect ?? "", sectConfig?.sectMode === "hbf")
     const noteKey = tax && tax.seq !== 0 ? `${activeRec}-${tax.코드}` : null
     const note    = noteKey ? notes[noteKey] : undefined
+    const currentPrevJavaSeq = prevJavaSeq        // I 삽입 위치 확정 (이 행 처리 전 값)
+    if (!isI && java) prevJavaSeq = java.seq      // 다음 행을 위해 현재 Java seq 기억
+
     const onClickD = isD ? () => { if (opId) handleCancelD(opId) } : (java ? () => handleD(java.seq) : undefined)
     const dDisabled = isI || (!java && !isD)
-    const onClickI = isI ? () => { if (opId) handleCancelI(opId) } : () => handleI(java?.seq ?? null)
+    const onClickI = isI ? () => { if (opId) handleCancelI(opId) } : () => handleI(currentPrevJavaSeq)
     const iDisabled = isD
     const onChangeMakeStr = isI
       ? (e: React.ChangeEvent<HTMLInputElement>) => { if (opId) handleEditI(opId, e.target.value) }
@@ -1040,7 +1045,8 @@ export function MediaStep() {
       </tr>
     )
     return nodes
-  }), [displayRows, parsedSlots, cumData, sectBounds, gubunBounds, alignedRaws, notes, openNoteKey, selectedIdx, activeRec, sectConfig, showSeq, dirtyTax])
+  }) // flatMap 끝
+  }, [displayRows, parsedSlots, cumData, sectBounds, gubunBounds, alignedRaws, notes, openNoteKey, selectedIdx, activeRec, sectConfig, showSeq, dirtyTax])
 
   // ── JSX ───────────────────────────────────────────────────────
 
