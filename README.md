@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# YTS Tool
 
-## Getting Started
+연말정산 시스템 개발·운영에 필요한 도구를 모아둔 내부 웹 포털입니다.
 
-First, run the development server:
+## 기술 스택
+
+- **Next.js 16** (App Router, Turbopack) + TypeScript
+- **Tailwind CSS** + shadcn/ui
+- **NextAuth.js v5** — credentials 로그인, JWT 세션
+- **oracledb v6.10.0** — v7은 Instant Client 11.2와 호환 안 됨, 버전 고정 필수
+- Oracle Instant Client 11.2 (64비트)
+
+## 사전 요구사항
+
+### Oracle Instant Client 설치
+
+oracledb 네이티브 모듈 실행에 필요합니다.
+
+1. [Oracle Instant Client 11.2 (64비트)](https://www.oracle.com/database/technologies/instant-client/winx64-64-downloads.html) 다운로드
+2. `D:/tools/instantclient_11_2` 에 압축 해제
+3. 해당 경로를 시스템 환경변수 `PATH`에 추가
+
+> 경로를 변경할 경우 `next.config.ts`의 `ORACLE_CLIENT_PATH` 설정도 함께 수정해야 합니다.
+
+## 설치
+
+```bash
+npm install
+```
+
+## 환경변수 설정
+
+프로젝트 루트에 `.env.local` 파일을 생성합니다. (`.env`가 아님에 주의)
+
+```env
+# NextAuth
+AUTH_SECRET=
+
+# 연말정산시스템 DB (ytsDb)
+YTS_DB_USER=
+YTS_DB_PASSWORD=
+YTS_DB_HOST=
+YTS_DB_PORT=
+YTS_DB_SID=
+
+# 연말정산지원시스템 DB (yttsDb)
+YTTS_DB_USER=
+YTTS_DB_PASSWORD=
+YTTS_DB_HOST=
+YTTS_DB_PORT=
+YTTS_DB_SID=
+```
+
+> 각 항목의 실제 값은 별도로 전달받은 `.env.local` 파일을 그대로 사용하세요.
+
+## 실행
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 [http://localhost:3000](http://localhost:3000) 접속
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 주요 화면
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 경로 | 설명 |
+|------|------|
+| `/login` | 로그인 |
+| `/` | 대시보드 |
+| `/tools/hwp-layout` | HWP 레이아웃 업로드 |
+| `/tools/java-layout` | Java 소스 업로드 |
+| `/tools/media-layout` | 전산매체 Java 소스 생성 |
