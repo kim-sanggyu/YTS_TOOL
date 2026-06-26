@@ -9,6 +9,7 @@ export type Section = {
   label:           string
   lines:           string[]
   lineNos:         number[]   // lines[i]에 대응하는 java.lineNo (patch-source용)
+  seqs:            number[]   // lines[i]에 대응하는 java.seq (I-행 insertMap용)
   bodyRepeatCount?: number
 }
 
@@ -63,6 +64,8 @@ export interface BuildResult {
   totalBytes: number
   /** patch-source용: java.lineNo → 최종 정렬된 라인 ("makeStr(...) + // 코드 구분 항목") */
   lineMap: Map<number, string>
+  /** patch-source용 I-행: java.seq → 최종 정렬된 라인 (lineNo=0 행, lineMap 대신 사용) */
+  insertMap: Map<number, string>
 }
 
 export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
@@ -75,13 +78,14 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
 
     const sect = row.tax.sect || row.java.sect || "header"
     if (sect !== curSect) {
-      allSections.push({ sect, label: sectLabel(sect), lines: [], lineNos: [] })
+      allSections.push({ sect, label: sectLabel(sect), lines: [], lineNos: [], seqs: [] })
       curSect = sect
     }
     const javaCode  = (row.editedRaw || row.java.raw).trimEnd()
     const taxComment = [row.tax.코드, row.tax.구분, row.tax.항목].filter(Boolean).join(" ")
     allSections.at(-1)!.lines.push(`${javaCode} + // ${taxComment}`)
     allSections.at(-1)!.lineNos.push(row.java.lineNo)
+    allSections.at(-1)!.seqs.push(row.java.seq)
   }
 
   // 열 정렬 (generate와 동일)
@@ -96,24 +100,29 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
   allSections.forEach((s, i) => {
     s.lines.push(i < allSections.length - 1 ? '    + ""' : '    + "\\n"')
     s.lineNos.push(-1)
+    s.seqs.push(-1)
   })
 
   // 다운로드용 전체 코드
   const downloadCode = allSections.flatMap(s => s.lines).join("\n")
 
-  // patch-source용 lineMap: lineNo → 정렬된 라인 (+ 라인 없음, \n 라인 제외)
-  const lineMap = new Map<number, string>()
+  // patch-source용 lineMap: lineNo → 정렬된 라인 (lineNo>0 행만)
+  // patch-source용 insertMap: java.seq → 정렬된 라인 (I-행 lineNo=0 행만)
+  const lineMap   = new Map<number, string>()
+  const insertMap = new Map<number, string>()
   for (const s of allSections) {
     s.lines.forEach((line, i) => {
       const lineNo = s.lineNos[i]
-      if (lineNo > 0) lineMap.set(lineNo, line)
+      const seq    = s.seqs[i]
+      if (lineNo > 0)              lineMap.set(lineNo, line)
+      else if (lineNo === 0 && seq > 0) insertMap.set(seq, line)
     })
   }
 
   // 화면 표시용: body_1만 + body_sum, \n 라인 제거
   const dispSections: Section[] = allSections
     .filter(s => { const m = s.sect.match(/^body_(\d+)$/); return !m || parseInt(m[1]) === 1 })
-    .map(s => ({ ...s, lines: s.lines.filter(l => !l.includes('+ "\\n"')), lineNos: [...s.lineNos] }))
+    .map(s => ({ ...s, lines: s.lines.filter(l => !l.includes('+ "\\n"')), lineNos: [...s.lineNos], seqs: [...s.seqs] }))
 
   // body_sum 계산
   const body1 = dispSections.find(s => s.sect === "body_1")
@@ -139,13 +148,14 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
     })
     const bodyRepeatCount = allSections.filter(s => /^body_\d+$/.test(s.sect)).length
     const idx = dispSections.findIndex(s => s.sect === "body_1")
-    dispSections.splice(idx + 1, 0, { sect: "body_sum", label: "body_1 타입별 길이 합산", lines: sumLines, lineNos: [], bodyRepeatCount })
+    dispSections.splice(idx + 1, 0, { sect: "body_sum", label: "body_1 타입별 길이 합산", lines: sumLines, lineNos: [], seqs: [], bodyRepeatCount })
   }
 
   if (dispSections.length > 0) {
     dispSections.at(-1)!.lines.push('    + "\\n"')
     dispSections.at(-1)!.lineNos.push(-1)
+    dispSections.at(-1)!.seqs.push(-1)
   }
 
-  return { displaySections: dispSections, downloadCode, totalBytes, lineMap }
+  return { displaySections: dispSections, downloadCode, totalBytes, lineMap, insertMap }
 }

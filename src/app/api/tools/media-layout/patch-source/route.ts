@@ -19,7 +19,8 @@ function rebuildLine(originalLine: string, finalLine: string): string {
 function applyEdits(
   sourceText: string,
   rows: CompareRow[],
-  lineMap: Map<number, string>,
+  lineMap:   Map<number, string>,
+  insertMap: Map<number, string>,
   unmappedDeleteLines: Set<number> = new Set(),
 ): string {
   const srcLines = sourceText.split("\n")
@@ -36,8 +37,10 @@ function applyEdits(
     if (row.cmd === "D") {
       if (row.java.lineNo > 0) deleteLines.add(row.java.lineNo)
     } else if (row.cmd === "I") {
+      // insertMap: buildAlignedOutput이 만든 정렬+주석 완성 라인 사용 → generate와 일치
+      const formattedLine = insertMap.get(row.java.seq)
       if (!insertAfter.has(lastLineNo)) insertAfter.set(lastLineNo, [])
-      insertAfter.get(lastLineNo)!.push(row.editedRaw ?? "")
+      insertAfter.get(lastLineNo)!.push(formattedLine ?? row.editedRaw ?? "")
     } else if (row.java.lineNo > 0) {
       // lineMap은 buildAlignedOutput(=generate)이 만든 최종 라인 → 완전 일치 보장
       const finalLine = lineMap.get(row.java.lineNo)
@@ -98,9 +101,10 @@ export async function POST(req: NextRequest) {
     for (const r of allJavaRows) { seqToRec[r.seq] = r.record; (javaByRec[r.record] = javaByRec[r.record] || []).push(r) }
     for (const e of allEdits)    { const k = seqToRec[e.seq]; if (k) (editsByRec[k] = editsByRec[k] || []).push(e) }
 
-    const allRows: CompareRow[] = []
-    const lineMap = new Map<number, string>()
-    const unmappedDeleteLines = new Set<number>()
+    const allRows:  CompareRow[]        = []
+    const lineMap   = new Map<number, string>()
+    const insertMap = new Map<number, string>()
+    const processedRecs = new Set<string>()
 
     for (const rec of RECORD_TYPES) {
       const rows = await buildCompareRowsFromMap(
@@ -108,20 +112,25 @@ export async function POST(req: NextRequest) {
         taxByRec[rec] ?? [], javaByRec[rec] ?? [], editsByRec[rec] ?? []
       )
       if (!rows) continue
+      processedRecs.add(rec)
       allRows.push(...rows)
 
-      // generate와 동일한 함수로 lineMap 생성 → 완전 일치 보장
-      const { lineMap: recMap } = buildAlignedOutput(rows)
+      // generate와 동일한 함수로 lineMap/insertMap 생성 → 완전 일치 보장
+      const { lineMap: recMap, insertMap: recInsert } = buildAlignedOutput(rows)
       recMap.forEach((v, k) => lineMap.set(k, v))
+      recInsert.forEach((v, k) => insertMap.set(k, v))
+    }
 
-      // MAP에 없는 원본 Java 행(LINE_NO>0) → generate 출력에도 없으므로 patch에서도 삭제
-      const mappedSeqs = new Set(rows.flatMap(r => r.java ? [r.java.seq] : []))
+    // MAP이 있는 레코드에서 generate에 포함되지 않은 원본 Java 행(LINE_NO>0)을 patch에서도 삭제
+    // (unmapped 행 + MAP에 있어도 tax=null 등으로 generate에서 제외된 행 모두 커버)
+    const unmappedDeleteLines = new Set<number>()
+    for (const rec of processedRecs) {
       for (const j of javaByRec[rec] ?? []) {
-        if (j.lineNo > 0 && !mappedSeqs.has(j.seq)) unmappedDeleteLines.add(j.lineNo)
+        if (j.lineNo > 0 && !lineMap.has(j.lineNo)) unmappedDeleteLines.add(j.lineNo)
       }
     }
 
-    const patched     = applyEdits(sourceText, allRows, lineMap, unmappedDeleteLines)
+    const patched     = applyEdits(sourceText, allRows, lineMap, insertMap, unmappedDeleteLines)
     const linesBefore = sourceText.split("\n").length
     const linesAfter  = patched.split("\n").length
 
