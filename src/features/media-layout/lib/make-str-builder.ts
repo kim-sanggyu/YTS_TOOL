@@ -58,8 +58,10 @@ function parseMakeStrLen(raw: string): number | null {
 export interface BuildResult {
   /** 화면 표시용 섹션 (body_1만 + body_sum, \n 라인 없음) */
   displaySections: Section[]
-  /** 다운로드용 전체 코드 문자열 */
+  /** 레코드 단독 다운로드용 코드 (header+body_1+body_sum+footer, body_2+ 제외) */
   downloadCode: string
+  /** patch-source 내부용 전체 코드 (body 반복 전체 포함) */
+  fullCode: string
   /** 총 바이트 수 */
   totalBytes: number
   /** patch-source용: java.lineNo → 최종 정렬된 라인 ("makeStr(...) + // 코드 구분 항목") */
@@ -157,5 +159,30 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
     dispSections.at(-1)!.seqs.push(-1)
   }
 
-  return { displaySections: dispSections, downloadCode, totalBytes, lineMap, insertMap }
+  // 레코드 단독 다운로드용 코드: displaySections 기반 (header+body_1+body_sum+footer)
+  // body_sum 행은 " // " → " + // " 변환으로 Java 연결 문법 유지
+  const displayDownloadLines: string[] = []
+  for (let si = 0; si < dispSections.length; si++) {
+    const s      = dispSections[si]
+    const isLast = si === dispSections.length - 1
+    for (const line of s.lines) {
+      if (line === '    + "\\n"' || line === '    + ""') continue
+      if (s.sect === "body_sum") {
+        displayDownloadLines.push(line.replace(" // ", " + // "))
+      } else {
+        displayDownloadLines.push(line)
+      }
+    }
+    displayDownloadLines.push(isLast ? '    + "\\n"' : '    + ""')
+  }
+  const displayDownloadCode = displayDownloadLines.join("\n")
+
+  return {
+    displaySections: dispSections,
+    downloadCode:    displayDownloadCode,
+    fullCode:        downloadCode,
+    totalBytes,
+    lineMap,
+    insertMap,
+  }
 }
