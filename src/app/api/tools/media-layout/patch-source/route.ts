@@ -35,9 +35,18 @@ function applyEdits(
   for (const row of rows) {
     if (!row.java) continue
 
+    // body_2+ 반복 구간: I-행 중복 삽입·D-행 공유 LINE_NO 삭제 방지
+    const taxSect = row.tax?.sect ?? ""
+    const bodyRepeatM = taxSect.match(/^body_(\d+)$/)
+    const isBodyRepeat = bodyRepeatM !== null && parseInt(bodyRepeatM[1]) > 1
+
     if (row.cmd === "D") {
-      if (row.java.lineNo > 0) deleteLines.add(row.java.lineNo)
+      // body_2+ D-행이 body_1과 LINE_NO를 공유하면 삭제 대상에서 제외
+      if (row.java.lineNo > 0 && !(isBodyRepeat && lineMap.has(row.java.lineNo)))
+        deleteLines.add(row.java.lineNo)
     } else if (row.cmd === "I") {
+      // body_2+ I-행: 물리 소스에서는 루프 1회차만 존재 → 삽입 건너뜀
+      if (isBodyRepeat) continue
       // insertMap: buildAlignedOutput이 만든 정렬+주석 완성 라인 사용 → generate와 일치
       const formattedLine = insertMap.get(row.java.seq)
       if (!insertAfter.has(lastLineNo)) insertAfter.set(lastLineNo, [])

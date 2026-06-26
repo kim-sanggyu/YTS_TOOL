@@ -122,8 +122,8 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
     s.lines.forEach((line, i) => {
       const lineNo = s.lineNos[i]
       const seq    = s.seqs[i]
-      if (lineNo > 0)              lineMap.set(lineNo, line)
-      else if (lineNo === 0 && seq > 0) insertMap.set(seq, line)
+      if (lineNo > 0 && !lineMap.has(lineNo)) lineMap.set(lineNo, line)
+      else if (lineNo === 0 && seq > 0)      insertMap.set(seq, line)
     })
   }
 
