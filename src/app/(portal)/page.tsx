@@ -12,8 +12,9 @@ const tools = [
   { id: "media-generate", name: "전산매체 소스 생성",   href: "/tools/media-generate", icon: Code2,         status: "active" as const },
   { id: "data-verify",    name: "전산매체 파일 검증",   href: "/tools/data-verify",   icon: Database,       status: "coming" as const },
   // 세액계산
-  { id: "tax-calc",       name: "세액계산 로직 검증",   href: "/tools/tax-calc",      icon: Calculator,     status: "coming" as const },
-  { id: "diff-checker",   name: "차년도 데이터 생성",   href: "/tools/diff-checker",  icon: GitCompare,     status: "coming" as const },
+  { id: "tax-calc",       name: "세액계산 로직 검증",   href: "/tools/tax-calc",       icon: Calculator,     status: "coming" as const },
+  { id: "fmly-age-check", name: "공제요건 경계나이 관리", href: "/tools/fmly-age-check", icon: Calculator,     status: "active" as const },
+  { id: "data-migration", name: "차년도 데이터 생성",   href: "/tools/data-migration", icon: GitCompare,    status: "active" as const },
   { id: "report-gen",     name: "세액계산 내용 조회",   href: "/tools/report-gen",    icon: FileOutput,     status: "coming" as const },
   // 운영지원
   { id: "pdf-history",    name: "PDF 수정내역",         href: "/tools/pdf-history",   icon: FileText,       status: "coming" as const },
