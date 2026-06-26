@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import {
   LayoutDashboard, FileText, FileCode, Database, Calculator,
   GitCompare, FileOutput, Settings, LogOut, ChevronsUpDown, ChevronDown, FileSearch, Code2,
-  ClipboardList, Package, ClipboardCheck, FolderOpen,
+  ClipboardList, Package, ClipboardCheck, FolderOpen, Info, X,
 } from "lucide-react"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader,
@@ -77,6 +77,16 @@ const navGroups: NavGroup[] = [
   },
 ]
 
+const TAX_WORKFLOW = [
+  { label: "TaxCalc 소스 수정",        type: "수작업",        badge: false },
+  { label: "개정세법 부분 테스트",      type: "국세청 모의계산", badge: false },
+  { label: "올해 테스트 데이터 생성",   type: "세액계산 메뉴",  badge: true  },
+  { label: "전체 소득자 세액 계산",     type: "YTS",           badge: false },
+  { label: "전산매체 소스 수정",        type: "전산매체 메뉴",  badge: true  },
+  { label: "전산매체 생성",            type: "YTS",           badge: false },
+  { label: "국세청에 전산매체 업로드",  type: "수작업",        badge: false },
+]
+
 interface AppSidebarProps {
   user?: { name?: string | null; email?: string | null }
 }
@@ -89,6 +99,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     "전산매체": true, "세액계산": true, "운영지원": true, "파일배포": true, "과제관리": true,
   }
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(defaultGroups)
+  const [workflowOpen, setWorkflowOpen] = useState(false)
+  const [workflowY, setWorkflowY] = useState(0)
+  const infoRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
     try {
@@ -110,6 +123,44 @@ export function AppSidebar({ user }: AppSidebarProps) {
     .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
 
   return (
+    <>
+    {workflowOpen && (
+      <div className="fixed inset-0 z-50">
+        <div className="absolute inset-0" onClick={() => setWorkflowOpen(false)} />
+        <div className="absolute left-64 w-[360px] rounded-xl border bg-background shadow-2xl overflow-hidden" style={{ top: workflowY }}>
+          {/* 헤더 */}
+          <div className="flex items-center justify-between bg-gray-100 px-4 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-gray-500" />
+              <span className="text-sm font-semibold text-gray-700">세액계산 워크플로우</span>
+            </div>
+            <button onClick={() => setWorkflowOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {/* 단계 테이블 */}
+          <table className="w-full text-sm border-collapse">
+            <tbody>
+              {TAX_WORKFLOW.map(({ label, type, badge }, i) => (
+                <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <td className="pl-4 pr-2 py-2.5 text-xs text-gray-300 tabular-nums w-6">{i + 1}</td>
+                  <td className="pr-4 py-2.5 text-sm text-gray-700 whitespace-nowrap">{label}</td>
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                    {badge ? (
+                      <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-200">
+                        {type}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-400">{type}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
     <Sidebar collapsible="icon">
       {/* 헤더: YTS Tool 텍스트(접으면 숨김) + 접기 버튼(항상 우측) */}
       <SidebarHeader className="flex h-10 shrink-0 flex-row items-center border-b border-sidebar-border px-3">
@@ -159,6 +210,21 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>
+                {group.label === "세액계산" && (
+                  <span
+                    ref={infoRef}
+                    role="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (infoRef.current) setWorkflowY(infoRef.current.getBoundingClientRect().top)
+                      setWorkflowOpen(true)
+                    }}
+                    className="text-blue-400 hover:text-blue-500 transition-colors"
+                    title="세액계산 워크플로우"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </span>
+                )}
                 {!isOpen && allDisabled && (
                   <span className="rounded bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-normal normal-case tracking-normal text-sidebar-foreground/50 opacity-50">
                     준비중
@@ -235,5 +301,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+    </>
   )
 }
