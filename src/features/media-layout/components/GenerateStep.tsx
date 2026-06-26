@@ -30,6 +30,8 @@ export function GenerateStep() {
   const [checking,  setChecking]  = useState(false)
 
   const [activeRec,  setActiveRec]  = useState("A")
+  const activeRecRef = useRef("A")
+  useEffect(() => { activeRecRef.current = activeRec }, [activeRec])
   const [sections,   setSections]   = useState<PreviewSection[]>([])
   const [code,       setCode]       = useState("")
   const [stats,      setStats]      = useState<{ lines: number; bytes: number } | null>(null)
@@ -102,12 +104,15 @@ export function GenerateStep() {
         lines:    data.lines    ?? 0,
       }
       setGenCache(prev => ({ ...prev, [rec]: cached }))
-      setSections(cached.sections)
-      setCode(cached.code)
-      setStats({ lines: cached.lines, bytes: cached.bytes })
+      // 응답 도착 시점에 탭이 바뀌어 있으면 화면/다운로드 상태를 덮어쓰지 않음
+      if (rec === activeRecRef.current) {
+        setSections(cached.sections)
+        setCode(cached.code)
+        setStats({ lines: cached.lines, bytes: cached.bytes })
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "소스 생성 중 오류가 발생했습니다.")
-      setSections([]); setCode(""); setStats(null)
+      if (rec === activeRecRef.current) { setSections([]); setCode(""); setStats(null) }
     } finally { setGenerating(false) }
   }, [])
 
