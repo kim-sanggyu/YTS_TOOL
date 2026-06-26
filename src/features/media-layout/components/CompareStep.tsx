@@ -44,6 +44,13 @@ function applySectConfig(
   })
 }
 
+// ── makeStr dtype/len 파싱 ────────────────────────────────────
+
+function parseMakeStrField(s: string): { dtype: string; len: number } | null {
+  const m = /^makeStr\s*\(\s*"([xX9])"\s*,\s*(\d+)/.exec(s.trim())
+  return m ? { dtype: m[1].toLowerCase(), len: parseInt(m[2]) } : null
+}
+
 // ── makeStr 정규화 ────────────────────────────────────────────
 
 function canonicalize(s: string): string {
@@ -172,7 +179,10 @@ export function CompareStep() {
     const len = Math.max(taxItems.length, javaSlots.length)
     return Array.from({ length: len }, (_, i) => {
       tc += taxItems[i]?.길이  ?? 0
-      if (javaSlots[i]?.cmd !== "D") jc += javaSlots[i]?.field?.len ?? 0
+      if (javaSlots[i]?.cmd !== "D") {
+        const ep = parseMakeStrField(javaSlots[i]?.editedRaw ?? "")
+        jc += ep?.len ?? javaSlots[i]?.field?.len ?? 0
+      }
       return { tc, jc }
     })
   }, [taxItems, javaSlots])
@@ -394,8 +404,11 @@ export function CompareStep() {
                 const isI  = slot.cmd === "I" && slot.field === null
                 const isM  = !isD && !isI && !!slot.field && canonicalize(slot.editedRaw) !== canonicalize(slot.field.raw)
 
-                const typeMismatch   = !isD && !isI && !!tax && !!slot.field && tax.타입 !== slot.field.dtype
-                const lengthMismatch = !isD && !isI && !!tax && !!slot.field && tax.길이 !== slot.field.len
+                const ep             = parseMakeStrField(slot.editedRaw)
+                const effDtype       = ep?.dtype ?? slot.field?.dtype ?? ""
+                const effLen         = ep?.len   ?? slot.field?.len   ?? 0
+                const typeMismatch   = !isD && !isI && !!tax && !!slot.field && tax.타입 !== effDtype
+                const lengthMismatch = !isD && !isI && !!tax && !!slot.field && tax.길이 !== effLen
                 const hasMismatch    = typeMismatch || lengthMismatch
 
                 // 서식항목 수정 여부 (원본항목이 있으면 MLAY_TAX_EDIT로 수정된 것)
@@ -513,7 +526,7 @@ export function CompareStep() {
                       )}
                     </td>
                     <td className={`px-2 py-1 border-r text-center font-mono ${hasMismatch ? "text-red-600 font-bold" : ""}`}>
-                      {!isD && slot.field ? `${slot.field.dtype}(${slot.field.len})` : ""}
+                      {!isD && slot.field ? `${effDtype}(${effLen})` : ""}
                     </td>
                     <td className="px-2 py-1 border-r text-center text-muted-foreground/70 tabular-nums">
                       {!isD && slot.field ? slot.field.lineNo : ""}

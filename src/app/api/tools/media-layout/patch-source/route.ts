@@ -5,28 +5,27 @@ import {
 } from "@/lib/tax-oracle"
 import { auth } from "@/auth"
 import type { CompareRow } from "@/features/media-layout/types"
+import { buildAlignedOutput } from "@/features/media-layout/lib/make-str-builder"
 
 const RECORD_TYPES = ["A","B","C","D","E","F","G","H","I","K"]
 
-// makeStr(...) 표현식을 찾아 새 표현식으로 교체 (들여쓰기·후행 문자 보존)
-function replaceMakeStr(line: string, newExpr: string): string {
-  const start = line.indexOf("makeStr(")
-  if (start === -1) return line
-  let depth = 0, end = start
-  for (let i = start; i < line.length; i++) {
-    if (line[i] === "(") depth++
-    else if (line[i] === ")") { depth--; if (depth === 0) { end = i + 1; break } }
-  }
-  return line.slice(0, start) + newExpr + line.slice(end)
+// 원본 라인의 prefix(들여쓰기 등) 보존 + lineMap의 최종 라인으로 교체
+function rebuildLine(originalLine: string, finalLine: string): string {
+  const start = originalLine.indexOf("makeStr(")
+  if (start === -1) return originalLine
+  return originalLine.slice(0, start) + finalLine
 }
 
-// 비교 행(CompareRow[])으로부터 원본 소스에 D/I/M 편집 적용
-function applyEdits(sourceText: string, rows: CompareRow[]): string {
+function applyEdits(
+  sourceText: string,
+  rows: CompareRow[],
+  lineMap: Map<number, string>
+): string {
   const srcLines = sourceText.split("\n")
 
-  const deleteLines  = new Set<number>()
-  const replaceLines = new Map<number, string>()   // lineNo → newMakeStr
-  const insertAfter  = new Map<number, string[]>() // afterLineNo → contents
+  const deleteLines = new Set<number>()
+  const replaceLines = new Map<number, string>()  // lineNo → finalLine
+  const insertAfter  = new Map<number, string[]>()
 
   let lastLineNo = 0
 
@@ -36,42 +35,36 @@ function applyEdits(sourceText: string, rows: CompareRow[]): string {
     if (row.cmd === "D") {
       if (row.java.lineNo > 0) deleteLines.add(row.java.lineNo)
     } else if (row.cmd === "I") {
-      // LINE_NO=0 삽입 행: 직전 Java 원본 행 뒤에 삽입
       if (!insertAfter.has(lastLineNo)) insertAfter.set(lastLineNo, [])
       insertAfter.get(lastLineNo)!.push(row.editedRaw ?? "")
     } else if (row.java.lineNo > 0) {
-      if (row.editedRaw && row.editedRaw !== row.java.raw) {
-        replaceLines.set(row.java.lineNo, row.editedRaw)
-      }
+      // lineMap은 buildAlignedOutput(=generate)이 만든 최종 라인 → 완전 일치 보장
+      const finalLine = lineMap.get(row.java.lineNo)
+      if (finalLine) replaceLines.set(row.java.lineNo, finalLine)
       lastLineNo = row.java.lineNo
     }
   }
 
   const result: string[] = []
 
-  for (const content of insertAfter.get(0) ?? []) {
-    result.push(content)
-  }
+  for (const content of insertAfter.get(0) ?? []) result.push(content)
 
   for (let i = 0; i < srcLines.length; i++) {
     const lineNo = i + 1
     if (deleteLines.has(lineNo)) continue
 
     let line = srcLines[i]
-    const newMakeStr = replaceLines.get(lineNo)
-    if (newMakeStr) line = replaceMakeStr(line, newMakeStr)
+    const finalLine = replaceLines.get(lineNo)
+    if (finalLine) line = rebuildLine(line, finalLine)
     result.push(line)
 
     const indent = line.match(/^(\s*)/)?.[1] ?? ""
-    for (const content of insertAfter.get(lineNo) ?? []) {
-      result.push(indent + content)
-    }
+    for (const content of insertAfter.get(lineNo) ?? []) result.push(indent + content)
   }
 
   return result.join("\n")
 }
 
-// POST: 원본 소스에 편집 적용 후 반환
 export async function POST(req: NextRequest) {
   try {
     const session = await auth()
@@ -96,26 +89,31 @@ export async function POST(req: NextRequest) {
 
     if (!sourceText) return NextResponse.json({ message: "Java 소스가 없습니다." }, { status: 400 })
 
-    // 레코드별 그룹화
-    const taxByRec:  Record<string, typeof allTaxRows>  = {}
-    const javaByRec: Record<string, typeof allJavaRows> = {}
-    const editsByRec: Record<string, typeof allEdits>   = {}
-    const seqToRec: Record<number, string> = {}
+    const taxByRec:   Record<string, typeof allTaxRows>  = {}
+    const javaByRec:  Record<string, typeof allJavaRows> = {}
+    const editsByRec: Record<string, typeof allEdits>    = {}
+    const seqToRec:   Record<number, string>             = {}
     for (const r of allTaxRows)  { const k = r.코드[0]; if (k) (taxByRec[k]  = taxByRec[k]  || []).push(r) }
     for (const r of allJavaRows) { seqToRec[r.seq] = r.record; (javaByRec[r.record] = javaByRec[r.record] || []).push(r) }
     for (const e of allEdits)    { const k = seqToRec[e.seq]; if (k) (editsByRec[k] = editsByRec[k] || []).push(e) }
 
-    // 전체 레코드 비교 행 수집
     const allRows: CompareRow[] = []
+    const lineMap = new Map<number, string>()
+
     for (const rec of RECORD_TYPES) {
       const rows = await buildCompareRowsFromMap(
         hwp.year, userId, rec,
         taxByRec[rec] ?? [], javaByRec[rec] ?? [], editsByRec[rec] ?? []
       )
-      if (rows) allRows.push(...rows)
+      if (!rows) continue
+      allRows.push(...rows)
+
+      // generate와 동일한 함수로 lineMap 생성 → 완전 일치 보장
+      const { lineMap: recMap } = buildAlignedOutput(rows)
+      recMap.forEach((v, k) => lineMap.set(k, v))
     }
 
-    const patched     = applyEdits(sourceText, allRows)
+    const patched     = applyEdits(sourceText, allRows, lineMap)
     const linesBefore = sourceText.split("\n").length
     const linesAfter  = patched.split("\n").length
 

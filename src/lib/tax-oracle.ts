@@ -1023,17 +1023,23 @@ export async function getMediaSummary(year: number, userId: number): Promise<{
          )`,
       [year, userId, year, userId]
     ),
-    // 타입·길이 불일치 행 수 (ROW_TYPE=NULL 정상 매핑 행만, M-편집 미반영 근사치)
+    // 타입·길이 불일치 행 수 (ROW_TYPE=NULL 정상 매핑 행만, M-편집 반영)
     yttsDb.query<Record<string, unknown>>(
       `SELECT M.RECORD_TYPE, COUNT(*) AS CNT
        FROM MLAY_TAX_JAVA_MAP M
        JOIN MLAY_TAX  T ON T.YEAR = :1 AND T.USER_ID = :2 AND T.SEQ = M.TAX_SEQ
        JOIN MLAY_JAVA J ON J.YEAR = :1 AND J.USER_ID = :2 AND J.SEQ = M.JAVA_SEQ
+       LEFT JOIN MLAY_JAVA_CODE_EDIT E ON E.YEAR = :1 AND E.USER_ID = :2 AND E.SEQ = M.JAVA_SEQ
        WHERE M.YEAR = :1 AND M.USER_ID = :2
          AND M.ROW_TYPE IS NULL
          AND T.FIELD_TYPE IS NOT NULL AND T.FIELD_LEN IS NOT NULL
          AND J.FIELD_TYPE IS NOT NULL AND J.FIELD_LEN IS NOT NULL
-         AND (T.FIELD_TYPE != J.FIELD_TYPE OR T.FIELD_LEN != J.FIELD_LEN)
+         AND (
+           T.FIELD_TYPE != COALESCE(LOWER(REGEXP_SUBSTR(E.JAVA_CODE, '"([xX9])"', 1, 1, 'i', 1)), J.FIELD_TYPE)
+           OR T.FIELD_LEN != CASE WHEN E.JAVA_CODE IS NOT NULL
+                             THEN TO_NUMBER(REGEXP_SUBSTR(E.JAVA_CODE, '"[xX9]"\s*,\s*(\d+)', 1, 1, 'i', 1))
+                             ELSE J.FIELD_LEN END
+         )
        GROUP BY M.RECORD_TYPE`,
       [year, userId]
     ),
