@@ -68,6 +68,12 @@ export interface BuildResult {
   lineMap: Map<number, string>
   /** patch-source용 I-행: java.seq → 최종 정렬된 라인 (lineNo=0 행, lineMap 대신 사용) */
   insertMap: Map<number, string>
+  /** patch-source용: body_2+ 행 LINE_NO 집합 (원본에서 삭제 대상) */
+  bodyRepeatDeleteLines: Set<number>
+  /** patch-source용: body_sum 삽입 기준 LINE_NO (body_1 마지막 행, 없으면 -1) */
+  bodySumInsertAfterLineNo: number
+  /** patch-source용: body_sum 삽입 라인 목록 (" + // " 포맷 적용) */
+  bodySumInsertLines: string[]
 }
 
 export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
@@ -177,6 +183,29 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
   }
   const displayDownloadCode = displayDownloadLines.join("\n")
 
+  // patch-source용: body_2+ 행 삭제 + body_sum 삽입 데이터
+  const bodyRepeatDeleteLines = new Set<number>()
+  for (const s of allSections) {
+    const m = s.sect.match(/^body_(\d+)$/)
+    if (!m || parseInt(m[1]) === 1) continue
+    for (const lineNo of s.lineNos) {
+      if (lineNo > 0) bodyRepeatDeleteLines.add(lineNo)
+    }
+  }
+
+  let bodySumInsertAfterLineNo = -1
+  const body1Sect = allSections.find(s => s.sect === "body_1")
+  if (body1Sect) {
+    for (let i = body1Sect.lineNos.length - 1; i >= 0; i--) {
+      if (body1Sect.lineNos[i] > 0) { bodySumInsertAfterLineNo = body1Sect.lineNos[i]; break }
+    }
+  }
+
+  const bodySumSect = dispSections.find(s => s.sect === "body_sum")
+  const bodySumInsertLines = bodyRepeatDeleteLines.size > 0 && bodySumSect
+    ? bodySumSect.lines.map(l => l.replace(" // ", " + // "))
+    : []
+
   return {
     displaySections: dispSections,
     downloadCode:    displayDownloadCode,
@@ -184,5 +213,8 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
     totalBytes,
     lineMap,
     insertMap,
+    bodyRepeatDeleteLines,
+    bodySumInsertAfterLineNo,
+    bodySumInsertLines,
   }
 }

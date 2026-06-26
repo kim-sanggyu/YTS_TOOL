@@ -22,6 +22,7 @@ function applyEdits(
   lineMap:   Map<number, string>,
   insertMap: Map<number, string>,
   unmappedDeleteLines: Set<number> = new Set(),
+  bodySumInsertAfter:  Map<number, string[]> = new Map(),
 ): string {
   const srcLines = sourceText.split("\n")
 
@@ -64,6 +65,7 @@ function applyEdits(
 
     const indent = line.match(/^(\s*)/)?.[1] ?? ""
     for (const content of insertAfter.get(lineNo) ?? []) result.push(indent + content)
+    for (const content of bodySumInsertAfter.get(lineNo) ?? []) result.push(indent + content)
   }
 
   return result.join("\n")
@@ -104,7 +106,9 @@ export async function POST(req: NextRequest) {
     const allRows:  CompareRow[]        = []
     const lineMap   = new Map<number, string>()
     const insertMap = new Map<number, string>()
-    const processedRecs = new Set<string>()
+    const processedRecs   = new Set<string>()
+    const bodyDeleteLines = new Set<number>()          // body_2+ 행 삭제
+    const bodySumInsertAfter = new Map<number, string[]>() // body_sum 삽입
 
     for (const rec of RECORD_TYPES) {
       const rows = await buildCompareRowsFromMap(
@@ -116,20 +120,29 @@ export async function POST(req: NextRequest) {
       allRows.push(...rows)
 
       // generate와 동일한 함수로 lineMap/insertMap 생성 → 완전 일치 보장
-      const { lineMap: recMap, insertMap: recInsert } = buildAlignedOutput(rows)
+      const { lineMap: recMap, insertMap: recInsert,
+              bodyRepeatDeleteLines, bodySumInsertAfterLineNo, bodySumInsertLines } = buildAlignedOutput(rows)
       recMap.forEach((v, k) => lineMap.set(k, v))
       recInsert.forEach((v, k) => insertMap.set(k, v))
+
+      // body_2+ 삭제 수집
+      bodyRepeatDeleteLines.forEach(ln => bodyDeleteLines.add(ln))
+
+      // body_sum 삽입 수집 (body_1 마지막 행 뒤)
+      if (bodySumInsertAfterLineNo > 0 && bodySumInsertLines.length > 0) {
+        bodySumInsertAfter.set(bodySumInsertAfterLineNo, bodySumInsertLines)
+      }
     }
 
     // MAP에 등록된 행 중 generate에서 제외된 행만 patch에서도 삭제
     // (MAP 밖 Java 행은 정당한 소스 코드이므로 건드리지 않음)
-    const unmappedDeleteLines = new Set<number>()
+    const unmappedDeleteLines = new Set<number>(bodyDeleteLines)
     for (const row of allRows) {
       if (!row.java || row.java.lineNo <= 0) continue
       if (!lineMap.has(row.java.lineNo)) unmappedDeleteLines.add(row.java.lineNo)
     }
 
-    const patched     = applyEdits(sourceText, allRows, lineMap, insertMap, unmappedDeleteLines)
+    const patched     = applyEdits(sourceText, allRows, lineMap, insertMap, unmappedDeleteLines, bodySumInsertAfter)
     const linesBefore = sourceText.split("\n").length
     const linesAfter  = patched.split("\n").length
 
