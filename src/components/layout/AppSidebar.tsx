@@ -79,9 +79,9 @@ const navGroups: NavGroup[] = [
 
 const TAX_WORKFLOW = [
   { label: "TaxCalc 소스 수정",        type: "수작업",        badge: false },
-  { label: "개정세법 부분 테스트",      type: "국세청 모의계산", badge: false },
+  { label: "개정세법 항목 테스트",      type: "국세청 모의계산", badge: false },
   { label: "올해 테스트 데이터 생성",   type: "세액계산 메뉴",  badge: true  },
-  { label: "전체 소득자 세액 계산",     type: "YTS",           badge: false },
+  { label: "소득자 전체 세액 계산",     type: "YTS",           badge: false },
   { label: "전산매체 소스 수정",        type: "전산매체 메뉴",  badge: true  },
   { label: "전산매체 생성",            type: "YTS",           badge: false },
   { label: "국세청에 전산매체 업로드",  type: "수작업",        badge: false },
