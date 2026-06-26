@@ -146,7 +146,7 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
     const sumLines = groups.map(g => {
       const fill  = g.dtype === "9" ? '"0"' : '" "'
       const range = g.from === g.to ? g.from : `${g.from} ~ ${g.to}`
-      return `    makeStr("${g.dtype}", ${g.len.toString().padStart(padW)}, ${fill}) // ${range}  (${g.dtype}타입 ${g.count}행 합산)`
+      return `makeStr("${g.dtype}", ${g.len.toString().padStart(padW)}, ${fill}) // ${range}  (${g.dtype}타입 ${g.count}행 합산)`
     })
     const bodyRepeatCount = allSections.filter(s => /^body_\d+$/.test(s.sect)).length
     const idx = dispSections.findIndex(s => s.sect === "body_1")
