@@ -184,17 +184,23 @@ export function buildAlignedOutput(rows: CompareRow[]): BuildResult {
   const displayDownloadCode = displayDownloadLines.join("\n")
 
   // patch-source용: body_2+ 행 삭제 + body_sum 삽입 데이터
+  // body_1과 LINE_NO를 공유하는 행은 삭제 대상에서 제외 (반복 파싱으로 동일 LINE_NO가 여러 sect에 등록된 경우)
+  const body1Sect = allSections.find(s => s.sect === "body_1")
+  const body1LineNos = new Set<number>()
+  if (body1Sect) {
+    for (const ln of body1Sect.lineNos) if (ln > 0) body1LineNos.add(ln)
+  }
+
   const bodyRepeatDeleteLines = new Set<number>()
   for (const s of allSections) {
     const m = s.sect.match(/^body_(\d+)$/)
     if (!m || parseInt(m[1]) === 1) continue
     for (const lineNo of s.lineNos) {
-      if (lineNo > 0) bodyRepeatDeleteLines.add(lineNo)
+      if (lineNo > 0 && !body1LineNos.has(lineNo)) bodyRepeatDeleteLines.add(lineNo)
     }
   }
 
   let bodySumInsertAfterLineNo = -1
-  const body1Sect = allSections.find(s => s.sect === "body_1")
   if (body1Sect) {
     for (let i = body1Sect.lineNos.length - 1; i >= 0; i--) {
       if (body1Sect.lineNos[i] > 0) { bodySumInsertAfterLineNo = body1Sect.lineNos[i]; break }
