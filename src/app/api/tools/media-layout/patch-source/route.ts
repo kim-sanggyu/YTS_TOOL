@@ -19,11 +19,12 @@ function rebuildLine(originalLine: string, finalLine: string): string {
 function applyEdits(
   sourceText: string,
   rows: CompareRow[],
-  lineMap: Map<number, string>
+  lineMap: Map<number, string>,
+  unmappedDeleteLines: Set<number> = new Set(),
 ): string {
   const srcLines = sourceText.split("\n")
 
-  const deleteLines = new Set<number>()
+  const deleteLines = new Set<number>(unmappedDeleteLines)
   const replaceLines = new Map<number, string>()  // lineNo → finalLine
   const insertAfter  = new Map<number, string[]>()
 
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
 
     const allRows: CompareRow[] = []
     const lineMap = new Map<number, string>()
+    const unmappedDeleteLines = new Set<number>()
 
     for (const rec of RECORD_TYPES) {
       const rows = await buildCompareRowsFromMap(
@@ -111,9 +113,15 @@ export async function POST(req: NextRequest) {
       // generate와 동일한 함수로 lineMap 생성 → 완전 일치 보장
       const { lineMap: recMap } = buildAlignedOutput(rows)
       recMap.forEach((v, k) => lineMap.set(k, v))
+
+      // MAP에 없는 원본 Java 행(LINE_NO>0) → generate 출력에도 없으므로 patch에서도 삭제
+      const mappedSeqs = new Set(rows.flatMap(r => r.java ? [r.java.seq] : []))
+      for (const j of javaByRec[rec] ?? []) {
+        if (j.lineNo > 0 && !mappedSeqs.has(j.seq)) unmappedDeleteLines.add(j.lineNo)
+      }
     }
 
-    const patched     = applyEdits(sourceText, allRows, lineMap)
+    const patched     = applyEdits(sourceText, allRows, lineMap, unmappedDeleteLines)
     const linesBefore = sourceText.split("\n").length
     const linesAfter  = patched.split("\n").length
 
