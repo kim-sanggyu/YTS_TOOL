@@ -121,13 +121,12 @@ export async function POST(req: NextRequest) {
       recInsert.forEach((v, k) => insertMap.set(k, v))
     }
 
-    // MAP이 있는 레코드에서 generate에 포함되지 않은 원본 Java 행(LINE_NO>0)을 patch에서도 삭제
-    // (unmapped 행 + MAP에 있어도 tax=null 등으로 generate에서 제외된 행 모두 커버)
+    // MAP에 등록된 행 중 generate에서 제외된 행만 patch에서도 삭제
+    // (MAP 밖 Java 행은 정당한 소스 코드이므로 건드리지 않음)
     const unmappedDeleteLines = new Set<number>()
-    for (const rec of processedRecs) {
-      for (const j of javaByRec[rec] ?? []) {
-        if (j.lineNo > 0 && !lineMap.has(j.lineNo)) unmappedDeleteLines.add(j.lineNo)
-      }
+    for (const row of allRows) {
+      if (!row.java || row.java.lineNo <= 0) continue
+      if (!lineMap.has(row.java.lineNo)) unmappedDeleteLines.add(row.java.lineNo)
     }
 
     const patched     = applyEdits(sourceText, allRows, lineMap, insertMap, unmappedDeleteLines)
