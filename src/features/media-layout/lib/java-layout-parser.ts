@@ -13,7 +13,7 @@ export interface JavaParseResult {
 
 const MAKE_STR_RE    = /makeStr\("([9xX])",\s*(\d+),/
 // 】 뒤 텍스트를 항목명으로 사용 (/*...*/는 제거)
-const FIELD_CMT_RE   = /\/\/\s*([A-K]\d+(?:[ⓐ-ⓩ](?:-\d+)?|\(\d+\))?)\s*【[^】]+】(.+)/
+const FIELD_CMT_RE   = /\/\/\s*([A-K][^\s【]+)\s*【[^】]+】(.+)/
 const SECTION_RE     = /제\s*([\d１２３４５６７８９０]+)\s*절/
 const CPR_RE         = /countPerRecord\s*=\s*(\d+)/      // 한 레코드당 반복 수
 const REC_HDR_RE     = /\/\/([A-K])레코드/               // //E레코드[...]
