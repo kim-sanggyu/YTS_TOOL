@@ -285,7 +285,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 <ChevronsUpDown className="h-3.5 w-3.5 opacity-40 group-data-[collapsible=icon]:hidden" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" className="w-52">
-                <DropdownMenuItem render={<Link href="/settings" />} className="gap-2 text-sm">
+                <DropdownMenuItem disabled className="gap-2 text-sm">
                   <Settings className="h-4 w-4" />설정
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
