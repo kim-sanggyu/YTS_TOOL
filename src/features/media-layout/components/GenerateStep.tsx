@@ -111,8 +111,11 @@ export function GenerateStep() {
         setStats({ lines: cached.lines, bytes: cached.bytes })
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "소스 생성 중 오류가 발생했습니다.")
       if (rec === activeRecRef.current) { setSections([]); setCode(""); setStats(null) }
+      // "업로드 전" 상태는 정상 — toast 없이 빈 화면으로 처리
+      const msg = err instanceof Error ? err.message : ""
+      if (msg && !msg.includes("업로드된 데이터가 없습니다") && !msg.includes("HWP 파일이 없습니다") && !msg.includes("Java 소스가 없습니다"))
+        toast.error(msg)
     } finally { setGenerating(false) }
   }, [])
 
@@ -286,24 +289,35 @@ export function GenerateStep() {
                   {helpTab === "usage" ? (
                     <>
                       <p className="text-muted-foreground leading-relaxed">
-                        저장된 편집 내용을 반영하여 레코드별 makeStr 소스 코드를 생성하고 미리봅니다.
+                        저장된 편집 내용을 반영하여 레코드별 makeStr 소스 코드를 생성·확인하고, 원본 Java 파일에 패치하여 다운로드합니다.
                       </p>
                       <div>
-                        <p className="font-semibold mb-1.5">사용 순서</p>
+                        <p className="font-semibold mb-1.5">사용 순서 (연간 작업 흐름)</p>
                         <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                          <li>귀속연도 선택 (레코드별 소스 자동 생성)</li>
-                          <li>레코드 탭에서 섹션별 makeStr 미리보기 확인</li>
-                          <li><strong className="text-foreground">원본 소스 패치 다운로드</strong> — 기존 Java 파일에 전체 편집 내용 반영</li>
+                          <li>HWP 업로드(당해연도) + Java 업로드(전년도 소스)</li>
+                          <li>비교검증 화면에서 차이 확인 및 D/I/M 편집·저장</li>
+                          <li>소스생성 화면에서 레코드별 미리보기로 편집 결과 확인</li>
+                          <li><strong className="text-foreground">원본 소스 패치 다운로드</strong> — 전년도 Java에 편집 내용을 반영한 당해연도 Java 생성</li>
+                          <li>패치 파일을 Java 업로드 후 비교검증 재실행 → 전체 일치 확인</li>
                         </ol>
                       </div>
                       <div>
-                        <p className="font-semibold mb-1.5">기능 설명</p>
+                        <p className="font-semibold mb-1.5">화면·다운로드·패치의 차이</p>
                         <table className="w-full border rounded text-[11px]">
-                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-40">기능</th><th className="px-2 py-1 text-left border-b font-semibold">설명</th></tr></thead>
+                          <thead><tr className="bg-muted/60"><th className="px-2 py-1 text-left border-b border-r font-semibold w-36">구분</th><th className="px-2 py-1 text-left border-b font-semibold">내용</th></tr></thead>
                           <tbody className="divide-y">
-                            <tr><td className="px-2 py-1.5 border-r font-medium">미리보기</td><td className="px-2 py-1.5 text-muted-foreground">섹션(H/B/F)별 색구분된 makeStr 구문 확인</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-medium">다운로드</td><td className="px-2 py-1.5 text-muted-foreground">현재 레코드 소스를 단독 파일로 다운로드</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-medium">원본 소스 패치</td><td className="px-2 py-1.5 text-muted-foreground">기존 Java 파일에 전체 편집 내용을 반영한 파일 다운로드</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">화면 미리보기</td><td className="px-2 py-1.5 text-muted-foreground">Header + Body-1 + <span className="text-amber-700 font-medium">body_sum(타입별 합산 참고)</span> + Footer — 반복 레코드도 body_1만 표시</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">레코드 다운로드</td><td className="px-2 py-1.5 text-muted-foreground">화면과 동일 구조(header+body_1+body_sum+footer). body_sum은 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">+ //</span> 변환으로 Java 연결 문법 유지</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">원본 소스 패치</td><td className="px-2 py-1.5 text-muted-foreground">업로드된 전년도 Java 원본 전문을 템플릿으로 사용. LINE_NO 기반으로 makeStr 행만 in-place 교체. 소스 구조(루프·bw.write 블록·들여쓰기) 완전 보존</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <p className="font-semibold mb-1.5">반복 레코드(E/F/G/K) 패치 동작</p>
+                        <table className="w-full border rounded text-[11px]">
+                          <tbody className="divide-y">
+                            <tr><td className="px-2 py-1.5 border-r font-medium w-36">루프 구조(일반)</td><td className="px-2 py-1.5 text-muted-foreground">body_1~N이 동일 LINE_NO 공유 → body_1 기준으로 한 번만 교체. 루프 물리 구조 그대로 유지</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-medium">명시적 반복</td><td className="px-2 py-1.5 text-muted-foreground">body_2+ 고유 LINE_NO → 해당 행 삭제 + body_sum 삽입(body_1 끝 위치)</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -316,9 +330,9 @@ export function GenerateStep() {
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../generate</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">buildCompareRowsFromMap()</span>으로 MAP(SORT_ORDER 순) + MLAY_JAVA + MLAY_JAVA_CODE_EDIT 결합</li>
                           <li>ROW_TYPE='D' 행 제외, ROW_TYPE=null·I 행 포함. 각 줄 끝에 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">{"// 코드 구분 항목명"}</span> 주석 추가</li>
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignSections()</span> — 전체 makeStr을 한 번에 열 정렬 (타입·길이·인자 컬럼 맞춤)</li>
-                          <li>미리보기: Body-1만 표시 + body_sum 섹션 자동 삽입 (X/9 타입별 연속 합산, 미리보기 전용)</li>
+                          <li>화면·다운로드: body_1만 표시 + body_sum 자동 삽입 (X/9 타입별 연속 합산). 다운로드 시 body_sum은 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">{'" // " → " + // "'}</span> 변환으로 Java 연결 문법 유지</li>
                           <li>결과를 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">genCache[activeRec]</span>에 캐시 → 탭 재전환 시 재요청 없음</li>
-                          <li>원본 패치: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../patch-source</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">patched_연도.java</span> 다운로드. MLAY_JAVA_FILE.JAVA_DATA(원본 소스 전문)에 LINE_NO 기반 편집 적용</li>
+                          <li>원본 패치: <span className="font-mono text-[10px] bg-muted px-0.5 rounded">POST /api/.../patch-source</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> → <span className="font-mono text-[10px] bg-muted px-0.5 rounded">patched_연도.java</span> 다운로드. MLAY_JAVA_FILE.JAVA_DATA를 템플릿으로, LINE_NO 기반 교체·삭제·삽입 적용</li>
                         </ol>
                       </div>
                       <div>
@@ -328,8 +342,8 @@ export function GenerateStep() {
                           <tbody className="divide-y">
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_TAX_JAVA_MAP</td><td className="px-2 py-1.5 text-muted-foreground">SORT_ORDER, TAX_SEQ, JAVA_SEQ, ROW_TYPE(D/O/null) — 소스 생성 행 순서의 원천. ROW_TYPE='D' 행은 생성 시 제외</td></tr>
                             <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_CODE_EDIT</td><td className="px-2 py-1.5 text-muted-foreground">SEQ(FK→MLAY_JAVA), JAVA_CODE — M 수정된 makeStr. 소스 생성 및 패치 모두에 반영</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE</td><td className="px-2 py-1.5 text-muted-foreground">JAVA_DATA(원본 소스 전문) — 패치 시 이 텍스트에 D/M 편집을 LINE_NO 기반으로 적용 후 반환</td></tr>
-                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">LINE_NO — 원본 소스 라인 번호. 패치 시 D(삭제)·M(교체) 위치 특정에 사용. LINE_NO=0은 I 삽입 행</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA_FILE</td><td className="px-2 py-1.5 text-muted-foreground">JAVA_DATA(원본 소스 전문) — 패치의 템플릿. 이 텍스트에 D/M/I 편집을 LINE_NO 기반으로 적용 후 반환</td></tr>
+                            <tr><td className="px-2 py-1.5 border-r font-mono text-[10px]">MLAY_JAVA</td><td className="px-2 py-1.5 text-muted-foreground">LINE_NO — 원본 소스 라인 번호(파싱 시 확정). 패치 시 교체/삭제 위치 특정에 사용. LINE_NO=0은 I 삽입 행</td></tr>
                           </tbody>
                         </table>
                       </div>
@@ -337,10 +351,11 @@ export function GenerateStep() {
                         <p className="font-semibold mb-1.5">핵심적인 로직</p>
                         <ul className="space-y-1.5 text-muted-foreground">
                           <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">buildCompareRowsFromMap()</span> — MAP SORT_ORDER 순으로 taxBySeq·javaBySeq 조회. ROW_TYPE='D'→cmd='D', LINE_NO=0→cmd='I', MLAY_JAVA_CODE_EDIT 있으면 editedRaw 반영</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignSections()</span> — 전체 makeStr 라인을 파싱 후 maxLen/maxArg 계산 → padStart/padEnd 적용. 다운로드 코드와 미리보기 모두에 적용</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> (patch-source/route.ts) — 원본 라인 배열에 deleteLines(Set) + replaceLines(Map) + insertAfter(Map) 세 가지를 순서대로 적용</li>
-                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">replaceMakeStr()</span> — 원본 라인에서 괄호 깊이 추적으로 makeStr() 범위를 정확히 찾아 교체. 들여쓰기와 후행 세미콜론·주석 보존</li>
-                          <li>body_sum — Body-1 라인을 타입(X/9)별 연속 그룹화, 합산 길이·행 범위 표시. 다운로드 코드에는 포함되지 않음 (미리보기 전용)</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">alignSections()</span> — 전체 makeStr 라인을 파싱 후 maxLen/maxArg 계산 → padStart/padEnd 적용. 화면·다운로드·패치 모두 동일 함수 사용으로 일치 보장</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">lineMap — body_1 첫 등록 우선</span> — 반복 레코드(E/F/G/K)에서 body_1과 body_2+가 동일 LINE_NO를 공유할 때 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">!lineMap.has(lineNo)</span> 가드로 body_1 Tax 주석·editedRaw가 덮어쓰이지 않도록 보호</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">applyEdits()</span> — 원본 라인 배열에 deleteLines + replaceLines + insertAfter 순서 적용. body_2+ I-행은 루프 소스에서 중복 삽입되지 않도록 건너뜀. body_2+ D-행이 body_1 공유 LINE_NO를 삭제하지 않도록 보호</li>
+                          <li><span className="font-mono text-[10px] bg-muted px-0.5 rounded">rebuildLine()</span> — 원본 라인에서 <span className="font-mono text-[10px] bg-muted px-0.5 rounded">makeStr(</span> 시작 위치를 찾아 그 앞 들여쓰기를 보존하고 lineMap의 최종 라인으로 교체</li>
+                          <li>body_sum — body_1 라인을 X/9 타입별 연속 그룹화·합산. 화면 미리보기와 레코드 단독 다운로드에 포함(amber 섹션). 원본 패치에는 body_2+ 고유 LINE_NO 삭제 시에만 삽입</li>
                         </ul>
                       </div>
                     </>
