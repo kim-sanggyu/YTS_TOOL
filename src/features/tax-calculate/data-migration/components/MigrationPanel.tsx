@@ -322,11 +322,7 @@ export function MigrationPanel() {
       <div className="flex-1 flex flex-col min-h-0 rounded-lg border bg-gray-950 overflow-hidden">
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="flex gap-1.5">
-              <div className="h-3 w-3 rounded-full bg-red-500/70" />
-              <div className="h-3 w-3 rounded-full bg-yellow-500/70" />
-              <div className="h-3 w-3 rounded-full bg-green-500/70" />
-            </div>
+            <span className="text-xs text-gray-500 font-mono select-none">&gt;_</span>
             <span className="text-xs text-gray-400 font-mono">실행 로그</span>
           </div>
           <div className="flex items-center gap-2">
@@ -341,7 +337,7 @@ export function MigrationPanel() {
               className="text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40"
               title="로그 지우기"
             >
-              <Square className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

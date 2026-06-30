@@ -50,7 +50,8 @@ const navGroups: NavGroup[] = [
     label: "세액계산",
     children: [
       { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
-      { title: "세액계산 내용 조회",    href: "/tools/report-gen",      icon: FileOutput, disabled: true },
+      { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
+      { title: "세액계산 종합진단",     href: "/tools/tax-insight",     icon: FileOutput },
       { title: "공제요건 경계나이 관리", href: "/tools/fmly-age-check",  icon: Calculator },
       { title: "차년도 데이터 생성",    href: "/tools/data-migration",  icon: GitCompare },
     ],
@@ -71,7 +72,7 @@ const navGroups: NavGroup[] = [
   {
     label: "과제관리",
     children: [
-      { title: "과제현황", href: "/tools/task-status",  icon: ClipboardCheck, disabled: true },
+      { title: "과제현황", href: "/tools/task-status",  icon: ClipboardCheck },
       { title: "자료실",   href: "/tools/task-archive", icon: FolderOpen,     disabled: true },
     ],
   },
