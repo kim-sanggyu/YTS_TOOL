@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
       ${subFilter}
     `)
 
-    let cardMiss = 0; let cardHighCredit = 0; let mediNear = 0
+    let cardMiss = 0; let cardHighCredit = 0; let mediNear = 0; let mediMiss = 0
     for (const r of clobRows) {
       if (r.CALC_PROC_CARD) {
         try {
@@ -153,6 +153,7 @@ export async function GET(req: NextRequest) {
         try {
           const m = JSON.parse(r.CALC_PROC_MEDI)
           const shortage = m.의료비최저사용액 - m.의료비지출금액
+          if (m.의료비지출금액 > 0 && m.의료비_공제금액 === 0 && shortage > 0) mediMiss++
           if (m.의료비지출금액 > 0 && m.의료비_공제금액 === 0 && shortage > 0 && shortage <= 1_000_000) mediNear++
         } catch { /* ignore */ }
       }
@@ -171,6 +172,7 @@ export async function GET(req: NextRequest) {
         insMiss: anomalies.INS_MISS ?? 0, insStd: anomalies.INS_STD ?? 0, insExhausted: anomalies.INS_EXHAUSTED ?? 0,
         savingsMiss: anomalies.SAVINGS_MISS, savingsMember: anomalies.SAVINGS_MEMBER, savingsLimit: anomalies.SAVINGS_LIMIT,
         ralrMiss: anomalies.RALR_MISS ?? 0, ralrLenderMiss: anomalies.RALR_LENDER_MISS ?? 0, ralrHabtMiss: anomalies.RALR_HABT_MISS ?? 0,
+        cardMiss, mediMiss,
       },
       insights: {
         eligible: ins.ELIGIBLE, pensionNone: ins.PENSION_NONE, pensionUnder: ins.PENSION_UNDER,

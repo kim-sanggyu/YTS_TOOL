@@ -26,6 +26,7 @@ interface Anomalies {
   insMiss: number; insStd: number; insExhausted: number
   savingsMiss: number; savingsMember: number; savingsLimit: number
   ralrMiss: number; ralrLenderMiss: number; ralrHabtMiss: number
+  cardMiss: number; mediMiss: number
 }
 interface Insights {
   eligible: number; pensionNone: number; pensionUnder: number
@@ -240,6 +241,18 @@ export default function TaxDashboardPage() {
               items: [
                 { title: "대출기관 납입 있으나 공제 없음", count: a.ralrLenderMiss },
                 { title: "거주자 납입 있으나 공제 없음", count: a.ralrHabtMiss },
+              ],
+            },
+            {
+              label: "신용카드", total: a.cardMiss,
+              items: [
+                { title: "사용액 있으나 최저사용금액(총급여×25%) 미달", count: a.cardMiss },
+              ],
+            },
+            {
+              label: "의료비", total: a.mediMiss,
+              items: [
+                { title: "지출 있으나 최저한도(총급여×3%) 미달", count: a.mediMiss },
               ],
             },
           ]} />
