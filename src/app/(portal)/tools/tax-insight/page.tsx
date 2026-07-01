@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -115,41 +115,50 @@ const SS_KEY = {
   reviewFilter: "tax-insight:reviewFilter",
   selectedNo:   "tax-insight:selectedNo",
 }
-function ss(key: string, fallback: string): string {
-  return (typeof window !== "undefined" && sessionStorage.getItem(key)) || fallback
-}
-
 export default function TaxInsightPage() {
-  const [year,         setYear]         = useState(() => ss(SS_KEY.year,         AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1]))
-  const [taxFilter,    setTaxFilter]    = useState<TaxFilterType>  (() => ss(SS_KEY.taxFilter,    "all") as TaxFilterType)
-  const [calcFilter,   setCalcFilter]   = useState<CalcFilterType> (() => ss(SS_KEY.calcFilter,   "all") as CalcFilterType)
-  const [workFilter,   setWorkFilter]   = useState<WorkFilterType> (() => ss(SS_KEY.workFilter,   "all") as WorkFilterType)
-  const [reviewFilter, setReviewFilter] = useState<ReviewFilterType>(() => ss(SS_KEY.reviewFilter, "all") as ReviewFilterType)
+  const [year,         setYear]         = useState(AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1])
+  const [taxFilter,    setTaxFilter]    = useState<TaxFilterType>  ("all")
+  const [calcFilter,   setCalcFilter]   = useState<CalcFilterType> ("all")
+  const [workFilter,   setWorkFilter]   = useState<WorkFilterType> ("all")
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilterType>("all")
+  const [ready,        setReady]        = useState(false)
   const [items, setItems]         = useState<CalcListItem[]>([])
   const [idx, setIdx]             = useState(0)
   const [selectedNo, setSelectedNo] = useState<string>("")
   const [result, setResult]       = useState<AnalysisResult | null>(null)
   const [loadingList, setLoadingList] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
-  const [searchKey, setSearchKey] = useState(0)
-  const savedCalcNoRef = useRef(typeof window !== "undefined" ? sessionStorage.getItem(SS_KEY.selectedNo) ?? "" : "")
+  const savedCalcNoRef = useRef("")
 
-  // 필터 변경 시 sessionStorage 저장
+  // 마운트 후 sessionStorage 복원 — ready 플래그로 저장/조회 이펙트 게이트
   useEffect(() => {
+    setYear(        sessionStorage.getItem(SS_KEY.year)          ?? AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1])
+    setTaxFilter(  (sessionStorage.getItem(SS_KEY.taxFilter)     ?? "all") as TaxFilterType)
+    setCalcFilter( (sessionStorage.getItem(SS_KEY.calcFilter)    ?? "all") as CalcFilterType)
+    setWorkFilter( (sessionStorage.getItem(SS_KEY.workFilter)    ?? "all") as WorkFilterType)
+    setReviewFilter((sessionStorage.getItem(SS_KEY.reviewFilter) ?? "all") as ReviewFilterType)
+    savedCalcNoRef.current = sessionStorage.getItem(SS_KEY.selectedNo) ?? ""
+    setReady(true)
+  }, [])
+
+  // 필터 변경 시 sessionStorage 저장 — 복원 완료 후에만
+  useEffect(() => {
+    if (!ready) return
     sessionStorage.setItem(SS_KEY.year,         year)
     sessionStorage.setItem(SS_KEY.taxFilter,    taxFilter)
     sessionStorage.setItem(SS_KEY.calcFilter,   calcFilter)
     sessionStorage.setItem(SS_KEY.workFilter,   workFilter)
     sessionStorage.setItem(SS_KEY.reviewFilter, reviewFilter)
-  }, [year, taxFilter, calcFilter, workFilter, reviewFilter])
+  }, [year, taxFilter, calcFilter, workFilter, reviewFilter, ready])
 
   // 선택 건 변경 시 sessionStorage 저장
   useEffect(() => {
     if (selectedNo) sessionStorage.setItem(SS_KEY.selectedNo, selectedNo)
   }, [selectedNo])
 
-  // 목록 조회 — searchKey 변경 시에만 실행 (조회 버튼)
+  // 목록 조회 — 필터 변경 시 자동 실행 (복원 완료 후에만)
   useEffect(() => {
+    if (!ready) return
     setLoadingList(true)
     const params = new URLSearchParams({ year, taxFilter, calcFilter, workFilter, reviewFilter })
     fetch(`/api/tools/tax-insight/list?${params}`)
@@ -168,8 +177,7 @@ export default function TaxInsightPage() {
         }
       })
       .finally(() => setLoadingList(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchKey])
+  }, [year, taxFilter, calcFilter, workFilter, reviewFilter, ready])
 
   // 분석 조회
   const fetchAnalysis = useCallback((calcNo: string) => {
@@ -300,11 +308,6 @@ export default function TaxInsightPage() {
 
         </div>
 
-        {/* 이전 */}
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => move(-1)} disabled={idx === 0 || loadingList}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-
         {/* CALC_NO 드롭다운 */}
         <Select value={selectedNo} onValueChange={onSelectCalcNo} disabled={loadingList}>
           <SelectTrigger className="w-40 h-8 text-sm font-mono">
@@ -319,17 +322,24 @@ export default function TaxInsightPage() {
           </SelectContent>
         </Select>
 
+        {/* 이전 */}
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => move(-1)} disabled={idx === 0 || loadingList}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        {/* 카운터 */}
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {loadingList ? "…" : `${items.length > 0 ? idx + 1 : 0} / ${items.length}`}
+        </span>
+
         {/* 다음 */}
         <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => move(1)} disabled={idx >= items.length - 1 || loadingList}>
           <ChevronRight className="h-4 w-4" />
         </Button>
 
-        {/* 카운터 + 조회 버튼 */}
-        <span className="text-sm text-muted-foreground tabular-nums">
-          {loadingList ? "…" : `${items.length > 0 ? idx + 1 : 0} / ${items.length}`}
-        </span>
-        <Button className="h-8 px-3 text-sm" onClick={() => setSearchKey(k => k + 1)} disabled={loadingList}>
-          조회
+        {/* 처음으로 */}
+        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { setIdx(0); setSelectedNo(items[0]?.calcNo ?? "") }} disabled={loadingList || items.length === 0}>
+          <RotateCcw className="h-4 w-4" />
         </Button>
       </div>
 

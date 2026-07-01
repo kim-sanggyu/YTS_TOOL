@@ -77,12 +77,12 @@ function AnomalyGroup({ label, total, eligible, items }: {
                 </td>
               )}
               <td className="px-3 py-1.5 text-[13px] font-semibold text-gray-800">ㆍ{title}</td>
-              <td className="px-2 py-1.5 text-xs font-bold text-right tabular-nums text-gray-600 border-l border-amber-100">
+              <td className="px-2 py-1.5 text-xs font-bold text-right tabular-nums text-gray-600 border-l border-amber-100 whitespace-nowrap">
                 {count}명
               </td>
               {idx === 0 && (
                 <td rowSpan={items.length}
-                  className="px-2 bg-amber-50 text-sm font-bold text-amber-700 text-center align-middle border-l border-amber-200">
+                  className="px-2 bg-amber-50 text-sm font-bold text-amber-700 text-center align-middle border-l border-amber-200 whitespace-nowrap">
                   {total}명
                 </td>
               )}

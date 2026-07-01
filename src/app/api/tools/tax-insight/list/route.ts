@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { ytsDb } from "@/lib/db/oracle"
 import { CALC_NO_PATTERN, YEAR_PATTERN } from "@/features/tax-insight/constants"
 
-export const revalidate = 3600 // 1시간 캐시
+export const revalidate = 0
 
 export async function GET(req: NextRequest) {
   const year         = req.nextUrl.searchParams.get("year")         ?? "2026"
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const workFilter   = req.nextUrl.searchParams.get("workFilter")   ?? "all"
   const reviewFilter = req.nextUrl.searchParams.get("reviewFilter") ?? "all"
 
-  const needsMain = workFilter !== "all" || reviewFilter === "houserent" || reviewFilter === "housingsavings" || reviewFilter === "ralr"
+  const needsMain = workFilter !== "all" || reviewFilter === "houserent" || reviewFilter === "housingsavings" || reviewFilter === "ralr" || reviewFilter === "medi"
 
   const clauses: string[] = []
   if (taxFilter    === "zero")      clauses.push("c.RES_INCM_TAX = 0")
@@ -38,12 +38,15 @@ export async function GET(req: NextRequest) {
   )
   if (reviewFilter === "card") clauses.push(
     "NVL(c.OTO_CARD_ETC, 0) = 0 AND c.CALC_PROC_CARD IS NOT NULL" +
+    " AND REGEXP_LIKE(c.CALC_PROC_INPUT, '\"CARD_entered\"\\s*:\\s*[1-9]')" +
     " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'"
   )
   if (reviewFilter === "medi") clauses.push(
     "NVL(c.RT_MEDI_AMT, 0) = 0 AND c.CALC_PROC_MEDI IS NOT NULL" +
     " AND c.CALC_METHOD NOT LIKE '%표준세액공제 적용 세액%'" +
-    " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'"
+    " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'" +
+    " AND NVL(m.LOSS_INSU_MEDI, 0) = 0" +
+    " AND INSTR(c.CALC_PROC_MEDI, '실손') = 0"
   )
 
   const whereExtra = clauses.length ? "AND " + clauses.join(" AND ") : ""

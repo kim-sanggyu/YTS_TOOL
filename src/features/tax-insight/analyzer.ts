@@ -210,15 +210,6 @@ export function analyze(row: CalcRow): AnalysisResult {
     }
   }
 
-  // ── 5. 실손보험 차감 후 의료비 없음 ───────────────────────────
-  if (medi && medi.의료비지출금액 === 0 && String(medi.의료비지출금액_MEMO ?? "").includes("실손")) {
-    whyZero.push({
-      type: "WHY_ZERO",
-      title: "의료비 0원 — 실손보험금 차감",
-      description: "지출 의료비에서 실손보험금을 차감한 결과 공제 대상이 없습니다. 실손 미보장 비급여 항목이 있다면 별도로 확인하세요.",
-    })
-  }
-
   // ── 7. 국민연금 잔액 소진으로 일부만 공제 ────────────────────
   if (n(row.NP_INSU_OBJ_AMT) > n(row.NP_INSU_AMT) && n(row.NP_INSU_AMT) > 0) {
     const unpaid = n(row.NP_INSU_OBJ_AMT) - n(row.NP_INSU_AMT)
