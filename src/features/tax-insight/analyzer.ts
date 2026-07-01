@@ -94,30 +94,12 @@ export function analyze(row: CalcRow): AnalysisResult {
   // WHY_ZERO — 입력했는데 0원이 된 이유
   // ═══════════════════════════════════════════════════════════
 
-  // ── 0. 중도퇴사자 ────────────────────────────────────────────
-  if (isMidLeave) {
-    whyZero.push({
-      type: "WHY_ZERO",
-      title: `중도퇴사 — ${workMonths}개월 근무`,
-      description: `귀속기간 ${row.BEL_FRM_DT.slice(0,4)}년 ${Number(row.BEL_FRM_DT.slice(4,6))}월~${Number(row.BEL_TO_DT.slice(4,6))}월 (${workMonths}개월) 근무로 총급여·공제 기준금액이 연간 대비 낮게 산정됩니다. 연금계좌 등 공제 여유가 크게 보이더라도 실제 납입 가능 기간을 고려하세요.`,
-    })
-  }
-
   // ── 0-1. 서류 미제출 ────────────────────────────────────────
   if (row.CONF_YN === "N") {
     whyZero.push({
       type: "WHY_ZERO",
-      title: "근로자 서류 미제출",
-      description: "연말정산 증빙서류를 제출하지 않아 국세청 자동수집 자료(보험료·의료비·신용카드 등) 외의 항목이 누락됐을 수 있습니다. 월세·교육비·기부금 등은 반드시 별도 제출이 필요합니다.",
-    })
-  }
-
-  // ── 0-2. 비거주자 ────────────────────────────────────────────
-  if (isNonResident) {
-    whyZero.push({
-      type: "WHY_ZERO",
-      title: "비거주자 — 인적공제 본인만 적용",
-      description: "비거주자는 배우자·부양가족 기본공제 및 추가공제가 적용되지 않습니다. 본인 기본공제(150만원)만 적용됩니다.",
+      title: "공제신고서 미제출 — 분석 내용 확정 전",
+      description: "아직 공제신고서를 제출하지 않은 상태입니다. 현재 분석 내용은 확정 전이며, 추가 입력에 따라 결과가 달라질 수 있습니다.",
     })
   }
 
@@ -158,12 +140,6 @@ export function analyze(row: CalcRow): AnalysisResult {
           description: `${label} ${fmt(amt)}를 입력하셨지만 ${savingNote} 표준세액공제 방식에서는 ${label} 공제가 적용되지 않습니다.${maxSaving ? ` (특별방식 선택 시 최대 ${fmt(maxSaving)} 공제 가능했으나 표준이 더 유리)` : ""}`,
           amount: amt,
         })
-      })
-    } else {
-      whyZero.push({
-        type: "WHY_ZERO",
-        title: "표준세액공제 방식 적용",
-        description: `${diff > 0 ? `표준방식이 특별방식보다 ${fmt(diff)} 유리해서` : "표준·특별 세액이 동일해서"} 표준세액공제(13만원 정액)가 자동 선택됐습니다. 보험료·의료비·교육비·월세 개별 공제는 적용되지 않습니다.`,
       })
     }
   }
