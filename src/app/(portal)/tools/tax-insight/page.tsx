@@ -105,7 +105,7 @@ function AnalysisPanel({ data }: { data: AnalysisResult }) {
 const TAX_LABEL:    Record<TaxFilterType,    string> = { all: "전체", nonzero: "결정세액 > 0", zero: "결정세액 = 0" }
 const CALC_LABEL:   Record<CalcFilterType,   string> = { all: "전체", standard: "표준세액공제", special: "특별세액공제" }
 const WORK_LABEL:   Record<WorkFilterType,   string> = { all: "전체", continue: "계속근로", midleave: "중도퇴사" }
-const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", houserent: "월세액", insurance: "건강/고용보험", housingsavings: "주택마련저축", ralr: "원리금상환액" }
+const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", houserent: "월세액", insurance: "건강/고용보험", housingsavings: "주택마련저축", ralr: "원리금상환액", card: "신용카드", medi: "의료비" }
 
 const SS_KEY = {
   year:         "tax-insight:year",
@@ -293,6 +293,8 @@ export default function TaxInsightPage() {
               <SelectItem value="insurance">건강/고용보험</SelectItem>
               <SelectItem value="housingsavings">주택마련저축</SelectItem>
               <SelectItem value="ralr">원리금상환액</SelectItem>
+              <SelectItem value="card">신용카드</SelectItem>
+              <SelectItem value="medi">의료비</SelectItem>
             </SelectContent>
           </Select>
 

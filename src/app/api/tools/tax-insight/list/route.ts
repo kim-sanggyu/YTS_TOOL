@@ -36,6 +36,15 @@ export async function GET(req: NextRequest) {
     "((NVL(m.HOUSE_RALR_LENDER,0) > 0 AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0)" +
     " OR (NVL(m.HOUSE_RALR_HABT,0) > 0 AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0))"
   )
+  if (reviewFilter === "card") clauses.push(
+    "NVL(c.OTO_CARD_ETC, 0) = 0 AND c.CALC_PROC_CARD IS NOT NULL" +
+    " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'"
+  )
+  if (reviewFilter === "medi") clauses.push(
+    "NVL(c.RT_MEDI_AMT, 0) = 0 AND c.CALC_PROC_MEDI IS NOT NULL" +
+    " AND c.CALC_METHOD NOT LIKE '%표준세액공제 적용 세액%'" +
+    " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'"
+  )
 
   const whereExtra = clauses.length ? "AND " + clauses.join(" AND ") : ""
 

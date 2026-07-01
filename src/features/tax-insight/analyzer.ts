@@ -189,7 +189,7 @@ export function analyze(row: CalcRow): AnalysisResult {
     whyZero.push({
       type: "WHY_ZERO",
       title: "신용카드 공제 미적용 — 최저사용금액 미달",
-      description: `신용카드·체크카드·현금영수증 합산 ${fmt(card.총사용액)} 사용하셨지만, 공제 시작 기준인 최저사용금액 ${fmt(card.최저사용금액)}(총급여×25%)에 ${fmt(shortage)} 부족합니다. 내년 목표: 연간 ${fmtM(card.최저사용금액)} 이상 사용.`,
+      description: `신용카드·체크카드·현금영수증 합산 ${fmt(card.총사용액)} 사용하셨지만, 공제 시작 기준인 총급여×25%(${fmt(card.최저사용금액)})에 ${fmt(shortage)} 부족해 공제가 적용되지 않았습니다.`,
       amount: shortage,
     })
   }
@@ -374,14 +374,14 @@ export function analyze(row: CalcRow): AnalysisResult {
       }
     }
 
-    // ── 5. 의료비 최저한도 근접 (100만원 이내) ───────────────────
+    // ── 5. 의료비 최저한도 미달 — 배우자 합산 안내 ──────────────
     if (!isStd && medi && medi.의료비지출금액 > 0 && medi.의료비_공제금액 === 0) {
       const shortage = medi.의료비최저사용액 - medi.의료비지출금액
       if (shortage > 0 && shortage <= 1_000_000) {
         opportunities.push({
           type: "OPPORTUNITY",
-          title: "의료비 최저한도 근접 — 내년 적극 챙기기",
-          description: `올해 의료비 ${fmt(medi.의료비지출금액)} 중 최저한도(총급여×3%)까지 ${fmt(shortage)} 부족했습니다. 내년에는 미보장 비급여 항목까지 현금영수증·의료비 자료를 꼼꼼히 챙기세요.`,
+          title: "의료비 최저한도 근접 — 가족 의료비 합산 검토",
+          description: `올해 의료비 ${fmt(medi.의료비지출금액)}이 최저한도(총급여×3%)에 ${fmt(shortage)} 부족해 공제가 적용되지 않았습니다. 소득이 있어 기본공제 대상자가 아닌 가족(배우자·부모 등)의 의료비도 본인 연말정산에 합산할 수 있습니다. 해당 가족의 의료비를 합산하면 한도 도달에 유리할 수 있습니다.`,
           amount: shortage,
         })
       }

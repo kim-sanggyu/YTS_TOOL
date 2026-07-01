@@ -1,7 +1,7 @@
 export type TaxFilterType    = 'all' | 'zero' | 'nonzero'
 export type CalcFilterType   = 'all' | 'standard' | 'special'
 export type WorkFilterType   = 'all' | 'continue' | 'midleave'
-export type ReviewFilterType = 'all' | 'houserent' | 'insurance' | 'housingsavings' | 'ralr'
+export type ReviewFilterType = 'all' | 'houserent' | 'insurance' | 'housingsavings' | 'ralr' | 'card' | 'medi'
 
 export interface CalcListItem {
   calcNo: string
