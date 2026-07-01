@@ -1,4 +1,7 @@
-export type FilterType = 'all' | 'zero' | 'nonzero' | 'standard' | 'special'
+export type TaxFilterType    = 'all' | 'zero' | 'nonzero'
+export type CalcFilterType   = 'all' | 'standard' | 'special'
+export type WorkFilterType   = 'all' | 'continue' | 'midleave'
+export type ReviewFilterType = 'all' | 'houserent' | 'insurance' | 'housingsavings' | 'ralr'
 
 export interface CalcListItem {
   calcNo: string
@@ -135,6 +138,30 @@ export interface CalcRow {
   CALC_PROC_CARD: string | null
   CALC_PROC_MEDI: string | null
   CALC_PROC_INPUT: string | null
+  // PAY_WRK_MAIN
+  KEEP_PS: string
+  HOUSE_HLDR_YN: string
+  BEL_FRM_DT: string
+  BEL_TO_DT: string
+  CONF_YN: string
+  REL_WRKR_YN: string
+  HABT_CLS: string
+  HOME_CLS: string
+  MEDI_ISA_AMT: number | null
+  MEDI_CA_AMT: number | null
+  EDU_SELF_AMT: number | null
+  EDU_ENT_PREV_AMT: number | null
+  EDU_INFC_AMT: number | null
+  EDU_UNV_STUD_AMT: number | null
+  EDU_HDC_PERS_AMT: number | null
+  MAIN_HOUSE_RENT: number | null
+  MAIN_HLTH_INSU_AMT: number | null
+  MAIN_EMP_INSU_AMT: number | null
+  MAIN_HOUSE_LOAN_SBSC: number | null
+  MAIN_HOUSE_LOAN_ALL: number | null
+  MAIN_HOUSE_LOAN_WRK: number | null
+  MAIN_HOUSE_RALR_LENDER: number | null
+  MAIN_HOUSE_RALR_HABT: number | null
 }
 
 export interface InputData {
@@ -183,6 +210,12 @@ export interface AnalysisSummary {
   calcMode: 'standard' | 'special'
   standardTax: number
   specialTax: number
+  keepPs: string
+  workMonths: number
+  houseHldrYn: string
+  confYn: string
+  habtCls: string
+  homeCls: string
 }
 
 export interface AnalysisResult {
