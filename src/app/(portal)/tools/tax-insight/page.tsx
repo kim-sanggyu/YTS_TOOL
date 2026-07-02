@@ -231,7 +231,7 @@ export default function TaxInsightPage() {
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
       <div className="shrink-0 mb-3">
-        <h1 className="text-2xl font-bold tracking-tight">세액계산 종합진단</h1>
+        <h1 className="text-2xl font-bold tracking-tight">계산결과 해설서</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           세액 결과 안내 및 미 공제 내역에 대한 사유를 확인할 수 있습니다.
           또한 다음 번 연말정산을 위한 절세 전략도 제안합니다.

@@ -47,8 +47,6 @@ export async function POST(req: NextRequest) {
     if (!/^\d{4}$/.test(year))
       return NextResponse.json({ error: "연도는 4자리 숫자로 입력하세요." }, { status: 400 })
 
-    const toYear = Number(year) + 1
-
     // 경계나이 해당자 조회 (ytsDb) — f. 별칭으로 RES_NO 명확히 지정
     const rows = await ytsDb.query<SourceRow>(`
       WITH BASE AS (
@@ -69,7 +67,7 @@ export async function POST(req: NextRequest) {
              OB_TRE_YN, CHILD_YN, MORE_STD_INCM_YN, HDC_PERS_YN,
              NM, EMP_NO, KEEP_PS, MAN_AGE
       FROM BASE WHERE MAN_AGE IN (7, 20, 59, 69)
-    `, [toYear, year])
+    `, [Number(year), year])
 
     // 나이별 경계 행의 CALC_NO 집합
     const ageCalcNos = new Map<number, Set<string>>()
@@ -92,7 +90,7 @@ export async function POST(req: NextRequest) {
             AND FMLY_SEQ <> 1
             AND :2 - ${birthYearExpr("RES_NO")} = :3
         ) WHERE ROWNUM <= 100
-      `, [year, toYear, targetAge])
+      `, [year, Number(year), targetAge])
 
       const subst = candidates.find(c => !excludeCalcNos.has(c.CALC_NO))
       if (subst) {

@@ -217,7 +217,7 @@ export default function TaxDashboardPage() {
             {
               label: "월세액", total: a.rentMiss,
               items: [
-                { title: "월세를 입력했지만 공제 미적용(표준방식 선택)", count: a.rentStd },
+                { title: "표준방식 선택으로 미공제", count: a.rentStd },
                 { title: "소득소진(산출세액=0)", count: a.rentIncomeExh },
                 { title: "세액소진(결정세액=0)", count: a.rentTaxExh },
               ],

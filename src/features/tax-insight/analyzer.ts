@@ -2,6 +2,7 @@ import type { CalcRow, CardData, MediData, InputData, Finding, AnalysisResult, A
 import { parseCardData } from "./parsers/card"
 import { parseMediData } from "./parsers/medi"
 import { parseInputData } from "./parsers/input"
+import { parseTotalContext } from "./parsers/total"
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 const fmt  = (n: number) => Math.round(n).toLocaleString("ko-KR") + "원"
@@ -55,6 +56,7 @@ export function analyze(row: CalcRow): AnalysisResult {
   const medi  = parseMediData(row.CALC_PROC_MEDI)
   const inp   = parseInputData(row.CALC_PROC_INPUT)
   const { name, empNo } = parseName(row.CALC_PROC_TOTAL)
+  const total = parseTotalContext(row.CALC_PROC_TOTAL)
   const { calcMode, standardTax, specialTax } = parseCalcMethod(row.CALC_METHOD)
   const isStd      = calcMode === "standard"
   const limit      = pensionLimit(row.TOT_PAY_AMT)
@@ -105,48 +107,33 @@ export function analyze(row: CalcRow): AnalysisResult {
 
   // ── 1. 표준세액공제 방식 → 특별세액공제 항목 미적용 ──────────
   if (isStd) {
-    const skipped: { label: string; amt: number; maxSaving?: number }[] = []
+    const skipped: { label: string; amt: number }[] = []
 
-    const houseRent = n(row.MAIN_HOUSE_RENT) || (inp ? n(inp.HOUSE_RENT) : n(row.SP_HOUSE_RENT_AMT))
-    if (houseRent > 0)
-      skipped.push({ label: "월세", amt: houseRent,
-        maxSaving: Math.round(Math.min(houseRent, row.TOT_PAY_AMT <= 55_000_000 ? 8_000_000 : 8_000_000) * 0.17) })
+    const houseRent = total.inputs.월세액 || n(row.MAIN_HOUSE_RENT) || (inp ? n(inp.HOUSE_RENT) : n(row.SP_HOUSE_RENT_AMT))
+    if (houseRent > 0) skipped.push({ label: "월세액", amt: houseRent })
 
-    const grtInsu = inp ? n(inp.GRT_INSU) : row.SPCL_IF_GRT_INSU_AMT
-    if (grtInsu > 0)
-      skipped.push({ label: "보장성보험료", amt: grtInsu,
-        maxSaving: Math.round(Math.min(grtInsu, 1_000_000) * 0.12) })
+    const grtInsu = total.inputs.보장성보험료 || (inp ? n(inp.GRT_INSU) : row.SPCL_IF_GRT_INSU_AMT)
+    if (grtInsu > 0) skipped.push({ label: "보장성보험료", amt: grtInsu })
 
     const mediAmt = inp ? n(inp.MEDI_entered) : row.SPCL_MEDI_AMT
-    if (mediAmt > 0)
-      skipped.push({ label: "의료비", amt: mediAmt })
+    if (mediAmt > 0) skipped.push({ label: "의료비", amt: mediAmt })
 
-    const eduAmt = inp ? n(inp.EDU_SUM) : row.SPCL_EDU_AMT
-    if (eduAmt > 0)
-      skipped.push({ label: "교육비", amt: eduAmt,
-        maxSaving: Math.round(Math.min(eduAmt, 9_000_000) * 0.15) })
+    const eduAmt = total.inputs.교육비 || (inp ? n(inp.EDU_SUM) : row.SPCL_EDU_AMT)
+    if (eduAmt > 0) skipped.push({ label: "교육비", amt: eduAmt })
 
-    if (skipped.length > 0) {
-      const savingNote = specialTax > 0 && specialTax > standardTax
-        ? `특별방식 적용 시 세액이 ${fmt(specialTax - standardTax)} 더 많아 표준방식이 유리합니다.`
-        : diff > 0
-          ? `표준방식이 특별방식보다 ${fmt(diff)} 유리해서 자동 선택됐습니다.`
-          : "표준·특별 두 방식의 세액이 동일하여 표준방식이 선택됐습니다."
-
-      skipped.forEach(({ label, amt, maxSaving }) => {
-        whyZero.push({
-          type: "WHY_ZERO",
-          title: `${label} — 입력했지만 공제 미적용`,
-          description: `${label} ${fmt(amt)}를 입력하셨지만 ${savingNote} 표준세액공제 방식에서는 ${label} 공제가 적용되지 않습니다.${maxSaving ? ` (특별방식 선택 시 최대 ${fmt(maxSaving)} 공제 가능했으나 표준이 더 유리)` : ""}`,
-          amount: amt,
-        })
+    skipped.forEach(({ label, amt }) => {
+      whyZero.push({
+        type: "WHY_ZERO",
+        title: `${label} — 표준방식 선택으로 미공제`,
+        description: `${fmt(amt)}을 입력하셨지만 표준세액공제 방식으로 계산되어 공제되지 않았습니다. 표준방식에서는 ${label} 공제가 적용되지 않습니다.`,
+        amount: amt,
       })
-    }
+    })
   }
 
   // ── 1-1. 건강/고용보험 미공제 ────────────────────────────────
-  const hlthInput = n(row.MAIN_HLTH_INSU_AMT)
-  const empInput  = n(row.MAIN_EMP_INSU_AMT)
+  const hlthInput = total.inputs.건강보험료 || n(row.MAIN_HLTH_INSU_AMT)
+  const empInput  = total.inputs.고용보험료 || n(row.MAIN_EMP_INSU_AMT)
   const hlthMiss  = hlthInput > 0 && n(row.SPCL_IF_HLTH_INSU_AMT) === 0
   const empMiss   = empInput  > 0 && n(row.SPCL_IF_EMP_INSU_AMT)  === 0
 
@@ -159,21 +146,15 @@ export function analyze(row: CalcRow): AnalysisResult {
     if (isStd) {
       whyZero.push({
         type: "WHY_ZERO",
-        title: "건강/고용보험료 미공제 — 표준방식",
+        title: "건강/고용보험료 — 표준방식 선택으로 미공제",
         description: `${items}을 납부하셨지만 표준세액공제 방식 선택으로 특별소득공제가 적용되지 않습니다.`,
       })
-    } else if (row.PROD_TAX_AMT === 0) {
-      const pointMap: Record<string, string> = {
-        BASC_SUB_SELF_AMT:   "본인기초공제",
-        BASC_SUB_MATE_AMT:   "배우자공제",
-        BASC_SUB_FAMILY_AMT: "부양가족공제",
-        NP_INSU_AMT:         "국민연금",
-      }
-      const label = pointMap[row.EXHAUSTED_POINT] ?? row.EXHAUSTED_POINT
+    } else if (total.incomeExhausted) {
+      const labelPart = total.incomeExhaustPoint ? `${total.incomeExhaustPoint} 공제 후 ` : ""
       whyZero.push({
         type: "WHY_ZERO",
-        title: "건강/고용보험료 미공제 — 소득 소진",
-        description: `${items}을 납부하셨지만 ${label} 공제 후 근로소득이 소진되어 공제되지 않습니다.`,
+        title: "건강/고용보험료 — 소득 소진으로 미공제",
+        description: `${items}을 납부하셨지만 ${labelPart}근로소득이 소진되어 공제되지 않습니다.`,
       })
     }
   }
@@ -188,7 +169,7 @@ export function analyze(row: CalcRow): AnalysisResult {
     const shortage = card.최저사용금액 - card.총사용액
     whyZero.push({
       type: "WHY_ZERO",
-      title: "신용카드 공제 미적용 — 최저사용금액 미달",
+      title: "신용카드 — 최저사용금액 미달",
       description: `신용카드·체크카드·현금영수증 합산 ${fmt(card.총사용액)} 사용하셨지만, 공제 시작 기준인 총급여×25%(${fmt(card.최저사용금액)})에 ${fmt(shortage)} 부족해 공제가 적용되지 않았습니다.`,
       amount: shortage,
     })
@@ -202,7 +183,7 @@ export function analyze(row: CalcRow): AnalysisResult {
       if (shortage > 0) {
         whyZero.push({
           type: "WHY_ZERO",
-          title: "의료비 공제 미적용 — 최저한도 미달",
+          title: "의료비 — 최저한도 미달",
           description: `의료비 ${fmt(mediInput)} 지출하셨지만, 공제 기준인 총급여의 3%(${fmt(medi.의료비최저사용액)})에 ${fmt(shortage)} 부족합니다.`,
           amount: shortage,
         })
@@ -222,9 +203,9 @@ export function analyze(row: CalcRow): AnalysisResult {
   }
 
   // ── 8. 주택마련저축 미공제 ───────────────────────────────────
-  const 청약Input    = inp ? n(inp["562-050"]) : n(row.MAIN_HOUSE_LOAN_SBSC)
-  const 주택청약Input = inp ? n(inp["562-060"]) : n(row.MAIN_HOUSE_LOAN_ALL)
-  const 근로자Input   = inp ? n(inp["562-080"]) : n(row.MAIN_HOUSE_LOAN_WRK)
+  const 청약Input    = total.inputs.청약저축 || (inp ? n(inp["562-050"]) : n(row.MAIN_HOUSE_LOAN_SBSC))
+  const 주택청약Input = total.inputs.주택청약종합저축 || (inp ? n(inp["562-060"]) : n(row.MAIN_HOUSE_LOAN_ALL))
+  const 근로자Input   = total.inputs.근로자주택마련저축 || (inp ? n(inp["562-080"]) : n(row.MAIN_HOUSE_LOAN_WRK))
   const savingsTotal = 청약Input + 주택청약Input + 근로자Input
 
   if (savingsTotal > 0) {
@@ -237,16 +218,23 @@ export function analyze(row: CalcRow): AnalysisResult {
     if (!isHouseHolder) {
       whyZero.push({
         type: "WHY_ZERO",
-        title: "주택마련저축 공제 불가 — 세대원",
+        title: "주택마련저축 - 세대원으로 미공제",
         description: `${savingsItems}을 납입하셨지만 세대원은 주택마련저축 소득공제 대상이 아닙니다. 세대주만 공제 가능합니다.`,
+        amount: savingsTotal,
+      })
+    } else if (total.주택한도소진) {
+      whyZero.push({
+        type: "WHY_ZERO",
+        title: "주택마련저축 - 400만원 한도 소진으로 미공제",
+        description: `${savingsItems}을 납입하셨지만, 주택임차차입금원리금상환액이 주택 관련 공제 400만원 한도를 모두 소진하여 추가 공제가 적용되지 않습니다.`,
         amount: savingsTotal,
       })
     }
   }
 
   // ── 9. 주택임차차입금원리금상환액 ───────────────────────────
-  const lenderInput    = n(row.MAIN_HOUSE_RALR_LENDER)
-  const habitInput     = n(row.MAIN_HOUSE_RALR_HABT)
+  const lenderInput    = total.inputs.주택임차차입금_대출기관 || n(row.MAIN_HOUSE_RALR_LENDER)
+  const habitInput     = total.inputs.주택임차차입금_거주자 || n(row.MAIN_HOUSE_RALR_HABT)
   const lenderDeducted = n(row.SP_HOUSE_RALR_LENDER_AMT)
   const habitDeducted  = n(row.SP_HOUSE_RALR_HABT_AMT)
 
@@ -269,45 +257,38 @@ export function analyze(row: CalcRow): AnalysisResult {
   }
 
   // ── 10. 월세 — 소득/세액 소진으로 미적용 ────────────────────
-  const mainHouseRent = n(row.MAIN_HOUSE_RENT)
+  // 입력금액: CALC_PROC_TOTAL 전용 섹션 우선, 없으면 DB 폴백
+  const mainHouseRent = total.inputs.월세액 || n(row.MAIN_HOUSE_RENT)
   if (!isStd && mainHouseRent > 0 && n(row.RT_HOUSE_RENT_AMT) === 0) {
-    if (row.PROD_TAX_AMT === 0) {
-      // 소득공제 단계에서 소득 소진 → 산출세액 0 → 세액공제 불가
+    const 산출세액 = total.산출세액 || row.PROD_TAX_AMT
+    if (산출세액 === 0) {
       whyZero.push({
         type: "WHY_ZERO",
-        title: "월세 세액공제 미적용 — 소득 소진",
+        title: "월세액 — 소득 소진으로 미공제",
         description: `월세 ${fmt(mainHouseRent)}을 입력하셨지만, 소득공제 단계에서 근로소득이 모두 소진되어 산출세액이 0원입니다. 납부할 세액 자체가 없어 월세 세액공제를 적용할 수 없습니다.`,
         amount: mainHouseRent,
       })
-    } else if (row.RES_INCM_TAX === 0) {
-      // 세액공제 단계에서 다른 공제가 산출세액 선점
-      const exhaustMatch = row.CALC_METHOD.match(/소진지점[：:]\s*(.+)/)
-      const exhaustLabel = exhaustMatch ? exhaustMatch[1].trim() : "다른 세액공제"
+    } else if (total.taxExhausted || row.RES_INCM_TAX === 0) {
+      const exhaustLabel = total.taxExhaustPoint || "다른 세액공제"
       whyZero.push({
         type: "WHY_ZERO",
-        title: "월세 세액공제 미적용 — 세액 소진",
-        description: `월세 ${fmt(mainHouseRent)}을 입력하셨지만, ${exhaustLabel} 공제가 산출세액 ${fmt(row.PROD_TAX_AMT)}을 먼저 소진하여 결정세액이 0원이 됐습니다. 월세 공제를 적용할 세액이 남지 않아 미적용됩니다.`,
+        title: "월세액 — 세액 소진으로 미공제",
+        description: `월세 ${fmt(mainHouseRent)}을 입력하셨지만, ${exhaustLabel} 공제가 산출세액 ${fmt(산출세액)}을 먼저 소진하여 결정세액이 0원이 됐습니다. 월세 공제를 적용할 세액이 남지 않아 미적용됩니다.`,
         amount: mainHouseRent,
       })
     }
   }
 
   // ── 12. 소득 조기 소진 ───────────────────────────────────────
-  if (row.EXHAUSTED_POINT && row.EXHAUSTED_POINT !== "NOT_EXHAUSTED") {
-    const pointMap: Record<string, string> = {
-      NP_INSU_AMT:        "국민연금",
-      BASC_SUB_SELF_AMT:  "본인기초공제",
-      BASC_SUB_MATE_AMT:  "배우자공제",
-      BASC_SUB_FAMILY_AMT:"부양가족공제",
-    }
-    const label = pointMap[row.EXHAUSTED_POINT] ?? row.EXHAUSTED_POINT
-    if (!whyZero.some(f => f.title.includes("국민연금 일부"))) {
-      whyZero.push({
-        type: "WHY_ZERO",
-        title: `근로소득 조기 소진 — ${label} 단계`,
-        description: `${label} 공제 후 근로소득금액이 0이 됩니다. 이후 모든 공제 항목은 차감할 소득이 없어 0원 처리됩니다.`,
-      })
-    }
+  if (total.incomeExhausted && !whyZero.some(f => f.title.includes("국민연금 일부"))) {
+    const label = total.incomeExhaustPoint
+    const titleSuffix = label ? ` — ${label} 단계` : ""
+    const descPrefix  = label ? `${label} 공제 후 ` : ""
+    whyZero.push({
+      type: "WHY_ZERO",
+      title: `근로소득 조기 소진${titleSuffix}`,
+      description: `${descPrefix}근로소득금액이 0이 됩니다. 이후 모든 공제 항목은 차감할 소득이 없어 0원 처리됩니다.`,
+    })
   }
 
   // ═══════════════════════════════════════════════════════════

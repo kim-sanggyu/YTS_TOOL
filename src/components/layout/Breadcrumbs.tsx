@@ -14,7 +14,7 @@ const TOOL_META: Record<string, { group: string; label: string }> = {
   "data-verify":    { group: "전산매체", label: "전산매체 파일 검증" },
   // 세액계산
   "tax-dashboard":  { group: "세액계산", label: "연말정산 대시보드" },
-  "tax-insight":    { group: "세액계산", label: "세액계산 종합진단" },
+  "tax-insight":    { group: "세액계산", label: "계산결과 해설서" },
   "fmly-age-check": { group: "세액계산", label: "공제요건 경계나이 관리" },
   "data-migration": { group: "세액계산", label: "차년도 데이터 생성" },
   "tax-calc":       { group: "세액계산", label: "세액계산 로직 검증" },
