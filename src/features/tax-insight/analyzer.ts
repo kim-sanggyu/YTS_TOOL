@@ -164,44 +164,6 @@ export function analyze(row: CalcRow): AnalysisResult {
   const irpInput     = inp ? n(inp["562-010"]) : n(row.RSIGN_PEN_RET_AMT)
   const pensionInput = inp ? n(inp["562-040"]) : n(row.RSIGN_PEN_PF_AMT)
 
-  // ── 3. 신용카드 최저사용금액 미달 ─────────────────────────────
-  if (card && card.총사용액 > 0 && card.최종공제금액 === 0) {
-    const shortage = card.최저사용금액 - card.총사용액
-    whyZero.push({
-      type: "WHY_ZERO",
-      title: "신용카드 — 최저사용금액 미달",
-      description: `신용카드·체크카드·현금영수증 합산 ${fmt(card.총사용액)} 사용하셨지만, 공제 시작 기준인 총급여×25%(${fmt(card.최저사용금액)})에 ${fmt(shortage)} 부족해 공제가 적용되지 않았습니다.`,
-      amount: shortage,
-    })
-  }
-
-  // ── 4. 의료비 최저한도 미달 ───────────────────────────────────
-  if (!isStd && medi) {
-    const mediInput = inp ? n(inp.MEDI_entered) : medi.의료비지출금액
-    if (mediInput > 0 && medi.의료비_공제금액 === 0) {
-      const shortage = medi.의료비최저사용액 - medi.의료비지출금액
-      if (shortage > 0) {
-        whyZero.push({
-          type: "WHY_ZERO",
-          title: "의료비 — 최저한도 미달",
-          description: `의료비 ${fmt(mediInput)} 지출하셨지만, 공제 기준인 총급여의 3%(${fmt(medi.의료비최저사용액)})에 ${fmt(shortage)} 부족합니다.`,
-          amount: shortage,
-        })
-      }
-    }
-  }
-
-  // ── 7. 국민연금 잔액 소진으로 일부만 공제 ────────────────────
-  if (n(row.NP_INSU_OBJ_AMT) > n(row.NP_INSU_AMT) && n(row.NP_INSU_AMT) > 0) {
-    const unpaid = n(row.NP_INSU_OBJ_AMT) - n(row.NP_INSU_AMT)
-    whyZero.push({
-      type: "WHY_ZERO",
-      title: "국민연금 일부만 공제 — 근로소득 소진",
-      description: `국민연금 납부액 ${fmt(n(row.NP_INSU_OBJ_AMT))} 중 ${fmt(n(row.NP_INSU_AMT))}만 공제됐습니다. 근로소득금액이 먼저 소진되어 나머지 ${fmt(unpaid)}은 공제되지 않습니다.`,
-      amount: unpaid,
-    })
-  }
-
   // ── 8. 주택마련저축 미공제 ───────────────────────────────────
   const 청약Input    = total.inputs.청약저축 || (inp ? n(inp["562-050"]) : n(row.MAIN_HOUSE_LOAN_SBSC))
   const 주택청약Input = total.inputs.주택청약종합저축 || (inp ? n(inp["562-060"]) : n(row.MAIN_HOUSE_LOAN_ALL))
@@ -256,6 +218,18 @@ export function analyze(row: CalcRow): AnalysisResult {
     })
   }
 
+  // ── 12. 소득 조기 소진 ───────────────────────────────────────
+  if (total.incomeExhausted) {
+    const label = total.incomeExhaustPoint
+    const titleSuffix = label ? ` — ${label} 단계` : ""
+    const descPrefix  = label ? `${label} 공제 후 ` : ""
+    whyZero.push({
+      type: "WHY_ZERO",
+      title: `근로소득 조기 소진${titleSuffix}`,
+      description: `${descPrefix}근로소득금액이 0이 됩니다. 이후 모든 공제 항목은 차감할 소득이 없어 0원 처리됩니다.`,
+    })
+  }
+
   // ── 10. 월세 — 소득/세액 소진으로 미적용 ────────────────────
   // 입력금액: CALC_PROC_TOTAL 전용 섹션 우선, 없으면 DB 폴백
   const mainHouseRent = total.inputs.월세액 || n(row.MAIN_HOUSE_RENT)
@@ -279,16 +253,51 @@ export function analyze(row: CalcRow): AnalysisResult {
     }
   }
 
-  // ── 12. 소득 조기 소진 ───────────────────────────────────────
-  if (total.incomeExhausted && !whyZero.some(f => f.title.includes("국민연금 일부"))) {
-    const label = total.incomeExhaustPoint
-    const titleSuffix = label ? ` — ${label} 단계` : ""
+  // ── 13. 세액 소진 ────────────────────────────────────────────
+  if (total.taxExhausted) {
+    const label = total.taxExhaustPoint
+    const titleSuffix = label ? ` 지점 — '${label}' 항목 공제할 때` : ""
     const descPrefix  = label ? `${label} 공제 후 ` : ""
     whyZero.push({
       type: "WHY_ZERO",
-      title: `근로소득 조기 소진${titleSuffix}`,
-      description: `${descPrefix}근로소득금액이 0이 됩니다. 이후 모든 공제 항목은 차감할 소득이 없어 0원 처리됩니다.`,
+      title: `세액 전액 소진${titleSuffix}`,
+      description: `${descPrefix}산출세액이 모두 소진됩니다. 이후 세액공제 항목은 차감할 세액이 없어 0원 처리됩니다.`,
     })
+    if (total.taxExhaustedSkipped.length > 0) {
+      const items = total.taxExhaustedSkipped.join(', ')
+      whyZero.push({
+        type: "WHY_ZERO",
+        title: `세액소진 이후 미공제 — ${items}`,
+        description: `세액이 모두 소진되어 ${items}이(가) 공제되지 않았습니다.`,
+      })
+    }
+  }
+
+  // ── 3. 신용카드 최저사용금액 미달 ─────────────────────────────
+  if (card && card.총사용액 > 0 && card.최종공제금액 === 0) {
+    const shortage = card.최저사용금액 - card.총사용액
+    whyZero.push({
+      type: "WHY_ZERO",
+      title: "신용카드 — 최저사용금액 미달",
+      description: `신용카드·체크카드·현금영수증 합산 ${fmt(card.총사용액)} 사용하셨지만, 공제 시작 기준인 총급여×25%(${fmt(card.최저사용금액)})에 ${fmt(shortage)} 부족해 공제가 적용되지 않았습니다.`,
+      amount: shortage,
+    })
+  }
+
+  // ── 4. 의료비 최저한도 미달 ───────────────────────────────────
+  if (!isStd && medi) {
+    const mediInput = inp ? n(inp.MEDI_entered) : medi.의료비지출금액
+    if (mediInput > 0 && medi.의료비_공제금액 === 0) {
+      const shortage = medi.의료비최저사용액 - medi.의료비지출금액
+      if (shortage > 0) {
+        whyZero.push({
+          type: "WHY_ZERO",
+          title: "의료비 — 최저한도 미달",
+          description: `의료비 ${fmt(mediInput)} 지출하셨지만, 공제 기준인 총급여의 3%(${fmt(medi.의료비최저사용액)})에 ${fmt(shortage)} 부족합니다.`,
+          amount: shortage,
+        })
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════

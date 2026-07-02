@@ -51,7 +51,7 @@ const navGroups: NavGroup[] = [
     children: [
       { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
       { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
-      { title: "계산결과 해설서",        href: "/tools/tax-insight",     icon: FileOutput },
+      { title: "계산결과 해설 보기",      href: "/tools/tax-insight",     icon: FileOutput },
       { title: "공제요건 경계나이 관리", href: "/tools/fmly-age-check",  icon: Calculator },
       { title: "차년도 데이터 생성",    href: "/tools/data-migration",  icon: GitCompare },
     ],

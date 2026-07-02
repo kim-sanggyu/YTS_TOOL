@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
       INS_MISS: number; INS_STD: number; INS_EXHAUSTED: number
       SAVINGS_MISS: number; SAVINGS_MEMBER: number; SAVINGS_LIMIT: number
       RALR_MISS: number; RALR_LENDER_MISS: number; RALR_HABT_MISS: number
+      INCOME_EXH: number; TAX_EXH: number
     }>(`
       SELECT
         -- 월세: 전체 / 표준방식 / 소득소진(산출세액=0) / 세액소진(결정세액=0)
@@ -96,7 +97,12 @@ export async function GET(req: NextRequest) {
         COUNT(CASE WHEN NVL(m.HOUSE_RALR_LENDER,0) > 0
                     AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0 THEN 1 END)                 AS RALR_LENDER_MISS,
         COUNT(CASE WHEN NVL(m.HOUSE_RALR_HABT,0) > 0
-                    AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0 THEN 1 END)                   AS RALR_HABT_MISS
+                    AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0 THEN 1 END)                   AS RALR_HABT_MISS,
+        -- 소득소진 / 세액소진
+        COUNT(CASE WHEN INSTR(c.CALC_PROC_TOTAL, '근로소득 잔액이 ''0''이 되었습니다') > 0
+                   THEN 1 END)                                                              AS INCOME_EXH,
+        COUNT(CASE WHEN INSTR(c.CALC_PROC_TOTAL, '항목에서 산출세액이 모두 소진') > 0
+                   THEN 1 END)                                                              AS TAX_EXH
       FROM YTS39.PAY_WRK_CALC c
       INNER JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
       WHERE c.CALC_NO LIKE '${calcNoPattern}'
@@ -173,6 +179,7 @@ export async function GET(req: NextRequest) {
         savingsMiss: anomalies.SAVINGS_MISS, savingsMember: anomalies.SAVINGS_MEMBER, savingsLimit: anomalies.SAVINGS_LIMIT,
         ralrMiss: anomalies.RALR_MISS ?? 0, ralrLenderMiss: anomalies.RALR_LENDER_MISS ?? 0, ralrHabtMiss: anomalies.RALR_HABT_MISS ?? 0,
         cardMiss, mediMiss,
+        incomeExh: anomalies.INCOME_EXH ?? 0, taxExh: anomalies.TAX_EXH ?? 0,
       },
       insights: {
         eligible: ins.ELIGIBLE, pensionNone: ins.PENSION_NONE, pensionUnder: ins.PENSION_UNDER,

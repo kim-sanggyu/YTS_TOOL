@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const workFilter   = req.nextUrl.searchParams.get("workFilter")   ?? "all"
   const reviewFilter = req.nextUrl.searchParams.get("reviewFilter") ?? "all"
 
-  const needsMain = workFilter !== "all" || reviewFilter === "houserent" || reviewFilter === "housingsavings" || reviewFilter === "ralr" || reviewFilter === "medi"
+  const needsMain = workFilter !== "all" || reviewFilter === "houserent" || reviewFilter === "housingsavings" || reviewFilter === "ralr" || reviewFilter === "medi" || reviewFilter === "insurance"
 
   const clauses: string[] = []
   if (taxFilter    === "zero")      clauses.push("c.RES_INCM_TAX = 0")
@@ -47,6 +47,12 @@ export async function GET(req: NextRequest) {
     " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'" +
     " AND NVL(m.LOSS_INSU_MEDI, 0) = 0" +
     " AND INSTR(c.CALC_PROC_MEDI, '실손') = 0"
+  )
+  if (reviewFilter === "incomeexhausted") clauses.push(
+    "INSTR(c.CALC_PROC_TOTAL, '근로소득 잔액이 ''0''이 되었습니다') > 0"
+  )
+  if (reviewFilter === "taxexhausted") clauses.push(
+    "INSTR(c.CALC_PROC_TOTAL, '항목에서 산출세액이 모두 소진') > 0"
   )
 
   const whereExtra = clauses.length ? "AND " + clauses.join(" AND ") : ""

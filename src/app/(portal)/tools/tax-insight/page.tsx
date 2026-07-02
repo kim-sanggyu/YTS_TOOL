@@ -1,11 +1,14 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger,
+} from "@/components/ui/sheet"
 import type { CalcListItem, AnalysisResult, TaxFilterType, CalcFilterType, WorkFilterType, ReviewFilterType, Finding } from "@/features/tax-insight/types"
 import { AVAILABLE_YEARS } from "@/features/tax-insight/constants"
 
@@ -101,11 +104,102 @@ function AnalysisPanel({ data }: { data: AnalysisResult }) {
   )
 }
 
+// ─── 파싱 로직 안내 ────────────────────────────────────────────────────────
+interface ParsePoint {
+  title: string
+  raw: string       // CALC_PROC_TOTAL 실제 텍스트 예시
+  result: string    // 파싱 결과 → 해설에 사용되는 값
+  note?: string
+}
+
+const PARSE_POINTS: ParsePoint[] = [
+  {
+    title: "세액계산 방식",
+    raw: "'표준세액공제' 방식으로 계산합니다.\n→ 보험료, 주택임차차입금원리금상환액, ...",
+    result: "isStandard = true\n→ 표준방식 선택으로 미공제 카드 생성",
+    note: "이 문자열이 없으면 특별세액공제 방식으로 판단합니다.",
+  },
+  {
+    title: "소득자 입력 값 섹션",
+    raw: "====소득자 입력 값====\n월세액: 1,200,000\n건강보험료: 483,200\n고용보험료: 147,900\n====END====",
+    result: "inputs.월세액 = 1200000\ninputs.건강보험료 = 483200\ninputs.고용보험료 = 147900",
+    note: "입력금액 파악의 1차 소스. 없으면 DB 컬럼으로 폴백.",
+  },
+  {
+    title: "산출세액",
+    raw: "· 1,266,487 (산출세액)",
+    result: "산출세액 = 1266487",
+  },
+  {
+    title: "소득 소진 감지",
+    raw: "※ 근로소득 잔액이 '0'이 되었습니다.\n※ (자동)특별소득ㆍ세액공제 적용 세액 0\n   (표준적용時 0), 소진지점: 본인",
+    result: "incomeExhausted = true\nincomeExhaustPoint = '본인'\n→ 근로소득 조기 소진 — 본인 단계 카드 생성",
+  },
+  {
+    title: "세액 소진 감지",
+    raw: "▣▣▣ [월세액] 항목에서 산출세액이 모두 소진되었습니다.\n[월세액] 항목은 산출세액 당초 보다 덜 공제될 수 있습니다.",
+    result: "taxExhausted = true\ntaxExhaustPoint = '월세액'\n→ 세액 전액 소진 지점 — '월세액' 항목 공제할 때 카드 생성",
+  },
+  {
+    title: "세액소진 이후 건너뛴 항목",
+    raw: "(잔액) 0 - 0 (일반기부금(종교단체외))  ※표기생략(산출세액 잔액 0)\n(잔액) 0 - 0 (ISA연금계좌납입액)       ※표기생략(산출세액 잔액 0)",
+    result: "taxExhaustedSkipped = ['일반기부금(종교단체외)', 'ISA연금계좌납입액']\n→ 세액소진 이후 미공제 카드 생성",
+    note: "※표기생략(산출세액 잔액 0) 이 붙은 줄만 해당. 입력값이 있는 항목에만 표기됩니다.",
+  },
+  {
+    title: "주택 400만원 한도 소진",
+    raw: "(잔액) 3,827,604 - 2,707,660 (신용카드등) [상세공제내역]참조\n①주택4백한도 0, ②...",
+    result: "주택한도소진 = true\n→ 주택마련저축 - 400만원 한도 소진으로 미공제 카드 생성",
+    note: "주택임차차입금원리금상환액이 400만원 한도를 먼저 채운 경우.",
+  },
+]
+
+function ParsePointCard({ p }: { p: ParsePoint }) {
+  return (
+    <div className="rounded-lg border bg-card p-3 flex flex-col gap-2">
+      <p className="text-xs font-bold text-gray-800">{p.title}</p>
+      <div>
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">CALC_PROC_TOTAL</p>
+        <pre className="text-[11px] bg-amber-50 border border-amber-200 rounded px-2 py-1.5 text-amber-900 whitespace-pre-wrap leading-relaxed">{p.raw}</pre>
+      </div>
+      <div>
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">파싱 결과 → 해설</p>
+        <pre className="text-[11px] bg-blue-50 border border-blue-200 rounded px-2 py-1.5 text-blue-900 whitespace-pre-wrap leading-relaxed">{p.result}</pre>
+      </div>
+      {p.note && <p className="text-[11px] text-muted-foreground leading-relaxed">{p.note}</p>}
+    </div>
+  )
+}
+
+function ParsingGuideSheet() {
+  return (
+    <Sheet>
+      <SheetTrigger render={
+        <Button variant="ghost" size="icon-sm" className="text-muted-foreground" />
+      }>
+        <Info className="h-4 w-4" />
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[540px] sm:max-w-[540px] overflow-y-auto">
+        <SheetHeader className="pb-3">
+          <SheetTitle>계산결과 해설 보기 — 파싱 안내</SheetTitle>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            좌측 CALC_PROC_TOTAL 원문에서 아래 패턴을 읽어 우측 해설 카드를 생성합니다.
+            외부 DB 컬럼에는 의존하지 않습니다.
+          </p>
+        </SheetHeader>
+        <div className="flex flex-col gap-3 px-4 pb-6">
+          {PARSE_POINTS.map((p, i) => <ParsePointCard key={i} p={p} />)}
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────
 const TAX_LABEL:    Record<TaxFilterType,    string> = { all: "전체", nonzero: "결정세액 > 0", zero: "결정세액 = 0" }
 const CALC_LABEL:   Record<CalcFilterType,   string> = { all: "전체", standard: "표준세액공제", special: "특별세액공제" }
 const WORK_LABEL:   Record<WorkFilterType,   string> = { all: "전체", continue: "계속근로", midleave: "중도퇴사" }
-const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", houserent: "월세액", insurance: "건강/고용보험", housingsavings: "주택마련저축", ralr: "원리금상환액", card: "신용카드", medi: "의료비" }
+const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", houserent: "월세액", insurance: "건강/고용보험", housingsavings: "주택마련저축", ralr: "원리금상환액", card: "신용카드", medi: "의료비", incomeexhausted: "소득소진", taxexhausted: "세액소진" }
 
 const SS_KEY = {
   year:         "tax-insight:year",
@@ -231,7 +325,10 @@ export default function TaxInsightPage() {
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
       <div className="shrink-0 mb-3">
-        <h1 className="text-2xl font-bold tracking-tight">계산결과 해설서</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">계산결과 해설 보기</h1>
+          <ParsingGuideSheet />
+        </div>
         <p className="text-muted-foreground mt-1 text-sm">
           세액 결과 안내 및 미 공제 내역에 대한 사유를 확인할 수 있습니다.
           또한 다음 번 연말정산을 위한 절세 전략도 제안합니다.
@@ -303,6 +400,8 @@ export default function TaxInsightPage() {
               <SelectItem value="ralr">원리금상환액</SelectItem>
               <SelectItem value="card">신용카드</SelectItem>
               <SelectItem value="medi">의료비</SelectItem>
+              <SelectItem value="incomeexhausted">소득소진</SelectItem>
+              <SelectItem value="taxexhausted">세액소진</SelectItem>
             </SelectContent>
           </Select>
 

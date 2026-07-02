@@ -27,6 +27,7 @@ interface Anomalies {
   savingsMiss: number; savingsMember: number; savingsLimit: number
   ralrMiss: number; ralrLenderMiss: number; ralrHabtMiss: number
   cardMiss: number; mediMiss: number
+  incomeExh: number; taxExh: number
 }
 interface Insights {
   eligible: number; pensionNone: number; pensionUnder: number
@@ -218,15 +219,15 @@ export default function TaxDashboardPage() {
               label: "월세액", total: a.rentMiss,
               items: [
                 { title: "표준방식 선택으로 미공제", count: a.rentStd },
-                { title: "소득소진(산출세액=0)", count: a.rentIncomeExh },
-                { title: "세액소진(결정세액=0)", count: a.rentTaxExh },
+                { title: "소득소진(근로소득 잔액 = 0)", count: a.rentIncomeExh },
+                { title: "세액소진(산출세액 잔액 = 0)", count: a.rentTaxExh },
               ],
             },
             {
               label: "건강/고용보험료", total: a.insMiss,
               items: [
                 { title: "표준방식 선택으로 미공제", count: a.insStd },
-                { title: "소득소진(산출세액=0)", count: a.insExhausted },
+                { title: "소득소진(근로소득 잔액 = 0)", count: a.insExhausted },
               ],
             },
             {
@@ -253,6 +254,13 @@ export default function TaxDashboardPage() {
               label: "의료비", total: a.mediMiss,
               items: [
                 { title: "지출 있으나 최저한도(총급여×3%) 미달", count: a.mediMiss },
+              ],
+            },
+            {
+              label: "소득/세액소진", total: a.incomeExh + a.taxExh,
+              items: [
+                { title: "소득소진(근로소득 잔액 = 0)", count: a.incomeExh },
+                { title: "세액소진(산출세액 잔액 = 0)", count: a.taxExh },
               ],
             },
           ]} />
