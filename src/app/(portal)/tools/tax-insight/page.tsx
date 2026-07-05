@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { ChevronLeft, ChevronRight, RotateCcw, Info } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw, RefreshCw, Info, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -21,21 +21,21 @@ function fmtRate(n: number) {
 }
 
 // ─── 요약 카드 ─────────────────────────────────────────────────────────────
-function SummaryBar({ data }: { data: AnalysisResult }) {
+function SummaryBar({ data, name }: { data: AnalysisResult; name?: string }) {
   const { summary } = data
-  const refund = summary.subIncmTax < 0
   return (
-    <div className="grid grid-cols-5 gap-3 mb-4">
+    <div className={`grid gap-3 mb-4 ${name ? "grid-cols-5" : "grid-cols-4"}`}>
+      {name && (
+        <div className="rounded-lg border bg-card px-4 py-3">
+          <p className="text-xs text-muted-foreground">이름</p>
+          <p className="text-sm font-semibold mt-0.5 truncate">{name}</p>
+        </div>
+      )}
       {[
         { label: "총급여", value: fmt(summary.totPayAmt) },
         { label: "산출세액", value: fmt(summary.prodTaxAmt) },
         { label: "결정세액", value: fmt(summary.resIncmTax) },
         { label: "실효세율", value: fmtRate(summary.effctvTaxRate) },
-        {
-          label: refund ? "환급" : "추가납부",
-          value: fmt(Math.abs(summary.subIncmTax)),
-          highlight: refund ? "text-blue-600" : "text-red-600",
-        },
       ].map(({ label, value, highlight }) => (
         <div key={label} className="rounded-lg border bg-card px-4 py-3">
           <p className="text-xs text-muted-foreground">{label}</p>
@@ -48,9 +48,8 @@ function SummaryBar({ data }: { data: AnalysisResult }) {
 
 // ─── 발견 항목 카드 ────────────────────────────────────────────────────────
 const FINDING_STYLE: Record<string, { bg: string; border: string; badge: string; icon: string }> = {
-  WHY_ZERO:    { bg: "bg-amber-50",  border: "border-amber-200", badge: "bg-amber-100 text-amber-800",  icon: "⚠️" },
-  OPPORTUNITY: { bg: "bg-green-50",  border: "border-green-200", badge: "bg-green-100 text-green-800",  icon: "💡" },
-  DOING_WELL:  { bg: "bg-blue-50",   border: "border-blue-200",  badge: "bg-blue-100 text-blue-800",    icon: "✅" },
+  ANALYSIS:    { bg: "bg-yellow-50", border: "border-yellow-200", badge: "bg-yellow-100 text-yellow-800", icon: "📋" },
+  OPPORTUNITY: { bg: "bg-green-50",  border: "border-green-200",  badge: "bg-green-100 text-green-800",   icon: "💡" },
 }
 
 function FindingCard({ f }: { f: Finding }) {
@@ -76,9 +75,8 @@ function FindingCard({ f }: { f: Finding }) {
 // ─── 분석 패널 ─────────────────────────────────────────────────────────────
 function AnalysisPanel({ data }: { data: AnalysisResult }) {
   const sections = [
-    { title: "이런 이유로 0원입니다", items: data.whyZero },
+    { title: "세액계산 결과 분석", items: data.analysis },
     { title: "절세 기회", items: data.opportunities },
-    { title: "잘 하고 있는 것", items: data.doingWell },
   ]
 
   return (
@@ -199,7 +197,7 @@ function ParsingGuideSheet() {
 const TAX_LABEL:    Record<TaxFilterType,    string> = { all: "전체", nonzero: "결정세액 > 0", zero: "결정세액 = 0" }
 const CALC_LABEL:   Record<CalcFilterType,   string> = { all: "전체", standard: "표준세액공제", special: "특별세액공제" }
 const WORK_LABEL:   Record<WorkFilterType,   string> = { all: "전체", continue: "계속근로", midleave: "중도퇴사" }
-const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", houserent: "월세액", insurance: "건강/고용보험", housingsavings: "주택마련저축", ralr: "원리금상환액", card: "신용카드", medi: "의료비", incomeexhausted: "소득소진", taxexhausted: "세액소진" }
+const REVIEW_LABEL: Record<ReviewFilterType, string> = { all: "전체", standardcontinue: "표준&계속근로", incomeexhausted: "소득소진", housingsavings: "주택저축(세대원)", housingsavings400: "주택저축400한도", ralr: "원리금상환액", card: "신용카드", medi: "의료비", taxexhausted: "세액소진", manyinput: "입력데이터많음" }
 
 const SS_KEY = {
   year:         "tax-insight:year",
@@ -306,6 +304,16 @@ export default function TaxInsightPage() {
   const isDragging = useRef(false)
 
   useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.key === "ArrowLeft")  move(-1)
+      if (e.key === "ArrowRight") move(1)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [idx, items])
+
+  useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current || !containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
@@ -394,14 +402,15 @@ export default function TaxInsightPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체</SelectItem>
-              <SelectItem value="houserent">월세액</SelectItem>
-              <SelectItem value="insurance">건강/고용보험</SelectItem>
-              <SelectItem value="housingsavings">주택마련저축</SelectItem>
+              <SelectItem value="standardcontinue">표준&amp;계속근로</SelectItem>
+              <SelectItem value="incomeexhausted">소득소진</SelectItem>
+              <SelectItem value="taxexhausted">세액소진</SelectItem>
+              <SelectItem value="housingsavings">주택저축(세대원)</SelectItem>
+              <SelectItem value="housingsavings400">주택저축400한도</SelectItem>
               <SelectItem value="ralr">원리금상환액</SelectItem>
               <SelectItem value="card">신용카드</SelectItem>
               <SelectItem value="medi">의료비</SelectItem>
-              <SelectItem value="incomeexhausted">소득소진</SelectItem>
-              <SelectItem value="taxexhausted">세액소진</SelectItem>
+              <SelectItem value="manyinput">입력데이터많음</SelectItem>
             </SelectContent>
           </Select>
 
@@ -440,10 +449,24 @@ export default function TaxInsightPage() {
         <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => { setIdx(0); setSelectedNo(items[0]?.calcNo ?? "") }} disabled={loadingList || items.length === 0}>
           <RotateCcw className="h-4 w-4" />
         </Button>
+
+        {/* 재조회 */}
+        <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={() => fetchAnalysis(selectedNo)} disabled={!selectedNo || loadingData}>
+          <RefreshCw className="h-3.5 w-3.5" />
+          조회
+        </Button>
+
+        {/* 엑셀 다운로드 */}
+        <a href={`/api/tools/tax-insight/export?year=${year}`} download>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5">
+            <Download className="h-3.5 w-3.5" />
+            카드현황
+          </Button>
+        </a>
       </div>
 
       {/* 요약 바 */}
-      {result && <SummaryBar data={result} />}
+      {result && <SummaryBar data={result} name={items[idx]?.name} />}
 
       {/* 본문: 좌(CALC_PROC_TOTAL) / 리사이즈 핸들 / 우(분석) */}
       <div ref={containerRef} className="flex-1 min-h-0 flex gap-0">

@@ -12,8 +12,7 @@ export async function GET(req: NextRequest) {
   const workFilter   = req.nextUrl.searchParams.get("workFilter")   ?? "all"
   const reviewFilter = req.nextUrl.searchParams.get("reviewFilter") ?? "all"
 
-  const needsMain = workFilter !== "all" || reviewFilter === "houserent" || reviewFilter === "housingsavings" || reviewFilter === "ralr" || reviewFilter === "medi" || reviewFilter === "insurance"
-
+  const needsMain = workFilter !== "all" || reviewFilter === "standardcontinue" || reviewFilter === "housingsavings" || reviewFilter === "housingsavings400" || reviewFilter === "ralr" || reviewFilter === "medi"
   const clauses: string[] = []
   if (taxFilter    === "zero")      clauses.push("c.RES_INCM_TAX = 0")
   if (taxFilter    === "nonzero")   clauses.push("c.RES_INCM_TAX > 0")
@@ -21,25 +20,22 @@ export async function GET(req: NextRequest) {
   if (calcFilter   === "special")   clauses.push("c.CALC_METHOD LIKE '%특별소득%세액공제 적용 세액%'")
   if (workFilter   === "continue")  clauses.push("m.KEEP_PS = '1'")
   if (workFilter   === "midleave")  clauses.push("m.KEEP_PS = '2'")
-  if (reviewFilter === "houserent") clauses.push(
-    "NVL(m.HOUSE_RENT, 0) > 0 AND NVL(c.RT_HOUSE_RENT_AMT, 0) = 0"
-  )
   if (reviewFilter === "housingsavings") clauses.push(
     "(NVL(m.HOUSE_LOAN_SBSC,0) + NVL(m.HOUSE_LOAN_ALL,0) + NVL(m.HOUSE_LOAN_WRK,0)) > 0" +
+    " AND NVL(m.HOUSE_HLDR_YN, '0') = '2'" +
     " AND (NVL(c.OTO_HOUSE_LOAN_SBSC_AMT,0) + NVL(c.OTO_HOUSE_LOAN_ALL_AMT,0) + NVL(c.OTO_HOUSE_LOAN_WRK_AMT,0)) = 0"
   )
-  if (reviewFilter === "insurance") clauses.push(
-    "((NVL(c.SPCL_IF_HLTH_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_HLTH_INSU_AMT,0) = 0)" +
-    " OR (NVL(c.SPCL_IF_EMP_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_EMP_INSU_AMT,0) = 0))"
+  if (reviewFilter === "housingsavings400") clauses.push(
+    "(NVL(m.HOUSE_LOAN_SBSC,0) + NVL(m.HOUSE_LOAN_ALL,0) + NVL(m.HOUSE_LOAN_WRK,0)) > 0" +
+    " AND NVL(m.HOUSE_HLDR_YN, '0') = '1'" +
+    " AND REGEXP_LIKE(c.CALC_PROC_TOTAL, '주택4백한도\\s*0[,)]')"
   )
   if (reviewFilter === "ralr") clauses.push(
     "((NVL(m.HOUSE_RALR_LENDER,0) > 0 AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0)" +
     " OR (NVL(m.HOUSE_RALR_HABT,0) > 0 AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0))"
   )
   if (reviewFilter === "card") clauses.push(
-    "NVL(c.OTO_CARD_ETC, 0) = 0 AND c.CALC_PROC_CARD IS NOT NULL" +
-    " AND REGEXP_LIKE(c.CALC_PROC_INPUT, '\"CARD_entered\"\\s*:\\s*[1-9]')" +
-    " AND NVL(c.EXHAUSTED_POINT, 'NOT_EXHAUSTED') = 'NOT_EXHAUSTED'"
+    "c.CALC_PROC_CARD IS NOT NULL AND NVL(c.OTO_CARD_ETC, 0) = 0"
   )
   if (reviewFilter === "medi") clauses.push(
     "NVL(c.RT_MEDI_AMT, 0) = 0 AND c.CALC_PROC_MEDI IS NOT NULL" +
@@ -48,11 +44,18 @@ export async function GET(req: NextRequest) {
     " AND NVL(m.LOSS_INSU_MEDI, 0) = 0" +
     " AND INSTR(c.CALC_PROC_MEDI, '실손') = 0"
   )
+  if (reviewFilter === "standardcontinue") clauses.push(
+    "c.CALC_METHOD LIKE '%표준세액공제 적용 세액%'",
+    "m.KEEP_PS = '1'"
+  )
   if (reviewFilter === "incomeexhausted") clauses.push(
     "INSTR(c.CALC_PROC_TOTAL, '근로소득 잔액이 ''0''이 되었습니다') > 0"
   )
   if (reviewFilter === "taxexhausted") clauses.push(
     "INSTR(c.CALC_PROC_TOTAL, '항목에서 산출세액이 모두 소진') > 0"
+  )
+  if (reviewFilter === "manyinput") clauses.push(
+    "REGEXP_COUNT(c.CALC_PROC_TOTAL, '[)] 입력') >= 11"
   )
 
   const whereExtra = clauses.length ? "AND " + clauses.join(" AND ") : ""
@@ -61,7 +64,6 @@ export async function GET(req: NextRequest) {
     SELECT
       c.CALC_NO,
       c.RES_INCM_TAX,
-      c.SUB_INCM_TAX,
       c.TOT_PAY_AMT,
       SUBSTR(f.NM, 1, 4) AS NAME
     FROM YTS39.PAY_WRK_CALC c
@@ -76,7 +78,6 @@ export async function GET(req: NextRequest) {
     const rows = await ytsDb.query<{
       CALC_NO: string
       RES_INCM_TAX: number
-      SUB_INCM_TAX: number
       TOT_PAY_AMT: number
       NAME: string | null
     }>(sql)
@@ -86,7 +87,6 @@ export async function GET(req: NextRequest) {
         calcNo: r.CALC_NO,
         name: r.NAME ?? "-",
         resIncmTax: r.RES_INCM_TAX,
-        subIncmTax: r.SUB_INCM_TAX,
         totPayAmt: r.TOT_PAY_AMT,
       })),
       total: rows.length,

@@ -47,62 +47,32 @@ export async function GET(req: NextRequest) {
 
     // ── 2. 특이사항 — MAIN JOIN ───────────────────────────────
     const [anomalies] = await ytsDb.query<{
-      RENT_MISS: number; RENT_STD: number; RENT_INCOME_EXH: number; RENT_TAX_EXH: number
-      INS_MISS: number; INS_STD: number; INS_EXHAUSTED: number
-      SAVINGS_MISS: number; SAVINGS_MEMBER: number; SAVINGS_LIMIT: number
-      RALR_MISS: number; RALR_LENDER_MISS: number; RALR_HABT_MISS: number
       INCOME_EXH: number; TAX_EXH: number
+      SAVINGS_MEMBER: number; SAVINGS_LIMIT: number
+      RALR_MISS: number; RALR_LENDER_MISS: number; RALR_HABT_MISS: number
     }>(`
       SELECT
-        -- 월세: 전체 / 표준방식 / 소득소진(산출세액=0) / 세액소진(결정세액=0)
-        COUNT(CASE WHEN NVL(m.HOUSE_RENT,0) > 0
-                    AND NVL(c.RT_HOUSE_RENT_AMT,0) = 0 THEN 1 END)                         AS RENT_MISS,
-        COUNT(CASE WHEN NVL(m.HOUSE_RENT,0) > 0
-                    AND NVL(c.RT_HOUSE_RENT_AMT,0) = 0
-                    AND c.CALC_METHOD LIKE '%표준세액공제 적용 세액%' THEN 1 END)            AS RENT_STD,
-        COUNT(CASE WHEN NVL(m.HOUSE_RENT,0) > 0
-                    AND NVL(c.RT_HOUSE_RENT_AMT,0) = 0
-                    AND c.CALC_METHOD NOT LIKE '%표준세액공제 적용 세액%'
-                    AND c.PROD_TAX_AMT = 0 THEN 1 END)                                      AS RENT_INCOME_EXH,
-        COUNT(CASE WHEN NVL(m.HOUSE_RENT,0) > 0
-                    AND NVL(c.RT_HOUSE_RENT_AMT,0) = 0
-                    AND c.CALC_METHOD NOT LIKE '%표준세액공제 적용 세액%'
-                    AND c.PROD_TAX_AMT > 0 AND c.RES_INCM_TAX = 0 THEN 1 END)              AS RENT_TAX_EXH,
-        -- 건강/고용보험 합산 (OR): 전체 / 표준방식 / 소득소진
-        COUNT(CASE WHEN ((NVL(c.SPCL_IF_HLTH_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_HLTH_INSU_AMT,0) = 0)
-                       OR (NVL(c.SPCL_IF_EMP_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_EMP_INSU_AMT,0) = 0))
-                   THEN 1 END)                                                              AS INS_MISS,
-        COUNT(CASE WHEN ((NVL(c.SPCL_IF_HLTH_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_HLTH_INSU_AMT,0) = 0)
-                       OR (NVL(c.SPCL_IF_EMP_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_EMP_INSU_AMT,0)  = 0))
-                    AND c.CALC_METHOD LIKE '%표준세액공제 적용 세액%' THEN 1 END)            AS INS_STD,
-        COUNT(CASE WHEN ((NVL(c.SPCL_IF_HLTH_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_HLTH_INSU_AMT,0) = 0)
-                       OR (NVL(c.SPCL_IF_EMP_INSU_OBJ_AMT,0) > 0 AND NVL(c.SPCL_IF_EMP_INSU_AMT,0)  = 0))
-                    AND c.CALC_METHOD NOT LIKE '%표준세액공제 적용 세액%' THEN 1 END)        AS INS_EXHAUSTED,
-        -- 주택마련저축: 전체 / 세대원 / 400만원 한도 소진
-        COUNT(CASE WHEN (NVL(m.HOUSE_LOAN_SBSC,0)+NVL(m.HOUSE_LOAN_ALL,0)+NVL(m.HOUSE_LOAN_WRK,0)) > 0
-                    AND (NVL(c.OTO_HOUSE_LOAN_SBSC_AMT,0)+NVL(c.OTO_HOUSE_LOAN_ALL_AMT,0)+NVL(c.OTO_HOUSE_LOAN_WRK_AMT,0)) = 0
-                    THEN 1 END)                                                              AS SAVINGS_MISS,
-        COUNT(CASE WHEN (NVL(m.HOUSE_LOAN_SBSC,0)+NVL(m.HOUSE_LOAN_ALL,0)+NVL(m.HOUSE_LOAN_WRK,0)) > 0
-                    AND (NVL(c.OTO_HOUSE_LOAN_SBSC_AMT,0)+NVL(c.OTO_HOUSE_LOAN_ALL_AMT,0)+NVL(c.OTO_HOUSE_LOAN_WRK_AMT,0)) = 0
-                    AND m.HOUSE_HLDR_YN = '2' THEN 1 END)                                  AS SAVINGS_MEMBER,
-        COUNT(CASE WHEN (NVL(m.HOUSE_LOAN_SBSC,0)+NVL(m.HOUSE_LOAN_ALL,0)+NVL(m.HOUSE_LOAN_WRK,0)) > 0
-                    AND (NVL(c.OTO_HOUSE_LOAN_SBSC_AMT,0)+NVL(c.OTO_HOUSE_LOAN_ALL_AMT,0)+NVL(c.OTO_HOUSE_LOAN_WRK_AMT,0)) = 0
-                    AND m.HOUSE_HLDR_YN = '1'
-                    AND (NVL(c.SP_HOUSE_RALR_LENDER_AMT,0)+NVL(c.SP_HOUSE_RALR_HABT_AMT,0)) >= 4000000
-                    THEN 1 END)                                                              AS SAVINGS_LIMIT,
-        -- 주택임차차입금원리금상환액: 전체 / 대출기관 / 거주자
-        COUNT(CASE WHEN (NVL(m.HOUSE_RALR_LENDER,0) > 0 AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0)
-                       OR (NVL(m.HOUSE_RALR_HABT,0)   > 0 AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0)   = 0)
-                   THEN 1 END)                                                              AS RALR_MISS,
-        COUNT(CASE WHEN NVL(m.HOUSE_RALR_LENDER,0) > 0
-                    AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0 THEN 1 END)                 AS RALR_LENDER_MISS,
-        COUNT(CASE WHEN NVL(m.HOUSE_RALR_HABT,0) > 0
-                    AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0 THEN 1 END)                   AS RALR_HABT_MISS,
         -- 소득소진 / 세액소진
         COUNT(CASE WHEN INSTR(c.CALC_PROC_TOTAL, '근로소득 잔액이 ''0''이 되었습니다') > 0
                    THEN 1 END)                                                              AS INCOME_EXH,
         COUNT(CASE WHEN INSTR(c.CALC_PROC_TOTAL, '항목에서 산출세액이 모두 소진') > 0
-                   THEN 1 END)                                                              AS TAX_EXH
+                   THEN 1 END)                                                              AS TAX_EXH,
+        -- 주택마련저축: 세대원 / 400만원 한도 소진
+        COUNT(CASE WHEN (NVL(m.HOUSE_LOAN_SBSC,0)+NVL(m.HOUSE_LOAN_ALL,0)+NVL(m.HOUSE_LOAN_WRK,0)) > 0
+                    AND NVL(m.HOUSE_HLDR_YN, '0') != '1'
+                   THEN 1 END)                                                              AS SAVINGS_MEMBER,
+        COUNT(CASE WHEN (NVL(m.HOUSE_LOAN_SBSC,0)+NVL(m.HOUSE_LOAN_ALL,0)+NVL(m.HOUSE_LOAN_WRK,0)) > 0
+                    AND NVL(m.HOUSE_HLDR_YN, '0') = '1'
+                    AND REGEXP_LIKE(c.CALC_PROC_TOTAL, '주택4백한도\\s*0[,)]')
+                   THEN 1 END)                                                              AS SAVINGS_LIMIT,
+        -- 주택임차차입금원리금상환액: 전체 / 대출기관 / 거주자
+        COUNT(CASE WHEN (NVL(m.HOUSE_RALR_LENDER,0) > 0 AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0)
+                       OR (NVL(m.HOUSE_RALR_HABT,0) > 0 AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0)   = 0)
+                   THEN 1 END)                                                              AS RALR_MISS,
+        COUNT(CASE WHEN NVL(m.HOUSE_RALR_LENDER,0) > 0
+                    AND NVL(c.SP_HOUSE_RALR_LENDER_AMT,0) = 0 THEN 1 END)                 AS RALR_LENDER_MISS,
+        COUNT(CASE WHEN NVL(m.HOUSE_RALR_HABT,0) > 0
+                    AND NVL(c.SP_HOUSE_RALR_HABT_AMT,0) = 0 THEN 1 END)                   AS RALR_HABT_MISS
       FROM YTS39.PAY_WRK_CALC c
       INNER JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
       WHERE c.CALC_NO LIKE '${calcNoPattern}'
@@ -173,13 +143,14 @@ export async function GET(req: NextRequest) {
         totalExtra: overview.TOTAL_EXTRA, avgPay: overview.AVG_PAY,
       },
       anomalies: {
-        rentMiss: anomalies.RENT_MISS, rentStd: anomalies.RENT_STD,
-        rentIncomeExh: anomalies.RENT_INCOME_EXH, rentTaxExh: anomalies.RENT_TAX_EXH,
-        insMiss: anomalies.INS_MISS ?? 0, insStd: anomalies.INS_STD ?? 0, insExhausted: anomalies.INS_EXHAUSTED ?? 0,
-        savingsMiss: anomalies.SAVINGS_MISS, savingsMember: anomalies.SAVINGS_MEMBER, savingsLimit: anomalies.SAVINGS_LIMIT,
-        ralrMiss: anomalies.RALR_MISS ?? 0, ralrLenderMiss: anomalies.RALR_LENDER_MISS ?? 0, ralrHabtMiss: anomalies.RALR_HABT_MISS ?? 0,
+        incomeExh: anomalies.INCOME_EXH ?? 0,
+        taxExh: anomalies.TAX_EXH ?? 0,
+        savingsMember: anomalies.SAVINGS_MEMBER ?? 0,
+        savingsLimit: anomalies.SAVINGS_LIMIT ?? 0,
+        ralrMiss: anomalies.RALR_MISS ?? 0,
+        ralrLenderMiss: anomalies.RALR_LENDER_MISS ?? 0,
+        ralrHabtMiss: anomalies.RALR_HABT_MISS ?? 0,
         cardMiss, mediMiss,
-        incomeExh: anomalies.INCOME_EXH ?? 0, taxExh: anomalies.TAX_EXH ?? 0,
       },
       insights: {
         eligible: ins.ELIGIBLE, pensionNone: ins.PENSION_NONE, pensionUnder: ins.PENSION_UNDER,

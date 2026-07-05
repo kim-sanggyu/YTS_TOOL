@@ -22,12 +22,10 @@ interface Overview {
   totalRefund: number; totalExtra: number; avgPay: number
 }
 interface Anomalies {
-  rentMiss: number; rentStd: number; rentIncomeExh: number; rentTaxExh: number
-  insMiss: number; insStd: number; insExhausted: number
-  savingsMiss: number; savingsMember: number; savingsLimit: number
+  incomeExh: number; taxExh: number
+  savingsMember: number; savingsLimit: number
   ralrMiss: number; ralrLenderMiss: number; ralrHabtMiss: number
   cardMiss: number; mediMiss: number
-  incomeExh: number; taxExh: number
 }
 interface Insights {
   eligible: number; pensionNone: number; pensionUnder: number
@@ -212,29 +210,37 @@ export default function TaxDashboardPage() {
         {/* 특이사항 */}
         <div className="flex flex-col gap-3 overflow-y-auto">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
-            납입금액은 입력되어 있으나 공제는 안된 사례 ({o.total}명 기준)
+            입력했는데 공제가 0원인 사례 ({o.total}명 기준)
           </h2>
           <AnomalyTable eligible={o.total} groups={[
             {
-              label: "월세액", total: a.rentMiss,
+              label: "표준세액공제 방식", total: o.stdCnt,
               items: [
-                { title: "표준방식 선택으로 미공제", count: a.rentStd },
-                { title: "소득소진(근로소득 잔액 = 0)", count: a.rentIncomeExh },
-                { title: "세액소진(산출세액 잔액 = 0)", count: a.rentTaxExh },
+                { title: "표준방식으로 계산 — 보험료·의료비·교육비·월세 미공제", count: o.stdCnt },
               ],
             },
             {
-              label: "건강/고용보험료", total: a.insMiss,
+              label: "소득소진", total: a.incomeExh,
               items: [
-                { title: "표준방식 선택으로 미공제", count: a.insStd },
-                { title: "소득소진(근로소득 잔액 = 0)", count: a.insExhausted },
+                { title: "근로소득 잔액이 0이 됨 — 이후 소득공제 항목 미반영", count: a.incomeExh },
               ],
             },
             {
-              label: "주택마련저축", total: a.savingsMiss,
+              label: "세액소진", total: a.taxExh,
               items: [
-                { title: "세대원(세대주만 공제 가능)", count: a.savingsMember },
-                { title: "400만원 한도 소진(주택임차차입금과 합산)", count: a.savingsLimit },
+                { title: "산출세액이 모두 소진됨 — 이후 세액공제 항목 미반영", count: a.taxExh },
+              ],
+            },
+            {
+              label: "주택마련저축(세대원)", total: a.savingsMember,
+              items: [
+                { title: "세대원 — 세대주만 공제 가능", count: a.savingsMember },
+              ],
+            },
+            {
+              label: "주택마련저축(400한도)", total: a.savingsLimit,
+              items: [
+                { title: "400만원 한도 소진 — 주택임차차입금원리금상환액과 합산", count: a.savingsLimit },
               ],
             },
             {
@@ -247,20 +253,13 @@ export default function TaxDashboardPage() {
             {
               label: "신용카드", total: a.cardMiss,
               items: [
-                { title: "사용액 있으나 최저사용금액(총급여×25%) 미달", count: a.cardMiss },
+                { title: "최저사용금액(총급여×25%) 미달로 공제 없음", count: a.cardMiss },
               ],
             },
             {
               label: "의료비", total: a.mediMiss,
               items: [
-                { title: "지출 있으나 최저한도(총급여×3%) 미달", count: a.mediMiss },
-              ],
-            },
-            {
-              label: "소득/세액소진", total: a.incomeExh + a.taxExh,
-              items: [
-                { title: "소득소진(근로소득 잔액 = 0)", count: a.incomeExh },
-                { title: "세액소진(산출세액 잔액 = 0)", count: a.taxExh },
+                { title: "최저한도(총급여×3%) 미달로 공제 없음", count: a.mediMiss },
               ],
             },
           ]} />
