@@ -27,9 +27,11 @@ async function runMigration(
   }
 
   log(`   2/4. 데이터 검증 및 변환 중... (${result.rows.length}건)`)
-  const rowsToInsert: Row[] = result.rows.map((row: Row, index: number) =>
-    config.transformRow(row, index)
-  )
+  const rowsToInsert: Row[] = result.rows
+    .map((row: Row, index: number) => config.transformRow(row, index))
+    .filter((row: Row | null): row is Row => row !== null)
+  const skipped = result.rows.length - rowsToInsert.length
+  if (skipped > 0) log(`   >> ${skipped}건 제외 (당해잔여 drop)`)
 
   log(`   3/4. 기존 데이터 삭제 중...`)
   const delResult = await conn.execute(

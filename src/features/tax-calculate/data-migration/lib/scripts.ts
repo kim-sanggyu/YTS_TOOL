@@ -6,7 +6,7 @@ export type DefectMap = Map<string, { CHG_RES_NO: string; CHG_FMLY_NM: string }>
 export interface ScriptConfig {
   id: string
   table: string
-  transformRow: (row: Row, index: number) => Row
+  transformRow: (row: Row, index: number) => Row | null
   getSubstituted?: () => number
 }
 
@@ -131,9 +131,10 @@ export function createScripts(fromYear: string, toYear: string, defectMap?: Defe
       id: "c09",
       table: "PAY_WRK_GIFT_ADJ",
       transformRow(row) {
-        const newRow = baseTransform(row, fromYear, toYear)
-        if (newRow.GIFT_YY) newRow.GIFT_YY = String(Number(newRow.GIFT_YY) + 1)
-        return newRow
+        // 당해잔여(GIFT_YY=fromYear)는 마이그 제외: 2026당해(PAY_WRK_GIFT)와 이중계상 방지
+        // 과거이월(GIFT_YY<fromYear)만 이월하며, 기부연도는 원본 그대로 보존(공제율 기준)
+        if (String(row.GIFT_YY) === fromYear) return null
+        return baseTransform(row, fromYear, toYear)
       }
     },
     {
