@@ -1,0 +1,638 @@
+[
+  {
+    "idx": 0,
+    "amtClusCd": "8900",
+    "valueKey": "useAmt",
+    "label": "총급여코드"
+  },
+  {
+    "idx": 1,
+    "amtClusCd": "8991",
+    "valueKey": "useAmt",
+    "label": "기납부세액(소득세)"
+  },
+  {
+    "idx": 2,
+    "amtClusCd": "8002",
+    "valueKey": "incDdcNfpCnt",
+    "label": "기본공제(배우자)"
+  },
+  {
+    "idx": 3,
+    "amtClusCd": "8003",
+    "valueKey": "incDdcNfpCnt",
+    "label": "기본공제(부양가족)"
+  },
+  {
+    "idx": 4,
+    "amtClusCd": "8101",
+    "valueKey": "incDdcNfpCnt",
+    "label": "추가공제(경로우대)"
+  },
+  {
+    "idx": 5,
+    "amtClusCd": "8102",
+    "valueKey": "incDdcNfpCnt",
+    "label": "장애인공제"
+  },
+  {
+    "idx": 6,
+    "amtClusCd": "8103",
+    "valueKey": "incDdcNfpCnt",
+    "label": "부녀자공제"
+  },
+  {
+    "idx": 7,
+    "amtClusCd": "8104",
+    "valueKey": "incDdcNfpCnt",
+    "label": "한부모공제"
+  },
+  {
+    "idx": 8,
+    "amtClusCd": "8201",
+    "valueKey": "useAmt",
+    "label": "연금보험료공제(국민연금)"
+  },
+  {
+    "idx": 9,
+    "amtClusCd": "8301",
+    "valueKey": "useAmt",
+    "label": "특별소득공제(건강보험)"
+  },
+  {
+    "idx": 10,
+    "amtClusCd": "8311",
+    "valueKey": "useAmt",
+    "label": "특별소득공제(주택임차차입금원리금상환액)"
+  },
+  {
+    "idx": 11,
+    "amtClusCd": "8312",
+    "valueKey": "useAmt",
+    "label": "특별소득공제(거주자차입 주택임차차입금)"
+  },
+  {
+    "idx": 12,
+    "amtClusCd": "8321",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2011년이전 15년미만"
+  },
+  {
+    "idx": 13,
+    "amtClusCd": "8322",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2011년이전 15년~29년"
+  },
+  {
+    "idx": 14,
+    "amtClusCd": "8323",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2011년이전 30년이상"
+  },
+  {
+    "idx": 15,
+    "amtClusCd": "8324",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2012년이후(15년이상)고정금리이거나 비거치상환대출"
+  },
+  {
+    "idx": 16,
+    "amtClusCd": "8325",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2012년이후 기타대출"
+  },
+  {
+    "idx": 17,
+    "amtClusCd": "8326",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2015년이후(15년이상) 고정금리이면서 비거치상환대출"
+  },
+  {
+    "idx": 18,
+    "amtClusCd": "8327",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2015년이후(15년이상) 고정금리이거나 비거치상환대출"
+  },
+  {
+    "idx": 19,
+    "amtClusCd": "8328",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2015년이후(15년이상)고정금리이거나 비거치상환대출"
+  },
+  {
+    "idx": 20,
+    "amtClusCd": "8329",
+    "valueKey": "useAmt",
+    "label": "장기주택저당차입금 2015년이후(10~15년미만) 고정금리이거나 비거치상환대출"
+  },
+  {
+    "idx": 21,
+    "amtClusCd": "8401",
+    "valueKey": "useAmt",
+    "label": "개인연금저축 2000년이전 가입"
+  },
+  {
+    "idx": 22,
+    "amtClusCd": "8402",
+    "valueKey": "useAmt",
+    "label": "노란우산공제 납입액"
+  },
+  {
+    "idx": 23,
+    "amtClusCd": "8403",
+    "valueKey": "useAmt",
+    "label": "청약저축 납입액"
+  },
+  {
+    "idx": 24,
+    "amtClusCd": "8404",
+    "valueKey": "useAmt",
+    "label": "근로자주택마련저축 납입액"
+  },
+  {
+    "idx": 25,
+    "amtClusCd": "8406",
+    "valueKey": "useAmt",
+    "label": "2014년 이전 주택청약 종합저축 -- 코드새로 추가해야함"
+  },
+  {
+    "idx": 26,
+    "amtClusCd": "8407",
+    "valueKey": "useAmt",
+    "label": "2015년 이후 주택청약 종합저축 -- 코드새로 추가해야함"
+  },
+  {
+    "idx": 27,
+    "amtClusCd": "8419",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 귀속년도 조합등투자금액"
+  },
+  {
+    "idx": 28,
+    "amtClusCd": "8420",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 귀속년도 벤처투자금액"
+  },
+  {
+    "idx": 29,
+    "amtClusCd": "8415",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 (귀속년도-2) 조합등투자금액"
+  },
+  {
+    "idx": 30,
+    "amtClusCd": "8416",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 (귀속년도-2) 벤처투자금액"
+  },
+  {
+    "idx": 31,
+    "amtClusCd": "8417",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 (귀속년도-1) 조합등투자금액"
+  },
+  {
+    "idx": 32,
+    "amtClusCd": "8418",
+    "valueKey": "useAmt",
+    "label": "투자조합출자공제 (귀속년도-1) 벤처투자금액"
+  },
+  {
+    "idx": 33,
+    "amtClusCd": "8431",
+    "valueKey": "useAmt",
+    "label": "신용카드 (전통시장.대중교통 사용분 제외"
+  },
+  {
+    "idx": 34,
+    "amtClusCd": "8432",
+    "valueKey": "useAmt",
+    "label": "직불.선불카드 (전통시장.대중교통 사용분 제외"
+  },
+  {
+    "idx": 35,
+    "amtClusCd": "8434",
+    "valueKey": "useAmt",
+    "label": "전통시장-대중교통제외"
+  },
+  {
+    "idx": 36,
+    "amtClusCd": "8435",
+    "valueKey": "useAmt",
+    "label": "전통시장사용분 사용금액"
+  },
+  {
+    "idx": 41,
+    "amtClusCd": "8438",
+    "valueKey": "useAmt",
+    "label": "당해년도 본인신용카드사용액"
+  },
+  {
+    "idx": 42,
+    "amtClusCd": "8440",
+    "valueKey": "useAmt",
+    "label": "전년도 본인추가공제율사용분"
+  },
+  {
+    "idx": 43,
+    "amtClusCd": "8442",
+    "valueKey": "useAmt",
+    "label": "2015년 하반기 본인 신용카드등 사용액"
+  },
+  {
+    "idx": 44,
+    "amtClusCd": "8452",
+    "valueKey": "useAmt",
+    "label": "우리사주조합출연금공제"
+  },
+  {
+    "idx": 45,
+    "amtClusCd": "8453",
+    "valueKey": "useAmt",
+    "label": "고용유지중소기업근로자소득공제"
+  },
+  {
+    "idx": 46,
+    "amtClusCd": "8450",
+    "valueKey": "useAmt",
+    "label": "목돈 안드는 전세이자상환액"
+  },
+  {
+    "idx": 47,
+    "amtClusCd": "8451",
+    "valueKey": "useAmt",
+    "label": "장기집합투자증권저축"
+  },
+  {
+    "idx": 48,
+    "amtClusCd": "8601",
+    "valueKey": "useAmt",
+    "label": "소득세법 감면세액"
+  },
+  {
+    "idx": 49,
+    "amtClusCd": "8604",
+    "valueKey": "useAmt",
+    "label": "조특법30조-100%"
+  },
+  {
+    "idx": 50,
+    "amtClusCd": "8605",
+    "valueKey": "useAmt",
+    "label": "조특법30조-50%"
+  },
+  {
+    "idx": 51,
+    "amtClusCd": "8602",
+    "valueKey": "useAmt",
+    "label": "세액감면(조특법)"
+  },
+  {
+    "idx": 52,
+    "amtClusCd": "8606",
+    "valueKey": "useAmt",
+    "label": "세액감면(조세조약)"
+  },
+  {
+    "idx": 53,
+    "amtClusCd": "8763",
+    "valueKey": "incDdcNfpCnt",
+    "label": "자녀_명수"
+  },
+  {
+    "idx": 54,
+    "amtClusCd": "8760",
+    "valueKey": "incDdcNfpCnt",
+    "label": "6세이하_명수"
+  },
+  {
+    "idx": 55,
+    "amtClusCd": "8761",
+    "valueKey": "incDdcNfpCnt",
+    "label": "출생입양_명수"
+  },
+  {
+    "idx": 56,
+    "amtClusCd": "8701",
+    "valueKey": "useAmt",
+    "label": "연금계좌-과학기술인공제"
+  },
+  {
+    "idx": 57,
+    "amtClusCd": "8702",
+    "valueKey": "useAmt",
+    "label": "연금계좌-퇴직급여"
+  },
+  {
+    "idx": 58,
+    "amtClusCd": "8703",
+    "valueKey": "useAmt",
+    "label": "연금계좌-연금저축"
+  },
+  {
+    "idx": 59,
+    "amtClusCd": "8710",
+    "valueKey": "useAmt",
+    "label": "보장성보험"
+  },
+  {
+    "idx": 60,
+    "amtClusCd": "8711",
+    "valueKey": "useAmt",
+    "label": "장애인전용보장성보험"
+  },
+  {
+    "idx": 61,
+    "amtClusCd": "8720",
+    "valueKey": "useAmt",
+    "label": "의료비-본인.65세이상자.장애인"
+  },
+  {
+    "idx": 62,
+    "amtClusCd": "8721",
+    "valueKey": "useAmt",
+    "label": "의료비-그 밖의 공제대상자"
+  },
+  {
+    "idx": 63,
+    "amtClusCd": "8730",
+    "valueKey": "ddcTrgtAmt",
+    "label": "교육비-소득자본인"
+  },
+  {
+    "idx": 64,
+    "amtClusCd": "8731",
+    "valueKey": "ddcTrgtAmt",
+    "label": "교육비-초중고등학교"
+  },
+  {
+    "idx": 65,
+    "amtClusCd": "8733",
+    "valueKey": "",
+    "label": "교육비-대학생(대학원불포함)"
+  },
+  {
+    "idx": 66,
+    "amtClusCd": "8734",
+    "valueKey": "ddcTrgtAmt",
+    "label": "교육비-장애인"
+  },
+  {
+    "idx": 67,
+    "amtClusCd": "8740",
+    "valueKey": "useAmt",
+    "label": "기부금-정치자금기부금"
+  },
+  {
+    "idx": 68,
+    "amtClusCd": "8743",
+    "valueKey": "useAmt",
+    "label": "기부금-법정기부금 당해년도"
+  },
+  {
+    "idx": 69,
+    "amtClusCd": "8455",
+    "valueKey": "useAmt",
+    "label": "기부금이월금-법정기부금"
+  },
+  {
+    "idx": 70,
+    "amtClusCd": "8744",
+    "valueKey": "useAmt",
+    "label": "기부금-우리사주조합기부금"
+  },
+  {
+    "idx": 71,
+    "amtClusCd": "8747",
+    "valueKey": "useAmt",
+    "label": "기부금-종교단체 외 지정기부금"
+  },
+  {
+    "idx": 72,
+    "amtClusCd": "8746",
+    "valueKey": "useAmt",
+    "label": "기부금-종교단체 지정기부금"
+  },
+  {
+    "idx": 73,
+    "amtClusCd": "8458",
+    "valueKey": "useAmt",
+    "label": "기부금이월금-종교단체 외 지정기부금"
+  },
+  {
+    "idx": 74,
+    "amtClusCd": "8457",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-종교단체 지정기부금"
+  },
+  {
+    "idx": 75,
+    "amtClusCd": "8753",
+    "valueKey": "useAmt",
+    "label": "납세조합공제"
+  },
+  {
+    "idx": 76,
+    "amtClusCd": "8752",
+    "valueKey": "useAmt",
+    "label": "주택차입금이자세액공제"
+  },
+  {
+    "idx": 77,
+    "amtClusCd": "8751",
+    "valueKey": "useAmt",
+    "label": "외국납부세액"
+  },
+  {
+    "idx": 78,
+    "amtClusCd": "8754",
+    "valueKey": "useAmt",
+    "label": "국외"
+  },
+  {
+    "idx": 79,
+    "amtClusCd": "8750",
+    "valueKey": "useAmt",
+    "label": "월세액"
+  },
+  {
+    "idx": 80,
+    "amtClusCd": "8999",
+    "valueKey": "ddcAmt",
+    "label": "결정세액"
+  },
+  {
+    "idx": 81,
+    "amtClusCd": "8902",
+    "valueKey": "useAmt",
+    "label": "근로소득금액"
+  },
+  {
+    "idx": 82,
+    "amtClusCd": "8916",
+    "valueKey": "useAmt+ddcAmt",
+    "label": "조특법30조-70%"
+  },
+  {
+    "idx": 83,
+    "amtClusCd": "8811",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-법정기부금 이월분( 귀속년도 -1 )"
+  },
+  {
+    "idx": 84,
+    "amtClusCd": "8821",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 지정기부금) 이월분( 귀속년도 -1 )"
+  },
+  {
+    "idx": 85,
+    "amtClusCd": "8831",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 외 지정기부금) 이월분( 귀속년도 -1 )"
+  },
+  {
+    "idx": 86,
+    "amtClusCd": "8812",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-법정기부금 이월분( 귀속년도 -2 )"
+  },
+  {
+    "idx": 87,
+    "amtClusCd": "8822",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 지정기부금) 이월분( 귀속년도 -2 )"
+  },
+  {
+    "idx": 88,
+    "amtClusCd": "8832",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 외 지정기부금) 이월분( 귀속년도 -2 )"
+  },
+  {
+    "idx": 89,
+    "amtClusCd": "8813",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-법정기부금 이월분( 귀속년도 -3 )"
+  },
+  {
+    "idx": 90,
+    "amtClusCd": "8823",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 지정기부금) 이월분( 귀속년도 -3 )"
+  },
+  {
+    "idx": 91,
+    "amtClusCd": "8833",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 외 지정기부금) 이월분( 귀속년도 -3 )"
+  },
+  {
+    "idx": 92,
+    "amtClusCd": "8814",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-법정기부금 이월분( 귀속년도 -4 )"
+  },
+  {
+    "idx": 93,
+    "amtClusCd": "8824",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 지정기부금) 이월분( 귀속년도 -4 )"
+  },
+  {
+    "idx": 94,
+    "amtClusCd": "8834",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 외 지정기부금) 이월분( 귀속년도 -4 )"
+  },
+  {
+    "idx": 95,
+    "amtClusCd": "8815",
+    "valueKey": "useAmt",
+    "label": "기타소득공제기부금이월금-법정기부금 이월분( 귀속년도 -5 )"
+  },
+  {
+    "idx": 96,
+    "amtClusCd": "8825",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 지정기부금) 이월분( 귀속년도 -5 )"
+  },
+  {
+    "idx": 97,
+    "amtClusCd": "8835",
+    "valueKey": "useAmt",
+    "label": "세액공제(기부금-종교단체 외 지정기부금) 이월분( 귀속년도 -5 )"
+  },
+  {
+    "idx": 98,
+    "amtClusCd": "8725",
+    "valueKey": "useAmt",
+    "label": "의료비-난임시술비"
+  },
+  {
+    "idx": 99,
+    "amtClusCd": "8764",
+    "valueKey": "useAmt",
+    "label": "출생입양 첫째"
+  },
+  {
+    "idx": 100,
+    "amtClusCd": "8765",
+    "valueKey": "useAmt",
+    "label": "출생입양 둘째"
+  },
+  {
+    "idx": 101,
+    "amtClusCd": "8766",
+    "valueKey": "useAmt",
+    "label": "출생입양 셋째 이상"
+  },
+  {
+    "idx": 102,
+    "amtClusCd": "8732",
+    "valueKey": "ddcTrgtAmt",
+    "label": "교육비-대학생(대학원불포함)"
+  },
+  {
+    "idx": 103,
+    "amtClusCd": "8433",
+    "valueKey": "useAmt",
+    "label": "직불.선불카드 (전통시장.대중교통 사용분 제외"
+  },
+  {
+    "idx": 104,
+    "amtClusCd": "8461",
+    "valueKey": "useAmt",
+    "label": "신용카드-도서공연비"
+  },
+  {
+    "idx": 105,
+    "amtClusCd": "8462",
+    "valueKey": "useAmt",
+    "label": "직불카드-도서공연비"
+  },
+  {
+    "idx": 106,
+    "amtClusCd": "8463",
+    "valueKey": "useAmt",
+    "label": "현금영수-도서공연비"
+  },
+  {
+    "idx": 107,
+    "amtClusCd": "8608",
+    "valueKey": "useAmt",
+    "label": "조특법30조-90%"
+  },
+  {
+    "idx": 108,
+    "amtClusCd": "8609",
+    "valueKey": "useAmt",
+    "label": "성과공유제"
+  },
+  {
+    "idx": 109,
+    "amtClusCd": "8610",
+    "valueKey": "useAmt",
+    "label": "핵심인력 성과보상기금"
+  }
+]
