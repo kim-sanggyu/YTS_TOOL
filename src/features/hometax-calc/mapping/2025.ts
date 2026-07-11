@@ -129,7 +129,7 @@ export const MAPPING_2025: MappingRow[] = [
 
   // ── 세액공제: 기부금 당해분 (PAY_WRK_GIFT → GIFT_{코드} 가상컬럼으로 주입) ──
   { group: "세액공제", ntsCode: "8740", label: "정치자금기부금-10만이하",    ytsCol: "GIFT_8740", valueKey: "useAmt", rule: "value", status: "확정", send: true,  note: "route에서 10만 경계 분리" },
-  { group: "세액공제", ntsCode: "8741", label: "정치자금기부금-10만초과",    ytsCol: "GIFT_8741", valueKey: "useAmt", rule: "value", status: "확정", send: true,  note: "route에서 10만 경계 분리" },
+  { group: "세액공제", ntsCode: "8741", label: "정치자금기부금-10만초과",    ytsCol: "GIFT_8741", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "NTS 내부 분리 코드 — 8740에 전체 금액 전송하면 NTS가 자동 분리, 별도 전송 시 이중계산" },
   { group: "세액공제", ntsCode: "8783", label: "고향사랑기부금(일반)",       ytsCol: "GIFT_8783", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "세액공제", ntsCode: "8784", label: "고향사랑기부금(특별재난)",   ytsCol: "GIFT_8784", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "세액공제", ntsCode: "8743", label: "특례(법정)기부금",           ytsCol: "GIFT_8743", resultCol: "RT_DON_LAW",    valueKey: "useAmt", rule: "value", status: "확정", send: true },

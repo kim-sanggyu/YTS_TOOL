@@ -3,6 +3,7 @@ import { auth } from "@/auth"
 import { ytsDb } from "@/lib/db/oracle"
 import { runHometaxCalc, runHometaxCompare } from "@/features/hometax-calc/lib/runHometaxCalc"
 import { mappingSelectCols } from "@/features/hometax-calc/mapping/2025"
+import { giftNtsCode } from "@/features/hometax-calc/mapping/gift"
 
 export const maxDuration = 120
 
@@ -22,38 +23,17 @@ async function existingCalcCols(): Promise<Set<string>> {
   return calcColsCache
 }
 
-// ── 기부금 PAY_WRK_GIFT → GIFT_{코드} 가상컬럼 주입 ─────────────────────────
-const GIFT_CLS_TO_NTS: Record<string, string> = {
-  "548-110": "8784", "548-100": "8783",
-  "548-010": "8743", "548-080": "8744",
-  "548-060": "8747", "548-070": "8746",
-}
-const GIFT_ADJ_CODES: Record<string, string[]> = {
-  "548-010": ["8811","8812","8813","8814","8815"],
-  "548-070": ["8821","8822","8823","8824","8825"],
-  "548-060": ["8831","8832","8833","8834","8835"],
-}
+// ── 기부금 PAY_WRK_GIFT_ADJ → GIFT_{코드} 가상컬럼 주입 (당해+이월 통합) ─────
+// 세액계산된 건은 ADJ 에 유형×연도별 확정행이 모두 있음. GIFT_ABLE_SUB_AMT(대상금액)를 전송.
 function injectGiftVals(
-  current: { GIFT_CLS: string; AMT: number }[],
-  adj:     { GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }[],
-  attrYr:  number,
+  adjRows: { GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }[],
+  dataYear: number,
   vals:    Record<string, number>,
 ) {
-  for (const row of current) {
-    const amt = Number(row.AMT ?? 0)
-    if (row.GIFT_CLS === "548-020") {
-      vals["GIFT_8740"] = Math.min(amt, 100000)
-      vals["GIFT_8741"] = Math.max(0, amt - 100000)
-    } else {
-      const code = GIFT_CLS_TO_NTS[row.GIFT_CLS]
-      if (code) vals[`GIFT_${code}`] = amt
-    }
-  }
-  for (const row of adj) {
-    const codes = GIFT_ADJ_CODES[row.GIFT_CLS]
-    if (!codes) continue
-    const diff = attrYr - Number(row.GIFT_YY)
-    if (diff >= 1 && diff <= 5) vals[`GIFT_${codes[diff - 1]}`] = Number(row.GIFT_ABLE_SUB_AMT ?? 0)
+  for (const row of adjRows) {
+    const diff = dataYear - Number(row.GIFT_YY)
+    const code = giftNtsCode(row.GIFT_CLS, diff)
+    if (code) vals[`GIFT_${code}`] = Number(row.GIFT_ABLE_SUB_AMT ?? 0)
   }
 }
 
@@ -61,11 +41,13 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return Response.json({ error: "인증이 필요합니다." }, { status: 401 })
 
-  const body = (await req.json().catch(() => ({}))) as { calcNo?: string; mode?: string }
+  const body = (await req.json().catch(() => ({}))) as { calcNo?: string; mode?: string; ntsYear?: string }
   const calcNo = (body.calcNo ?? "").trim()
   if (!calcNo) return Response.json({ error: "calc_no 를 입력하세요." }, { status: 400 })
 
-  const mode = body.mode ?? "compare" // "compare" | "simple"
+  const mode    = body.mode ?? "compare"                               // "compare" | "simple"
+  const ntsYear = (body.ntsYear ?? ATTR_YR).trim()                    // NTS L03 귀속연도
+  const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear // 데이터 귀속연도 (CALC_NO에서 추출)
 
   try {
     if (mode === "simple") {
@@ -94,19 +76,13 @@ export async function POST(req: NextRequest) {
     const vals: Record<string, number> = {}
     for (const c of cols) vals[c] = Number(row[c] ?? 0)
 
-    const [giftCurrent, giftAdj] = await Promise.all([
-      ytsDb.query<{ GIFT_CLS: string; AMT: number }>(
-        `SELECT GIFT_CLS, SUM(AMT) AS AMT FROM YTS39.PAY_WRK_GIFT WHERE CALC_NO = :1 GROUP BY GIFT_CLS`,
-        [calcNo]
-      ),
-      ytsDb.query<{ GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }>(
-        `SELECT GIFT_CLS, GIFT_YY, GIFT_ABLE_SUB_AMT FROM YTS39.PAY_WRK_GIFT_ADJ WHERE CALC_NO = :1 AND :2 > GIFT_YY AND GIFT_CLS IN ('548-010','548-060','548-070')`,
-        [calcNo, ATTR_YR]
-      ),
-    ])
-    injectGiftVals(giftCurrent, giftAdj, Number(ATTR_YR), vals)
+    const giftAdj = await ytsDb.query<{ GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }>(
+      `SELECT GIFT_CLS, GIFT_YY, GIFT_ABLE_SUB_AMT FROM YTS39.PAY_WRK_GIFT_ADJ WHERE CALC_NO = :1`,
+      [calcNo]
+    )
+    injectGiftVals(giftAdj, Number(dataYear), vals)
 
-    const compare = await runHometaxCompare(vals)
+    const compare = await runHometaxCompare(vals, ntsYear)
 
     return Response.json({
       calcNo,

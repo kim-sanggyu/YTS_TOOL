@@ -8,7 +8,6 @@ const SESSION_TTL_MS = 25 * 60 * 1000 // 25분 (NTS 세션 만료 전 갱신)
 
 // ── 세션 싱글톤 (Next.js 프로세스 내 재사용) ─────────────────────────────────
 declare global {
-  // eslint-disable-next-line no-var
   var __ntsSession: { browser: Browser; page: Page; at: number } | undefined
 }
 
@@ -19,16 +18,13 @@ async function getOrCreateSession(): Promise<Page> {
     const age = Date.now() - s.at
     if (age < SESSION_TTL_MS) {
       try {
-        // 페이지 살아있는지 확인
         await s.page.title()
         return s.page
       } catch {
-        // 페이지 죽었으면 정리 후 재수립
         await s.browser.close().catch(() => {})
         globalThis.__ntsSession = undefined
       }
     } else {
-      // TTL 초과
       await s.browser.close().catch(() => {})
       globalThis.__ntsSession = undefined
     }
@@ -38,6 +34,28 @@ async function getOrCreateSession(): Promise<Page> {
   const page    = await establishSession(browser)
   globalThis.__ntsSession = { browser, page, at: Date.now() }
   return page
+}
+
+// ── 세션 관리 공개 API ───────────────────────────────────────────────────────
+export async function startNtsSession(): Promise<void> {
+  await getOrCreateSession()
+}
+
+export function stopNtsSession(): void {
+  globalThis.__ntsSession?.browser.close().catch(() => {})
+  globalThis.__ntsSession = undefined
+}
+
+export function getNtsSessionInfo(): { active: boolean; ageMinutes: number | null } {
+  const s = globalThis.__ntsSession
+  if (!s) return { active: false, ageMinutes: null }
+  const age = Date.now() - s.at
+  if (age >= SESSION_TTL_MS) {
+    s.browser.close().catch(() => {})
+    globalThis.__ntsSession = undefined
+    return { active: false, ageMinutes: null }
+  }
+  return { active: true, ageMinutes: Math.floor(age / 60000) }
 }
 
 // ── NTS 세션 수립 공통 함수 ─────────────────────────────────────────────────
@@ -137,7 +155,7 @@ const ALL_CODES = [
   "8831","8832","8833","8834","8835",
 ]
 
-function buildCompareBody(vals: Record<string, number>): { body: object; coveredCodes: string[] } {
+function buildCompareBody(vals: Record<string, number>, attrYr: string): { body: object; coveredCodes: string[] } {
   // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑코드 (미래에 send flip 해도 항상 포함)
   const codes = Array.from(new Set([...ALL_CODES, ...MAPPING_2025.filter(m => m.send).map(m => m.ntsCode)]))
   const detail = codes.map(code => ({
@@ -164,13 +182,13 @@ function buildCompareBody(vals: Record<string, number>): { body: object; covered
     .map(it => it.amtClusCd)
 
   const body = {
-    crdcDdcAmt: "0", smltClcClCd: ATTR_YR, v_saveChk: "Y", v_conbChk: "", yrsSrvcClCd: "",
+    crdcDdcAmt: "0", smltClcClCd: attrYr, v_saveChk: "Y", v_conbChk: "", yrsSrvcClCd: "",
     pbtAddDdcAmt: "0", pbtDdcAmt: "0", addDdcrtDdcAmt: "0", ddcPsbAmt: "0",
     tdmrAddDdcAmt: "0", lstDdcAmt: "0", tdmrDdcAmt: "0", bppAddDdcAmt: "0",
     gnrlDdcAmt: "0", ddcExclAmt: "0",
     totaSnwAmt: String(totPay), ddcLmtAmt: "0",
     yrsTaxClcBscList: [{
-      ppmTxamt: String(prepaid), attrYr: ATTR_YR,
+      ppmTxamt: String(prepaid), attrYr: attrYr,
       ddcRtnId: "", erinAmt: "0", totaSnwAmt: String(totPay), statusValue: "R",
     }],
     yrsTaxClcDetailDVOList: detail,
@@ -179,7 +197,7 @@ function buildCompareBody(vals: Record<string, number>): { body: object; covered
   return { body, coveredCodes }
 }
 
-export async function runHometaxCompare(vals: Record<string, number>): Promise<HometaxCompareResult> {
+export async function runHometaxCompare(vals: Record<string, number>, attrYr: string = ATTR_YR): Promise<HometaxCompareResult> {
   const inputs  = computeInputs(vals)
   // 값은 있으나 아직 미전송(send:false)인 항목 = 결과차이 원인 후보 (자동 적출)
   const missing = inputs
@@ -192,10 +210,12 @@ export async function runHometaxCompare(vals: Record<string, number>): Promise<H
       status: i.status,
     }))
 
-  const { body, coveredCodes } = buildCompareBody(vals)
+  const { body, coveredCodes } = buildCompareBody(vals, attrYr)
 
-  // 세션 재사용 (첫 실행만 30초, 이후 1~2초)
+  // 세션 재사용 — 없으면 생성 (첫 실행 ~30초, 이후 재사용)
   const page = await getOrCreateSession()
+  // 세션 생성 후 info 갱신을 위해 at 업데이트
+  if (globalThis.__ntsSession) globalThis.__ntsSession.at = Date.now()
 
   try {
     const raw    = await postL03(page, body)
@@ -208,12 +228,6 @@ export async function runHometaxCompare(vals: Record<string, number>): Promise<H
       const code = String(it.amtClusCd)
       const v = it.ddcAmt
       ntsMap[code] = typeof v === "number" ? v : v != null ? Number(v) : 0
-    }
-
-    // L03 오류(F) 시 세션 만료로 간주 → 다음 호출 시 재수립
-    if (parsed.resultMsg?.result === "F") {
-      await globalThis.__ntsSession?.browser.close().catch(() => {})
-      globalThis.__ntsSession = undefined
     }
 
     return {
