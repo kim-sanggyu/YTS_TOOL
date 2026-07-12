@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Fragment } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
@@ -25,6 +25,7 @@ interface NavChild {
   href: string
   icon: React.ElementType
   disabled?: boolean
+  dividerAfter?: boolean
 }
 interface NavGroup {
   label: string
@@ -49,13 +50,13 @@ const navGroups: NavGroup[] = [
   {
     label: "세액계산",
     children: [
-      { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
-      { title: "국세청 모의계산",       href: "/tools/hometax-calc",    icon: Calculator },
-      { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
-      { title: "계산결과 해설 보기",      href: "/tools/tax-insight",     icon: FileOutput },
       { title: "공제요건 경계나이 관리", href: "/tools/fmly-age-check",  icon: Calculator },
       { title: "차년도 데이터 생성",    href: "/tools/data-migration",  icon: GitCompare },
-      { title: "세액계산 회귀검증",    href: "/tools/tax-regression",  icon: GitCompare },
+      { title: "세액계산 회귀검증",    href: "/tools/tax-regression",  icon: GitCompare, dividerAfter: true },
+      { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
+      { title: "계산결과 해설 보기",      href: "/tools/tax-insight",     icon: FileOutput, dividerAfter: true },
+      { title: "국세청 모의계산",       href: "/tools/hometax-calc",    icon: Calculator, dividerAfter: true },
+      { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
     ],
   },
   {
@@ -240,7 +241,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {isOpen && (
                 <SidebarMenu className="px-2">
                   {group.children.map((item) => (
-                    <SidebarMenuItem key={item.title}>
+                    <Fragment key={item.title}>
+                    <SidebarMenuItem>
                       <SidebarMenuButton
                         render={<Link href={item.href} onClick={!item.disabled && pathname === item.href ? (e) => { e.preventDefault(); router.refresh() } : undefined} />}
                         isActive={!item.disabled && pathname === item.href}
@@ -262,6 +264,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
                         )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
+                    {item.dividerAfter && (
+                      <hr className="border-t border-sidebar-border/40 mx-3 my-1.5" />
+                    )}
+                    </Fragment>
                   ))}
                 </SidebarMenu>
               )}
