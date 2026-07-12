@@ -90,7 +90,16 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8418", label: "투자조합출자(귀속-1 벤처)", ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
   { group: "그밖의소득공제", ntsCode: "8419", label: "투자조합출자(당해 조합)",   ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "당해분 확정 / 과년도 분할은 추정" },
   { group: "그밖의소득공제", ntsCode: "8420", label: "투자조합출자(당해 벤처)",   ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
-  { group: "그밖의소득공제", ntsCode: "8431", label: "신용카드 등",              ytsCol: "OTO_CARD_ETC",            valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "카드 하위 다코드(8431~8463) 분할 필요 — 단일 집계컬럼, 하위분할 확정 전까지 미전송" },
+  // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
+  //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)
+  { group: "신용카드", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8432", label: "직불·선불카드",  ytsCol: "CARD_8432", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8433", label: "현금영수증",     ytsCol: "CARD_8433", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8435", label: "전통시장",       ytsCol: "CARD_8435", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8434", label: "대중교통",       ytsCol: "CARD_8434", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "신용카드", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "그밖의소득공제", ntsCode: "8450", label: "목돈안드는전세 이자상환",  ytsCol: null,                      valueKey: "useAmt", rule: "value", status: "미확보", send: false, note: "YTS39 대응컬럼 미확인" },
   { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",     ytsCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "확정", send: false },
   { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주조합 출연금",       ytsCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "확정", send: false },
@@ -114,11 +123,13 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false },
 
-  // ── 세액공제: 의료비 (전송=공제대상금액, 대상자별 분할) ────────────────────
-  { group: "세액공제", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "SPCL_MEDI_AMT", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8720/8721/8725 대상자별 분할 — YTS 단일 공제대상컬럼이라 분리 불가, 대상자별 대상금액 확보 필요" },
-  { group: "세액공제", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "SPCL_MEDI_AMT", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "의료비 대상자별 분할 필요" },
-  { group: "세액공제", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "SPCL_MEDI_AMT", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "의료비 대상자별 분할 필요" },
-  { group: "세액공제", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_CA_AMT",   resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "MEDI_CA_AMT 는 PAY_WRK_MAIN 소속 — 조인 필요" },
+  // ── 세액공제: 의료비 — CALC_PROC_MEDI(JSON) 대상자별 "지출금액"을 MEDI_{코드} 가상컬럼으로 주입 ──
+  //   NTS 8726(의료비집계)에 세액공제 총액 반환 → YTS 의료비_공제금액(=RT_MEDI_AMT)과 대조. (2026-07-12 실측확정)
+  //   ★지출금액 전송(공제대상금액 아님) — NTS가 3% 최저사용액 차감 자체계산.
+  { group: "의료비", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "MEDI_8720", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "의료비", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "MEDI_8721", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 세액공제: 교육비 (ddcTrgtAmt, 구분별 분할) ─────────────────────────────
   { group: "세액공제", ntsCode: "8730", label: "교육비-소득자 본인", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "8730~8734 구분별 분할 — YTS 단일 공제대상컬럼이라 분리 불가" },
@@ -153,12 +164,14 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액공제", ntsCode: "8834", label: "일반기부금(종교외) 이월(-4년)", ytsCol: "GIFT_8834", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "세액공제", ntsCode: "8835", label: "일반기부금(종교외) 이월(-5년)", ytsCol: "GIFT_8835", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
-  // ── 세액공제: 연금계좌 (전송=공제대상금액) ─────────────────────────────────
-  { group: "세액공제", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "RSIGN_PEN_TECH_AMT", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false },
-  { group: "세액공제", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "RSIGN_PEN_RET_AMT",  resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: false },
-  { group: "세액공제", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "RSIGN_PEN_PF_AMT",   resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: false },
-  { group: "세액공제", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "ISA_PEN_AMT", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "8707(퇴직)+8708(연금저축) 합산 — 단일컬럼 분리 재확인" },
-  { group: "세액공제", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "ISA_PEN_AMT", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "8707+8708 합산 — 단일컬럼 분리 재확인" },
+  // ── 세액공제: 연금계좌 — PAY_WRK_PEN_SAVE_SPEC 납입액(PEN_SAVE_PMT_AMT)을 PEN_{코드} 가상컬럼으로 주입 ──
+  //   PEN_SAVE_CLS→코드 매핑(mapping/pension.ts). NTS 8706(연금계좌 총합)에 세액공제 반환. (2026-07-12 실측확정)
+  //   ★납입액 전송(공제대상 아님) — NTS가 한도·공제율 자체계산. ISA도 전환액 원본이라 ×10 불필요.
+  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "결혼세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: false, note: "체크박스 고정 50만 — 전송방식(flag/useAmt) 실측 재확인" },

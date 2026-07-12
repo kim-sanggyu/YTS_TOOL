@@ -5,6 +5,9 @@ import { Loader2, Play, CheckCircle2, XCircle, FileSearch } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
+import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
+import { PENSION_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/pension"
 
 const CUR_YEAR     = new Date().getFullYear()                          // 2026
 const YEAR_OPTIONS = [String(CUR_YEAR), String(CUR_YEAR - 1)]         // ["2026", "2025"]
@@ -34,7 +37,53 @@ interface GiftLine {
 }
 interface GiftListItem {
   calcNo: string; nm: string; totPayAmt: number; giftTax: number
+  exhausted?: boolean; exhaustLabel?: string | null
   lines: GiftLine[]
+}
+interface CardLine {
+  code: string          // NTS amtClusCd (전송 코드)
+  label: string         // 신용카드/직불·선불/현금영수증/전통시장/대중교통/도서공연
+  useAmt: number        // 전송 사용액 (CALC_PROC_CARD 가~아)
+}
+interface CardListItem {
+  calcNo: string; nm: string; totPayAmt: number
+  cardDdc: number       // YTS 카드소득공제 (=OTO_CARD_ETC, 비교 기준)
+  lines: CardLine[]
+}
+// 세액소진 표시용 (세액공제 탭 공통) — 소진자는 개별 항목 YTS-NTS 차이가 소진 때문임을 암시
+interface Exhaustable { exhausted?: boolean; exhaustLabel?: string | null }
+function ExhaustBadge({ item }: { item: Exhaustable }) {
+  if (!item.exhausted) return null
+  return (
+    <span
+      className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 align-middle"
+      title="산출세액이 앞 항목에서 소진되어 이 항목 공제가 0으로 처리됨 — YTS·NTS 차이의 원인일 수 있음"
+    >
+      {item.exhaustLabel ?? "세액소진"}
+    </span>
+  )
+}
+interface MediLine {
+  code: string          // NTS amtClusCd (전송 코드)
+  label: string         // 본인·65세·장애인 / 그밖 / 난임 / 미숙아
+  useAmt: number        // 전송 지출금액 (CALC_PROC_MEDI 대상자별)
+}
+interface MediListItem {
+  calcNo: string; nm: string; totPayAmt: number
+  mediDdc: number       // YTS 의료비 세액공제 (=RT_MEDI_AMT, 비교 기준)
+  exhausted?: boolean; exhaustLabel?: string | null
+  lines: MediLine[]
+}
+interface PensionLine {
+  code: string          // NTS amtClusCd (전송 코드)
+  label: string         // 과학기술인/퇴직연금(IRP)/연금저축/ISA-퇴직/ISA-개인
+  useAmt: number        // 전송 납입액 (PAY_WRK_PEN_SAVE_SPEC 코드별 합산)
+}
+interface PensionListItem {
+  calcNo: string; nm: string; totPayAmt: number
+  penDdc: number        // YTS 연금계좌 세액공제 (=ΣRT_RSIGN_PEN_*, 비교 기준)
+  exhausted?: boolean; exhaustLabel?: string | null
+  lines: PensionLine[]
 }
 interface NtsResult {
   prodTax: number | null; decidedTax: number | null; withheld: number | null
@@ -95,9 +144,12 @@ function errorRowResult(start: number): RowResult {
 export function HometaxCalcPanel() {
   const [year,           setYear]           = useState(String(CUR_YEAR))       // 우리자료 귀속연도
   const [ntsYear,        setNtsYear]        = useState(NTS_YEARS[0])            // 국세청 모의계산 귀속연도
-  const [tab,            setTab]            = useState<"all" | "gift">("all")
+  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
+  const [cardItems,      setCardItems]      = useState<CardListItem[]>([])
+  const [mediItems,      setMediItems]      = useState<MediListItem[]>([])
+  const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
@@ -139,15 +191,18 @@ export function HometaxCalcPanel() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      setAllItems([]); setGiftItems([]); setResults({}); setLoading(true)
-      const url = tab === "gift"
-        ? `/api/tools/hometax-calc/list?year=${year}&type=gift`
-        : `/api/tools/hometax-calc/list?year=${year}`
+      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setResults({}); setLoading(true)
+      const url = tab === "all"
+        ? `/api/tools/hometax-calc/list?year=${year}`
+        : `/api/tools/hometax-calc/list?year=${year}&type=${tab}`
       try {
         const d = await fetch(url).then(r => r.json())
         if (cancelled) return
-        if (tab === "gift") setGiftItems(d.items ?? [])
-        else setAllItems(d.items ?? [])
+        if (tab === "gift")         setGiftItems(d.items ?? [])
+        else if (tab === "card")    setCardItems(d.items ?? [])
+        else if (tab === "medi")    setMediItems(d.items ?? [])
+        else if (tab === "pension") setPensionItems(d.items ?? [])
+        else                        setAllItems(d.items ?? [])
       } catch { /* 무시 */ } finally {
         if (!cancelled) setLoading(false)
       }
@@ -180,7 +235,7 @@ export function HometaxCalcPanel() {
 
   const detailRes = detailFor ? results[detailFor] : null
   const detailRow = detailFor ? (allItems.find(i => i.calcNo === detailFor) ?? null) : null
-  const currentCount = tab === "gift" ? giftItems.length : allItems.length
+  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : allItems.length
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -222,6 +277,18 @@ export function HometaxCalcPanel() {
             className={`px-3 py-1.5 border-l transition-colors ${tab === "gift" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => setTab("gift")}
           >기부금 비교</button>
+          <button
+            className={`px-3 py-1.5 border-l transition-colors ${tab === "card" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("card")}
+          >신용카드 비교</button>
+          <button
+            className={`px-3 py-1.5 border-l transition-colors ${tab === "medi" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("medi")}
+          >의료비 비교</button>
+          <button
+            className={`px-3 py-1.5 border-l transition-colors ${tab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("pension")}
+          >연금계좌 비교</button>
         </div>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         {!loading && currentCount > 0 && (
@@ -248,10 +315,11 @@ export function HometaxCalcPanel() {
 
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {tab === "all"
-          ? <AllTable  items={allItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />
-          : <GiftTable items={giftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />
-        }
+        {tab === "all"  && <AllTable  items={allItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
+        {tab === "gift" && <GiftTable items={giftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
+        {tab === "card" && <CardTable items={cardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
+        {tab === "medi" && <MediTable items={mediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
+        {tab === "pension" && <PensionTable items={pensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
       </div>
 
       {/* 상세조회 드로어 */}
@@ -382,7 +450,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail }: {
               {/* 본행 = 합계 */}
               <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
-                <td className="px-3 py-2">{row.nm}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}<ExhaustBadge item={row} /></td>
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
@@ -425,6 +493,279 @@ function GiftTable({ items, loading, results, running, onRun, onDetail }: {
                       {d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "") + d.toLocaleString("ko-KR")}
                     </td>
                     <td colSpan={2} />
+                  </tr>
+                )
+              })}
+            </Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+// ── 신용카드 비교 테이블 (본행 = 카드소득공제 소계 / 세부행 = 가~아 전송 사용액) ──
+//   비교 기준: YTS 카드소득공제(=OTO_CARD_ETC) ↔ NTS 8430(카드소계).
+//   세부행은 "우리가 보낸 사용액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
+function CardTable({ items, loading, results, running, onRun, onDetail }: {
+  items: CardListItem[]; loading: boolean
+  results: Record<string, RowResult>; running: Set<string>
+  onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+}) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+        <tr className="border-b text-xs text-muted-foreground">
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
+          <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
+          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 && !loading && (
+          <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">신용카드 데이터가 없습니다.</td></tr>
+        )}
+        {items.map(row => {
+          const res       = results[row.calcNo]
+          const isRunning = running.has(row.calcNo)
+          const ntsDdc    = res ? (res.ntsMap[CARD_SUBTOTAL_CODE] ?? 0) : null
+          const diff      = ntsDdc != null ? ntsDdc - row.cardDdc : null
+          const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
+          return (
+            <Fragment key={row.calcNo}>
+              {/* 본행 = 카드공제 소계 */}
+              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
+                <td className="px-3 py-2">{row.nm}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
+                <td className="px-3 py-2 text-center whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">카드공제 소계</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.cardDdc)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex justify-center"><MatchIcon yts={ntsDdc != null ? row.cardDdc : null} nts={ntsDdc} /></span>
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
+              </tr>
+              {/* 세부행 = 가~아 전송 사용액 (입력) */}
+              {row.lines.map((line, i) => {
+                const last = i === row.lines.length - 1
+                return (
+                  <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
+                    <td colSpan={4} />
+                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                      {line.label}
+                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td /><td /><td colSpan={2} />
+                  </tr>
+                )
+              })}
+            </Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+// ── 의료비 비교 테이블 (본행 = 의료비 세액공제 소계 / 세부행 = 대상자별 지출금액) ──
+//   비교 기준: YTS 의료비 세액공제(=RT_MEDI_AMT) ↔ NTS 8726(의료비집계).
+//   세부행은 "우리가 보낸 지출금액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
+function MediTable({ items, loading, results, running, onRun, onDetail }: {
+  items: MediListItem[]; loading: boolean
+  results: Record<string, RowResult>; running: Set<string>
+  onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+}) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+        <tr className="border-b text-xs text-muted-foreground">
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
+          <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 지출금액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
+          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 && !loading && (
+          <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
+        )}
+        {items.map(row => {
+          const res       = results[row.calcNo]
+          const isRunning = running.has(row.calcNo)
+          const ntsDdc    = res ? (res.ntsMap[MEDI_SUBTOTAL_CODE] ?? 0) : null
+          const diff      = ntsDdc != null ? ntsDdc - row.mediDdc : null
+          const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
+          return (
+            <Fragment key={row.calcNo}>
+              {/* 본행 = 의료비 세액공제 소계 */}
+              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}<ExhaustBadge item={row} /></td>
+                <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
+                <td className="px-3 py-2 text-center whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">의료비공제 소계</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.mediDdc)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex justify-center"><MatchIcon yts={ntsDdc != null ? row.mediDdc : null} nts={ntsDdc} /></span>
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
+              </tr>
+              {/* 세부행 = 대상자별 지출금액 (입력) */}
+              {row.lines.map((line, i) => {
+                const last = i === row.lines.length - 1
+                return (
+                  <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
+                    <td colSpan={4} />
+                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                      {line.label}
+                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td /><td /><td colSpan={2} />
+                  </tr>
+                )
+              })}
+            </Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+// ── 연금계좌 비교 테이블 (본행 = 연금계좌 세액공제 소계 / 세부행 = 종류별 납입액) ──
+//   비교 기준: YTS 연금계좌 세액공제(=ΣRT_RSIGN_PEN_*) ↔ NTS 8706(연금계좌 총합).
+//   세부행은 "우리가 보낸 납입액"(입력)이며 종류별 공제는 NTS가 소계로만 반환하므로 대조 없음.
+function PensionTable({ items, loading, results, running, onRun, onDetail }: {
+  items: PensionListItem[]; loading: boolean
+  results: Record<string, RowResult>; running: Set<string>
+  onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+}) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+        <tr className="border-b text-xs text-muted-foreground">
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
+          <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 납입액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
+          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 && !loading && (
+          <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">연금계좌 데이터가 없습니다.</td></tr>
+        )}
+        {items.map(row => {
+          const res       = results[row.calcNo]
+          const isRunning = running.has(row.calcNo)
+          const ntsDdc    = res ? (res.ntsMap[PENSION_SUBTOTAL_CODE] ?? 0) : null
+          const diff      = ntsDdc != null ? ntsDdc - row.penDdc : null
+          const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
+          return (
+            <Fragment key={row.calcNo}>
+              {/* 본행 = 연금계좌 세액공제 소계 */}
+              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}<ExhaustBadge item={row} /></td>
+                <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
+                <td className="px-3 py-2 text-center whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">연금계좌공제 소계</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.penDdc)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex justify-center"><MatchIcon yts={ntsDdc != null ? row.penDdc : null} nts={ntsDdc} /></span>
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
+              </tr>
+              {/* 세부행 = 종류별 납입액 (입력) */}
+              {row.lines.map((line, i) => {
+                const last = i === row.lines.length - 1
+                return (
+                  <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
+                    <td colSpan={4} />
+                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                      {line.label}
+                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    <td /><td /><td colSpan={2} />
                   </tr>
                 )
               })}
