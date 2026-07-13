@@ -55,7 +55,7 @@ const navGroups: NavGroup[] = [
       { title: "세액계산 회귀검증",    href: "/tools/tax-regression",  icon: GitCompare, dividerAfter: true },
       { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
       { title: "계산결과 해설 보기",      href: "/tools/tax-insight",     icon: FileOutput, dividerAfter: true },
-      { title: "국세청 모의계산",       href: "/tools/hometax-calc",    icon: Calculator, dividerAfter: true },
+      { title: "국세청 모의계산 비교",  href: "/tools/hometax-calc",    icon: Calculator, dividerAfter: true },
       { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
     ],
   },
