@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, Fragment } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown } from "lucide-react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -80,13 +80,14 @@ function PersonMainCells({ item, onShowProc }: {
       <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{item.empNo}</td>
       <td className="px-3 py-2 text-center text-muted-foreground">{item.calcType}</td>
       <td className="px-3 py-2 text-center text-muted-foreground">{item.workStatus}</td>
-      <td className="px-3 py-2 text-center whitespace-nowrap">
+      <td className="px-3 py-2 text-left whitespace-nowrap">
         <Button
-          size="sm" variant="ghost" className="h-6 px-2 text-xs"
+          size="sm" variant="ghost" className="h-6 w-6 p-0"
           disabled={!item.calcProcTotal}
+          title="계산과정" aria-label="계산과정"
           onClick={() => item.calcProcTotal && onShowProc({ calcNo: item.calcNo, nm: item.nm, text: item.calcProcTotal })}
         >
-          계산과정
+          <FileText className="h-4 w-4" />
         </Button>
         <ExhaustBadge item={item} />
       </td>
@@ -178,25 +179,26 @@ function MatchIcon({ yts, nts }: { yts: number | null; nts: number | null }) {
     : <XCircle      className="h-3.5 w-3.5 text-red-500" />
 }
 
+// ranAt 미지정 시 현재시각(라이브 실행). 캐시 복원 시엔 원래 실행시각 표시문자열을 넘긴다.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildRowResult(json: any, duration: number): RowResult {
+function buildRowResult(json: any, duration: number, ranAt?: string): RowResult {
   return {
     yts:      json.yts     ?? null,
     nts:      json.nts     ?? { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: json.error ? "E" : null },
     inputs:   json.inputs  ?? [],
     ntsMap:   json.ntsMap  ?? {},
     missing:  json.missing ?? [],
-    ranAt:    formatRanAt(new Date()),
+    ranAt:    ranAt ?? formatRanAt(new Date()),
     duration,
   }
 }
 
-function errorRowResult(duration: number): RowResult {
+function errorRowResult(duration: number, ranAt?: string): RowResult {
   return {
     yts: null,
     nts: { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: "E" },
     inputs: [], ntsMap: {}, missing: [],
-    ranAt: formatRanAt(new Date()), duration,
+    ranAt: ranAt ?? formatRanAt(new Date()), duration,
   }
 }
 
@@ -222,6 +224,7 @@ export function HometaxCalcPanel() {
   const [batchFile,      setBatchFile]      = useState<string | null>(null)
   const [batchError,     setBatchError]     = useState<string | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
+  const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
 
   // 세션 상태 30초마다 폴링
   useEffect(() => {
@@ -254,6 +257,16 @@ export function HometaxCalcPanel() {
     setSessionInfo({ active: false, ageMinutes: null })
   }
 
+  // 저장된 이전 실행 결과 삭제 + 화면 비교결과 비움. 재실행 전까지 복원되지 않는다.
+  async function clearCache() {
+    if (!window.confirm("저장된 이전 실행 결과를 삭제합니다. 화면의 비교결과도 비워지고 되돌릴 수 없습니다. 계속할까요?")) return
+    try {
+      await fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`, { method: "DELETE" })
+    } catch { /* 무시 */ }
+    setResults({})
+    setCachedAt(null)
+  }
+
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -277,6 +290,32 @@ export function HometaxCalcPanel() {
     return () => { cancelled = true }
   }, [tab, year])
 
+  // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
+  // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
+  useEffect(() => {
+    if (tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension") return
+    let cancelled = false
+    fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
+      .then(r => r.json())
+      .then((d: { savedAt: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
+        if (cancelled || !d.rows?.length) return
+        setResults(prev => {
+          const next = { ...prev }
+          for (const row of d.rows) {
+            if (next[row.calcNo]) continue
+            const ranAt = formatRanAt(new Date(row.ranAt))
+            next[row.calcNo] = row.ok
+              ? buildRowResult(row.result, row.duration, ranAt)
+              : errorRowResult(row.duration, ranAt)
+          }
+          return next
+        })
+        setCachedAt(d.savedAt)
+      })
+      .catch(() => { /* 캐시 없음/오류 무시 */ })
+    return () => { cancelled = true }
+  }, [tab, year, ntsYear])
+
   async function runCompare(calcNo: string) {
     if (running.has(calcNo)) return
     setRunning(prev => new Set(prev).add(calcNo))
@@ -285,7 +324,7 @@ export function HometaxCalcPanel() {
       const res  = await fetch("/api/tools/hometax-calc", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ calcNo, mode: "compare", ntsYear }),
+        body:    JSON.stringify({ calcNo, mode: "compare", ntsYear, year }),
       })
       const json = await res.json()
       setResults(prev => ({ ...prev, [calcNo]: buildRowResult(json, Date.now() - start) }))
@@ -485,6 +524,14 @@ export function HometaxCalcPanel() {
             {batchError && (
               <span className="text-xs text-red-600">{batchError}</span>
             )}
+            {cachedAt && !batchRunning && !batchFile && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground" title="저장된 이전 실행 결과를 불러왔습니다. 다시 실행하면 갱신됩니다.">
+                이전 실행 결과 ({formatRanAt(new Date(cachedAt))})
+                <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
+                  지우기
+                </Button>
+              </span>
+            )}
           </>
         )}
 
@@ -643,7 +690,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
@@ -669,7 +716,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
-              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -745,7 +792,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
@@ -771,7 +818,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
-              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -842,7 +889,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
@@ -868,7 +915,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
-              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -939,7 +986,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
@@ -965,7 +1012,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 연금계좌 세액공제 소계 */}
-              <tr className={`hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />

@@ -5,6 +5,7 @@ import * as XLSX from "xlsx"
 import { auth } from "@/auth"
 import { getGiftItems, type GiftListItem } from "@/features/hometax-calc/lib/giftList"
 import { streamCompareBatch, type BatchRow } from "@/features/hometax-calc/lib/streamCompareBatch"
+import { upsertBatchResults, batchRowToStored } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 800
@@ -75,7 +76,11 @@ export async function GET(req: NextRequest) {
   const stream = streamCompareBatch(
     () => getGiftItems(year),
     ntsYear,
-    rows => saveWorkbook(rows, year, ntsYear),
+    rows => {
+      const filePath = saveWorkbook(rows, year, ntsYear)
+      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))   // 복원용 JSON 캐시
+      return filePath
+    },
   )
 
   return new Response(stream, {

@@ -1,6 +1,6 @@
 import { runCompareForCalcNo, type CompareRunResult } from "@/features/hometax-calc/lib/runCompareForCalcNo"
 
-export interface BatchRow<T> { item: T; result: CompareRunResult | null; error: string | null }
+export interface BatchRow<T> { item: T; result: CompareRunResult | null; error: string | null; ranAt: string; duration: number }
 
 // 인원별 호출 사이 랜덤 딜레이 — 기계적인 간격으로 국세청 L03을 연타하면 접속 차단(이상 트래픽 감지)될 수 있어
 // 사람처럼 보이도록 요청 간격에 지터를 준다.
@@ -57,7 +57,7 @@ export function streamCompareBatch<T extends { calcNo: string }>(
 
           if (blocked) {
             const msg = "국세청 접속 차단 의심으로 건너뜀"
-            rows.push({ item, result: null, error: msg })
+            rows.push({ item, result: null, error: msg, ranAt: new Date().toISOString(), duration: 0 })
             send("row", { calcNo: item.calcNo, ok: false, error: msg, duration: 0 })
             continue
           }
@@ -65,13 +65,15 @@ export function streamCompareBatch<T extends { calcNo: string }>(
           const startedAt = Date.now()
           try {
             const result = await runCompareForCalcNo(item.calcNo, ntsYear)
-            rows.push({ item, result, error: null })
-            send("row", { calcNo: item.calcNo, ok: true, result, duration: Date.now() - startedAt })
+            const duration = Date.now() - startedAt
+            rows.push({ item, result, error: null, ranAt: new Date().toISOString(), duration })
+            send("row", { calcNo: item.calcNo, ok: true, result, duration })
             consecutiveFailures = 0
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
-            rows.push({ item, result: null, error: msg })
-            send("row", { calcNo: item.calcNo, ok: false, error: msg, duration: Date.now() - startedAt })
+            const duration = Date.now() - startedAt
+            rows.push({ item, result: null, error: msg, ranAt: new Date().toISOString(), duration })
+            send("row", { calcNo: item.calcNo, ok: false, error: msg, duration })
             consecutiveFailures++
             if (consecutiveFailures >= CONSECUTIVE_FAIL_LIMIT) {
               blocked = true

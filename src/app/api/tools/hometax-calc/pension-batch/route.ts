@@ -6,6 +6,7 @@ import { auth } from "@/auth"
 import { getPensionItems, type PensionListItem } from "@/features/hometax-calc/lib/pensionList"
 import { PENSION_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/pension"
 import { streamCompareBatch, type BatchRow } from "@/features/hometax-calc/lib/streamCompareBatch"
+import { upsertBatchResults, batchRowToStored } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 800
@@ -65,7 +66,11 @@ export async function GET(req: NextRequest) {
   const stream = streamCompareBatch(
     () => getPensionItems(year),
     ntsYear,
-    rows => saveWorkbook(rows, year, ntsYear),
+    rows => {
+      const filePath = saveWorkbook(rows, year, ntsYear)
+      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))   // 복원용 JSON 캐시
+      return filePath
+    },
   )
 
   return new Response(stream, {
