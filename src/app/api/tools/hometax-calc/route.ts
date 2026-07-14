@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       upsertBatchResults(year, ntsYear, [{
         calcNo, ok: true, result: compare, error: null,
         ranAt: new Date().toISOString(), duration: Date.now() - startedAt,
+        inputHash: compare.inputHash,
       }])
     }
     return Response.json({ mode, ...compare })

@@ -6,7 +6,7 @@ import { auth } from "@/auth"
 import { getCardItems, type CardListItem } from "@/features/hometax-calc/lib/cardList"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { streamCompareBatch, type BatchRow } from "@/features/hometax-calc/lib/streamCompareBatch"
-import { upsertBatchResults, batchRowToStored } from "@/features/hometax-calc/lib/batchResultStore"
+import { upsertBatchResults, batchRowToStored, loadBatchResults } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 800
@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
       upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))   // 복원용 JSON 캐시
       return filePath
     },
+    loadBatchResults(year, ntsYear)?.rows,   // 지문 같은 사람은 국세청 호출 스킵
   )
 
   return new Response(stream, {

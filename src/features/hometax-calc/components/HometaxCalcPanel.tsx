@@ -220,7 +220,7 @@ export function HometaxCalcPanel() {
   const [sessionInfo,    setSessionInfo]    = useState<{ active: boolean; ageMinutes: number | null }>({ active: false, ageMinutes: null })
   const [sessionLoading, setSessionLoading] = useState(false)
   const [batchRunning,   setBatchRunning]   = useState(false)
-  const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number } | null>(null)
+  const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number; skipped: number } | null>(null)
   const [batchFile,      setBatchFile]      = useState<string | null>(null)
   const [batchError,     setBatchError]     = useState<string | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
@@ -355,7 +355,7 @@ export function HometaxCalcPanel() {
   function runItemBatch(batchTab: BatchTab) {
     if (batchRunning) return
     setBatchRunning(true)
-    setBatchProgress({ done: 0, total: BATCH_TAB_COUNT[batchTab] })
+    setBatchProgress({ done: 0, total: BATCH_TAB_COUNT[batchTab], skipped: 0 })
     setBatchFile(null)
     setBatchError(null)
 
@@ -364,17 +364,17 @@ export function HometaxCalcPanel() {
 
     es.addEventListener("start", (e) => {
       const { total } = JSON.parse((e as MessageEvent).data) as { total: number }
-      setBatchProgress({ done: 0, total })
+      setBatchProgress({ done: 0, total, skipped: 0 })
     })
 
     es.addEventListener("row", (e) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = JSON.parse((e as MessageEvent).data) as { calcNo: string; ok: boolean; result?: any; error?: string; duration: number }
+      const data = JSON.parse((e as MessageEvent).data) as { calcNo: string; ok: boolean; result?: any; error?: string; duration: number; cached?: boolean }
       setResults(prev => ({
         ...prev,
         [data.calcNo]: data.ok ? buildRowResult(data.result, data.duration) : errorRowResult(data.duration),
       }))
-      setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1 } : prev)
+      setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1, skipped: prev.skipped + (data.cached ? 1 : 0) } : prev)
     })
 
     es.addEventListener("blocked", (e) => {
@@ -513,7 +513,7 @@ export function HometaxCalcPanel() {
               onClick={() => batchRunning ? stopBatch() : runItemBatch(tab)}
             >
               {batchRunning
-                ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0})</>
+                ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
                 : "전체 실행"}
             </Button>
             {batchFile && !batchRunning && (

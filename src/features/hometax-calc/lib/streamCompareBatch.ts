@@ -1,4 +1,5 @@
-import { runCompareForCalcNo, type CompareRunResult } from "@/features/hometax-calc/lib/runCompareForCalcNo"
+import { buildCompareInput, runCompareForInput, type CompareRunResult } from "@/features/hometax-calc/lib/runCompareForCalcNo"
+import type { StoredRow } from "@/features/hometax-calc/lib/batchResultStore"
 
 export interface BatchRow<T> { item: T; result: CompareRunResult | null; error: string | null; ranAt: string; duration: number }
 
@@ -30,6 +31,7 @@ export function streamCompareBatch<T extends { calcNo: string }>(
   getItems: () => Promise<T[]>,
   ntsYear: string,
   saveResults: (rows: BatchRow<T>[]) => string,
+  cached?: Record<string, StoredRow>,   // 직전 저장결과(calcNo별). 보낼 값 지문이 같으면 국세청 호출·딜레이 스킵
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   let cancelled = false
@@ -63,12 +65,23 @@ export function streamCompareBatch<T extends { calcNo: string }>(
           }
 
           const startedAt = Date.now()
+          let skipped = false
           try {
-            const result = await runCompareForCalcNo(item.calcNo, ntsYear)
-            const duration = Date.now() - startedAt
-            rows.push({ item, result, error: null, ranAt: new Date().toISOString(), duration })
-            send("row", { calcNo: item.calcNo, ok: true, result, duration })
-            consecutiveFailures = 0
+            // 보낼 값 조립(싼 DB조회) → 지문이 직전 캐시와 같으면 국세청 호출 없이 그 결과 재사용
+            const input = await buildCompareInput(item.calcNo, ntsYear)
+            const hit = cached?.[item.calcNo]
+            if (hit?.ok && hit.result && hit.inputHash === input.inputHash) {
+              rows.push({ item, result: hit.result, error: null, ranAt: hit.ranAt, duration: 0 })
+              send("row", { calcNo: item.calcNo, ok: true, result: hit.result, duration: 0, cached: true })
+              consecutiveFailures = 0
+              skipped = true
+            } else {
+              const result = await runCompareForInput(input, ntsYear)
+              const duration = Date.now() - startedAt
+              rows.push({ item, result, error: null, ranAt: new Date().toISOString(), duration })
+              send("row", { calcNo: item.calcNo, ok: true, result, duration })
+              consecutiveFailures = 0
+            }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             const duration = Date.now() - startedAt
@@ -83,7 +96,8 @@ export function streamCompareBatch<T extends { calcNo: string }>(
             }
           }
 
-          if (!blocked && i < items.length - 1) await interruptibleSleep(randomDelay(), () => cancelled)
+          // 캐시 스킵 건은 국세청을 안 불렀으므로 지터 딜레이도 생략(대량 캐시히트 시 급속 완료)
+          if (!blocked && !skipped && i < items.length - 1) await interruptibleSleep(randomDelay(), () => cancelled)
         }
 
         const filePath = saveResults(rows)

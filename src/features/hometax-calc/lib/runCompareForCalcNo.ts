@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import { ytsDb } from "@/lib/db/oracle"
 import { runHometaxCompare, type HometaxCompareResult } from "@/features/hometax-calc/lib/runHometaxCalc"
 import { mappingSelectCols } from "@/features/hometax-calc/mapping/2025"
@@ -74,12 +75,28 @@ export interface CompareRunResult {
   missing:      HometaxCompareResult["missing"]
   ntsMap:       Record<string, number>
   unknownCols:  string[]
+  inputHash:    string   // 국세청에 보낸 값(vals)+ntsYear 지문 — 캐시 스킵 판정용
+}
+
+// 국세청에 보낼 값 묶음 + 지문. buildCompareInput 로 만들어 캐시 대조에 씀.
+export interface CompareInput {
+  calcNo:      string
+  vals:        Record<string, number>
+  unknownCols: string[]
+  inputHash:   string
+}
+
+// 보낼 값(vals)을 이름순 정렬·직렬화 후 ntsYear 를 붙여 sha256. 같은 값=같은 지문(재현), 하나만 바뀌어도 달라짐.
+function computeInputHash(vals: Record<string, number>, ntsYear: string): string {
+  const serial = Object.keys(vals).sort().map(k => `${k}:${vals[k]}`).join("|") + `|nts:${ntsYear}`
+  return crypto.createHash("sha256").update(serial).digest("hex")
 }
 
 // compare 모드: 매핑표가 요구하는 컬럼 전체를 조회해 NTS L03 에 전송 후 YTS39 결과와 비교.
 // SELECT 컬럼은 매핑에서 생성하되, 실제 테이블에 존재하는 것만 사용(미존재=타테이블/오타는 제외+보고).
 // GIFT_*/CARD_*/MEDI_*/PEN_* 는 가상컬럼(별도 테이블·CLOB에서 주입)이라 PAY_WRK_CALC SELECT 에서 제외.
-export async function runCompareForCalcNo(calcNo: string, ntsYear: string): Promise<CompareRunResult> {
+// ① 국세청에 보낼 값(vals) 조립 + 지문 계산. DB 조회만(국세청 호출 없음) → 캐시 스킵 판정에 싸게 씀.
+export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
   const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_")
@@ -112,6 +129,12 @@ export async function runCompareForCalcNo(calcNo: string, ntsYear: string): Prom
   )
   injectPensionVals(penSpec, vals)
 
+  return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
+}
+
+// ② 조립된 입력을 국세청 L03에 보내 비교결과 조립(여기서만 NTS 호출).
+export async function runCompareForInput(input: CompareInput, ntsYear: string): Promise<CompareRunResult> {
+  const { calcNo, vals, unknownCols, inputHash } = input
   const compare = await runHometaxCompare(vals, ntsYear)
 
   return {
@@ -129,5 +152,12 @@ export async function runCompareForCalcNo(calcNo: string, ntsYear: string): Prom
     missing:      compare.missing,
     ntsMap:       compare.ntsMap,
     unknownCols,
+    inputHash,
   }
+}
+
+// 조립 → 국세청 호출을 한 번에 (기존 시그니처 유지). 개별 실행·비캐시 경로에서 사용.
+export async function runCompareForCalcNo(calcNo: string, ntsYear: string): Promise<CompareRunResult> {
+  const input = await buildCompareInput(calcNo, ntsYear)
+  return runCompareForInput(input, ntsYear)
 }

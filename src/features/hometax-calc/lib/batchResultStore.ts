@@ -14,6 +14,7 @@ export interface StoredRow {
   error: string | null
   ranAt: string        // ISO (클라이언트에서 표시형식으로 변환)
   duration: number     // ms
+  inputHash?: string   // 보낸 값 지문 — 다음 실행 때 같으면 국세청 호출 스킵. 옛 캐시엔 없어 optional(없으면 재실행)
 }
 
 interface StoreFile {
@@ -58,11 +59,12 @@ export function deleteBatchResults(year: string, ntsYear: string): void {
 // 배치행(BatchRow) → 저장행(StoredRow) 매핑. result가 있으면 성공으로 본다.
 export function batchRowToStored<T extends { calcNo: string }>(r: BatchRow<T>): StoredRow {
   return {
-    calcNo:   r.item.calcNo,
-    ok:       r.result != null,
-    result:   r.result,
-    error:    r.error,
-    ranAt:    r.ranAt,
-    duration: r.duration,
+    calcNo:    r.item.calcNo,
+    ok:        r.result != null,
+    result:    r.result,
+    error:     r.error,
+    ranAt:     r.ranAt,
+    duration:  r.duration,
+    inputHash: r.result?.inputHash,
   }
 }
