@@ -27,6 +27,16 @@ export const GIFT_TYPES: Record<string, GiftType> = {
   "548-070": { label: "일반(종교)",   base: "8746", carry: ["8821", "8822", "8823", "8824", "8825"], rank: 7 },
 }
 
+/**
+ * 기부 귀속연도(GIFT_YY) → 국세청 이월 연차(diff). 당해=0, 이월 N년차=N.
+ *   - 당해 판정은 YTS 데이터연도(dataYear) 기준
+ *   - 이월 연차는 국세청 귀속연도(ntsBase) 기준 (전환기 ytsYear≠ntsYear offset 반영)
+ * 산출된 diff 를 giftNtsCode 에 넣어 amtClusCd 로 변환한다. (커밋 8d26403 버그 지점)
+ */
+export function giftCarryDiff(giftYy: number, dataYear: number, ntsBase: number): number {
+  return giftYy === dataYear ? 0 : ntsBase - giftYy
+}
+
 /** (GIFT_CLS, diff=귀속연도−GIFT_YY) → NTS amtClusCd. 매핑 없으면 null. */
 export function giftNtsCode(giftCls: string, diff: number): string | null {
   const t = GIFT_TYPES[giftCls]

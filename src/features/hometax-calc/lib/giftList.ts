@@ -1,5 +1,5 @@
 import { ytsDb } from "@/lib/db/oracle"
-import { giftNtsCode, giftTypeLabel, giftTypeRank } from "@/features/hometax-calc/mapping/gift"
+import { giftCarryDiff, giftNtsCode, giftTypeLabel, giftTypeRank } from "@/features/hometax-calc/mapping/gift"
 import { exhaustInfo } from "@/features/hometax-calc/lib/exhaust"
 import { calcMethodLabel, workStatusLabel } from "@/features/hometax-calc/lib/personInfo"
 
@@ -56,7 +56,7 @@ export async function getGiftItems(year: string, ntsYear: string): Promise<GiftL
       map.set(r.CALC_NO, item)
     }
     const yy   = Number(r.GIFT_YY)
-    const diff = yy === dataYear ? 0 : ntsBase - yy   // 국세청 귀속연도 기준 이월 연차(당해=0)
+    const diff = giftCarryDiff(yy, dataYear, ntsBase)   // 국세청 귀속연도 기준 이월 연차(당해=0)
     const sub  = Number(r.GIFT_SUB_AMT ?? 0)
     item.giftTax += sub
     item.lines.push({
