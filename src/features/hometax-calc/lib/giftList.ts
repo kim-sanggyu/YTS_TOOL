@@ -13,9 +13,10 @@ export interface GiftListItem {
 
 // 세액계산된 건(PAY_WRK_CALC 존재)의 기부금 유형×연도별 라인.
 // YTS 공제금액 = GIFT_SUB_AMT, 보낼 대상금액 = GIFT_ABLE_SUB_AMT.
-export async function getGiftItems(year: string): Promise<GiftListItem[]> {
+export async function getGiftItems(year: string, ntsYear: string): Promise<GiftListItem[]> {
   const prefix = `X${year}%`
   const dataYear = Number(year)
+  const ntsBase  = Number(ntsYear)   // 국세청 귀속연도(이월 연차 기준)
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
@@ -54,14 +55,15 @@ export async function getGiftItems(year: string): Promise<GiftListItem[]> {
       }
       map.set(r.CALC_NO, item)
     }
-    const diff = dataYear - Number(r.GIFT_YY)
+    const yy   = Number(r.GIFT_YY)
+    const diff = yy === dataYear ? 0 : ntsBase - yy   // 국세청 귀속연도 기준 이월 연차(당해=0)
     const sub  = Number(r.GIFT_SUB_AMT ?? 0)
     item.giftTax += sub
     item.lines.push({
       code:    giftNtsCode(r.GIFT_CLS, diff),
       giftCls: r.GIFT_CLS,
       label:   giftTypeLabel(r.GIFT_CLS),
-      giftYy:  String(r.GIFT_YY),
+      giftYy:  String(ntsBase - diff),   // 국세청 기준 표시연도(당해→ntsYear, 이월→실제 기부연도)
       ytsSub:  sub,
       ableSub: Number(r.GIFT_ABLE_SUB_AMT ?? 0),
     })

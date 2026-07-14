@@ -12,11 +12,12 @@ export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return Response.json({ error: "인증 필요" }, { status: 401 })
 
-  const year   = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
-  const type   = req.nextUrl.searchParams.get("type")
-  const prefix = `X${year}%`
+  const year    = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
+  const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? year).trim()
+  const type    = req.nextUrl.searchParams.get("type")
+  const prefix  = `X${year}%`
 
-  if (type === "gift")    return Response.json({ items: await getGiftItems(year) })
+  if (type === "gift")    return Response.json({ items: await getGiftItems(year, ntsYear) })
   if (type === "card")    return Response.json({ items: await getCardItems(year) })
   if (type === "medi")    return Response.json({ items: await getMediItems(year) })
   if (type === "pension") return Response.json({ items: await getPensionItems(year) })

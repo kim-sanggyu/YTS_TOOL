@@ -23,13 +23,17 @@ async function existingCalcCols(): Promise<Set<string>> {
 
 // ── 기부금 PAY_WRK_GIFT_ADJ → GIFT_{코드} 가상컬럼 주입 (당해+이월 통합) ─────
 // 세액계산된 건은 ADJ 에 유형×연도별 확정행이 모두 있음. GIFT_ABLE_SUB_AMT(대상금액)를 전송.
+// 국세청 이월코드는 "귀속연도로부터 N년차"의 상대코드이므로 diff 기준을 국세청 귀속연도(ntsYear)로 잡는다.
+// 당해 행은 YTS 정산연도로 저장(GIFT_YY===ytsYear)돼 ntsYear 와 다를 수 있어 별도로 당해(0) 판정한다.
 function injectGiftVals(
   adjRows: { GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }[],
-  dataYear: number,
+  ytsYear: number,
+  ntsYear: number,
   vals:    Record<string, number>,
 ) {
   for (const row of adjRows) {
-    const diff = dataYear - Number(row.GIFT_YY)
+    const yy   = Number(row.GIFT_YY)
+    const diff = yy === ytsYear ? 0 : ntsYear - yy
     const code = giftNtsCode(row.GIFT_CLS, diff)
     if (code) vals[`GIFT_${code}`] = Number(row.GIFT_ABLE_SUB_AMT ?? 0)
   }
@@ -119,7 +123,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     `SELECT GIFT_CLS, GIFT_YY, GIFT_ABLE_SUB_AMT FROM YTS39.PAY_WRK_GIFT_ADJ WHERE CALC_NO = :1`,
     [calcNo]
   )
-  injectGiftVals(giftAdj, Number(dataYear), vals)
+  injectGiftVals(giftAdj, Number(dataYear), Number(ntsYear), vals)
   injectCardVals((row.CALC_PROC_CARD as string) ?? null, vals)
   injectMediVals((row.CALC_PROC_MEDI as string) ?? null, vals)
 

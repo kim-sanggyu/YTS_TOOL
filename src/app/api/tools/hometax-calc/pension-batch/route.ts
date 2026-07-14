@@ -36,7 +36,7 @@ function buildWorkbook(rows: BatchRow<PensionListItem>[]) {
       CALC_NO:   item.calcNo,
       이름:       item.nm,
       항목:       line.label,
-      전송납입액: line.useAmt,
+      전송사용액: line.useAmt,
     }))
   )
 

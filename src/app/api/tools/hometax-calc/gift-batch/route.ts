@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
 
   const stream = streamCompareBatch(
-    () => getGiftItems(year),
+    () => getGiftItems(year, ntsYear),
     ntsYear,
     rows => {
       const filePath = saveWorkbook(rows, year, ntsYear)

@@ -107,7 +107,10 @@ function ProcTotalView({ info }: { info: { calcNo: string; nm: string; text: str
         </SheetTitle>
       </SheetHeader>
       <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
-        <pre className="whitespace-pre-wrap break-words text-xs leading-relaxed">{info.text}</pre>
+        <pre
+          className="whitespace-pre text-xs leading-relaxed"
+          style={{ fontFamily: "'D2Coding', 'GulimChe', '굴림체', monospace" }}
+        >{info.text}</pre>
       </div>
     </div>
   )
@@ -272,8 +275,8 @@ export function HometaxCalcPanel() {
     const load = async () => {
       setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setResults({}); setLoading(true); setDiffOnly(false)
       const url = tab === "all"
-        ? `/api/tools/hometax-calc/list?year=${year}`
-        : `/api/tools/hometax-calc/list?year=${year}&type=${tab}`
+        ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
+        : `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=${tab}`
       try {
         const d = await fetch(url).then(r => r.json())
         if (cancelled) return
@@ -288,7 +291,7 @@ export function HometaxCalcPanel() {
     }
     load()
     return () => { cancelled = true }
-  }, [tab, year])
+  }, [tab, year, ntsYear])
 
   // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
@@ -586,7 +589,7 @@ export function HometaxCalcPanel() {
 
       {/* 계산과정 전체 텍스트 드로어 */}
       <Sheet open={procTotalFor !== null} onOpenChange={o => { if (!o) setProcTotalFor(null) }}>
-        <SheetContent side="right" className="w-full p-0" style={{ maxWidth: "min(92vw, 40rem)" }}>
+        <SheetContent side="right" className="w-full p-0" style={{ maxWidth: "min(92vw, 64rem)" }}>
           {procTotalFor && <ProcTotalView info={procTotalFor} />}
         </SheetContent>
       </Sheet>
@@ -698,7 +701,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제금액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제금액</th>
-          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
@@ -713,6 +716,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           const isRunning = running.has(row.calcNo)
           const ntsTotal  = res ? row.lines.reduce((s, l) => s + (l.code ? (res.ntsMap[l.code] ?? 0) : 0), 0) : null
           const diff      = ntsTotal != null ? ntsTotal - row.giftTax : null
+          const ableTotal = row.lines.reduce((s, l) => s + l.ableSub, 0)
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
@@ -731,7 +735,8 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={3}>합계</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={2}>기부금공제 소계</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(ableTotal)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.giftTax)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
                 <td className="px-3 py-2 text-center">
@@ -799,7 +804,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
-          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
@@ -893,10 +898,10 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 지출금액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
-          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
@@ -990,10 +995,10 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 납입액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
-          <th className="px-3 py-2 text-center font-medium w-10">일치</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
@@ -1104,7 +1109,7 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
                 <th className="py-1.5 text-right font-medium">YTS39</th>
                 <th className="py-1.5 text-right font-medium">NTS</th>
                 <th className="py-1.5 text-right font-medium w-14">차이</th>
-                <th className="py-1.5 text-center font-medium w-10">일치</th>
+                <th className="py-1.5 text-center font-medium w-10 whitespace-nowrap">일치</th>
               </tr>
             </thead>
             <tbody>
