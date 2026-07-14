@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { ChevronLeft, ChevronRight, RotateCcw, RefreshCw, Info, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw, RefreshCw, Info, Download, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -206,6 +206,7 @@ const SS_KEY = {
   workFilter:   "tax-insight:workFilter",
   reviewFilter: "tax-insight:reviewFilter",
   selectedNo:   "tax-insight:selectedNo",
+  fullView:     "tax-insight:fullView",
 }
 export default function TaxInsightPage() {
   const [year,         setYear]         = useState(AVAILABLE_YEARS[AVAILABLE_YEARS.length - 1])
@@ -213,6 +214,7 @@ export default function TaxInsightPage() {
   const [calcFilter,   setCalcFilter]   = useState<CalcFilterType> ("all")
   const [workFilter,   setWorkFilter]   = useState<WorkFilterType> ("all")
   const [reviewFilter, setReviewFilter] = useState<ReviewFilterType>("all")
+  const [fullView,     setFullView]     = useState(false)
   const [ready,        setReady]        = useState(false)
   const [items, setItems]         = useState<CalcListItem[]>([])
   const [idx, setIdx]             = useState(0)
@@ -229,6 +231,7 @@ export default function TaxInsightPage() {
     setCalcFilter( (sessionStorage.getItem(SS_KEY.calcFilter)    ?? "all") as CalcFilterType)
     setWorkFilter( (sessionStorage.getItem(SS_KEY.workFilter)    ?? "all") as WorkFilterType)
     setReviewFilter((sessionStorage.getItem(SS_KEY.reviewFilter) ?? "all") as ReviewFilterType)
+    setFullView(sessionStorage.getItem(SS_KEY.fullView) === "1")
     savedCalcNoRef.current = sessionStorage.getItem(SS_KEY.selectedNo) ?? ""
     setReady(true)
   }, [])
@@ -241,7 +244,8 @@ export default function TaxInsightPage() {
     sessionStorage.setItem(SS_KEY.calcFilter,   calcFilter)
     sessionStorage.setItem(SS_KEY.workFilter,   workFilter)
     sessionStorage.setItem(SS_KEY.reviewFilter, reviewFilter)
-  }, [year, taxFilter, calcFilter, workFilter, reviewFilter, ready])
+    sessionStorage.setItem(SS_KEY.fullView,     fullView ? "1" : "0")
+  }, [year, taxFilter, calcFilter, workFilter, reviewFilter, fullView, ready])
 
   // 선택 건 변경 시 sessionStorage 저장
   useEffect(() => {
@@ -332,16 +336,18 @@ export default function TaxInsightPage() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
-      <div className="shrink-0 mb-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">계산결과 해설 보기</h1>
-          <ParsingGuideSheet />
+      {!fullView && (
+        <div className="shrink-0 mb-3">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">계산결과 해설 보기</h1>
+            <ParsingGuideSheet />
+          </div>
+          <p className="text-muted-foreground mt-1 text-sm">
+            세액 결과 안내 및 미 공제 내역에 대한 사유를 확인할 수 있습니다.
+            또한 다음 번 연말정산을 위한 절세 전략도 제안합니다.
+          </p>
         </div>
-        <p className="text-muted-foreground mt-1 text-sm">
-          세액 결과 안내 및 미 공제 내역에 대한 사유를 확인할 수 있습니다.
-          또한 다음 번 연말정산을 위한 절세 전략도 제안합니다.
-        </p>
-      </div>
+      )}
 
       {/* 네비게이션 바 */}
       <div className="shrink-0 flex items-center gap-2 mb-3 w-full">
@@ -463,10 +469,21 @@ export default function TaxInsightPage() {
             카드현황
           </Button>
         </a>
+
+        {/* 전체보기 토글 */}
+        <Button
+          variant={fullView ? "secondary" : "outline"}
+          size="icon"
+          className="h-8 w-8 ml-auto"
+          onClick={() => setFullView(v => !v)}
+          title={fullView ? "기본 보기" : "전체 보기"}
+        >
+          {fullView ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
       </div>
 
       {/* 요약 바 */}
-      {result && <SummaryBar data={result} name={items[idx]?.name} />}
+      {!fullView && result && <SummaryBar data={result} name={items[idx]?.name} />}
 
       {/* 본문: 좌(CALC_PROC_TOTAL) / 리사이즈 핸들 / 우(분석) */}
       <div ref={containerRef} className="flex-1 min-h-0 flex gap-0">

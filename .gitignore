@@ -47,7 +47,11 @@ next-env.d.ts
 *.hwp
 *.java
 *.png
+*.xlsx
 /.screenshots/
 dev-err.txt
 dev-out.txt
 /참조자료/
+
+# Claude Code 로컬 설정
+/.claude/
