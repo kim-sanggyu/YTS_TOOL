@@ -40,6 +40,9 @@ export interface MappingRow {
   send:      boolean
   /** 전용 비교탭 소속(예 "기타") — 잡다한 단일 세액공제 항목을 한 탭에 모을 때. 미지정=탭 없음. */
   tab?:      string
+  /** 국세청 결과(OUT) 코드. 소계형만 명시(카드8430/의료8726/연금8706).
+   *  미지정 = 세액공제성 그룹이면 self(ntsCode), 소득공제·입력이면 없음(—). */
+  outCode?:  string
   note?:     string
 }
 

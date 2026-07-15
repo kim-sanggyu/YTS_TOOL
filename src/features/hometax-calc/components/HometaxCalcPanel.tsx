@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { PENSION_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/pension"
+import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
 
 const CUR_YEAR     = new Date().getFullYear()                          // 2026
 const YEAR_OPTIONS = [String(CUR_YEAR), String(CUR_YEAR - 1)]         // ["2026", "2025"]
@@ -224,7 +225,7 @@ function errorRowResult(duration: number, ranAt?: string): RowResult {
 export function HometaxCalcPanel() {
   const [year,           setYear]           = useState(String(CUR_YEAR))       // 우리자료 귀속연도
   const [ntsYear,        setNtsYear]        = useState(NTS_YEARS[0])            // 국세청 모의계산 귀속연도
-  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc">("all")
+  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc" | "status">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
   const [cardItems,      setCardItems]      = useState<CardListItem[]>([])
@@ -290,6 +291,7 @@ export function HometaxCalcPanel() {
     let cancelled = false
     const load = async () => {
       setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setResults({}); setLoading(true); setDiffOnly(false)
+      if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
         : `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=${tab}`
@@ -538,6 +540,13 @@ export function HometaxCalcPanel() {
           >기타</button>
         </div>
 
+        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+          <button
+            className={`px-3 py-1.5 transition-colors ${tab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("status")}
+          >현황</button>
+        </div>
+
         {(tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
           <>
             <Button
@@ -609,6 +618,7 @@ export function HometaxCalcPanel() {
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "etc" && <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
+        {tab === "status" && <MappingStatusView />}
       </div>
 
       {/* 상세조회 드로어 */}
@@ -1344,6 +1354,89 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
           </section>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── 매핑 현황(진도) 뷰 — MAPPING_2025 를 그대로 렌더(코드=화면 항상 동기) ──
+//   각 항목의 계약 5축(원천/IN/OUT/실측/전송)을 그룹별로 조회. 국세청 in-out 정리 진도판.
+const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌"])
+// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → 세액공제성 self → 없음(—)
+function outCodeOf(m: MappingRow): string {
+  if (m.outCode) return m.outCode
+  if (m.ytsCol?.startsWith("CARD_")) return CARD_SUBTOTAL_CODE
+  if (m.ytsCol?.startsWith("MEDI_")) return MEDI_SUBTOTAL_CODE
+  if (m.ytsCol?.startsWith("PEN_"))  return PENSION_SUBTOTAL_CODE
+  if (OUT_GROUPS.has(m.group)) return m.ntsCode
+  return "—"
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = status === "확정" ? "bg-green-100 text-green-700"
+            : status === "추정" ? "bg-amber-100 text-amber-700"
+            : "bg-muted text-muted-foreground"
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>
+}
+
+function MappingStatusView() {
+  const groups: { name: string; rows: MappingRow[] }[] = []
+  for (const m of MAPPING_2025) {
+    let g = groups.find(x => x.name === m.group)
+    if (!g) { g = { name: m.group, rows: [] }; groups.push(g) }
+    g.rows.push(m)
+  }
+  const totCnt  = MAPPING_2025.length
+  const totConf = MAPPING_2025.filter(m => m.status === "확정").length
+  const totSend = MAPPING_2025.filter(m => m.send).length
+
+  return (
+    <div className="overflow-auto h-full p-3 space-y-5">
+      <div className="text-xs text-muted-foreground">
+        전체 {totCnt}항목 · 확정 {totConf} · 전송 {totSend} — 국세청 in-out 정리 진도 (MAPPING_2025 자동 렌더)
+      </div>
+      {groups.map(g => {
+        const conf = g.rows.filter(r => r.status === "확정").length
+        const sent = g.rows.filter(r => r.send).length
+        const pct  = Math.round((conf / g.rows.length) * 100)
+        return (
+          <section key={g.name}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <h3 className="text-sm font-semibold whitespace-nowrap">{g.name}</h3>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">확정 {conf}/{g.rows.length} · 전송 {sent}</span>
+              <div className="h-1.5 bg-muted rounded overflow-hidden w-full max-w-[160px]">
+                <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-xs border-collapse">
+                <thead className="bg-muted/60">
+                  <tr className="text-[10px] text-muted-foreground text-left">
+                    <th className="px-2 py-1.5 font-medium">항목</th>
+                    <th className="px-2 py-1.5 font-medium">IN (넣는 code)</th>
+                    <th className="px-2 py-1.5 font-medium">OUT (받는 code)</th>
+                    <th className="px-2 py-1.5 font-medium">값키</th>
+                    <th className="px-2 py-1.5 font-medium text-center">확정</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.rows.map(m => {
+                    const out = outCodeOf(m)
+                    return (
+                      <tr key={m.ntsCode + m.label} className="border-t">
+                        <td className="px-2 py-1 whitespace-nowrap">{m.label}</td>
+                        <td className="px-2 py-1 font-mono text-[11px] font-semibold">{m.ntsCode}</td>
+                        <td className={`px-2 py-1 font-mono text-[11px] ${out === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{out}</td>
+                        <td className="px-2 py-1 font-mono text-[10px] text-muted-foreground">{m.valueKey}</td>
+                        <td className="px-2 py-1 text-center whitespace-nowrap"><StatusBadge status={m.status} /></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }
