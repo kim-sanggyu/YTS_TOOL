@@ -1366,7 +1366,7 @@ function outCodeOf(m: MappingRow): string {
   if (m.outCode) return m.outCode
   if (m.ytsCol?.startsWith("CARD_")) return CARD_SUBTOTAL_CODE
   if (m.ytsCol?.startsWith("MEDI_")) return MEDI_SUBTOTAL_CODE
-  if (m.ytsCol?.startsWith("PEN_"))  return PENSION_SUBTOTAL_CODE
+  // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 세액공제성 self
   if (OUT_GROUPS.has(m.group)) return m.ntsCode
   return "—"
 }

@@ -173,11 +173,13 @@ export const MAPPING_2025: MappingRow[] = [
   // ── 세액공제: 연금계좌 — PAY_WRK_PEN_SAVE_SPEC 납입액(PEN_SAVE_PMT_AMT)을 PEN_{코드} 가상컬럼으로 주입 ──
   //   PEN_SAVE_CLS→코드 매핑(mapping/pension.ts). NTS 8706(연금계좌 총합)에 세액공제 반환. (2026-07-12 실측확정)
   //   ★납입액 전송(공제대상 아님) — NTS가 한도·공제율 자체계산. ISA도 전환액 원본이라 ×10 불필요.
-  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  //   OUT = 각 code self ddcAmt(항목별 공제금액, 실측확정 2026-07-15). 국세청이 한도·공제율(12%) 자체계산.
+  //   집계 OUT 8705(ISA합)·8706(총합)은 국세청이 별도로도 반환(IN 없는 결과전용) — 카탈로그 반영 예정.
+  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8701" },
+  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8702" },
+  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8703" },
+  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8707" },
+  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8708" },
 
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "결혼세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: false, note: "체크박스 고정 50만 — 전송방식(flag/useAmt) 실측 재확인" },
