@@ -114,7 +114,8 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액감면", ntsCode: "8604", label: "조특법30조-100%",         ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율(100/90/70/50)별 4코드 분할 — 단일컬럼, 재확인" },
   { group: "세액감면", ntsCode: "8605", label: "조특법30조-50%",          ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율별 4코드 분할" },
   { group: "세액감면", ntsCode: "8608", label: "조특법30조-90%",          ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율별 4코드 분할" },
-  { group: "세액감면", ntsCode: "8916", label: "조특법30조-70%",          ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율별 4코드 분할" },
+  // ★ 8916(조특법30조-70% 추정)은 NTS 중간계산코드(차감소득금액류)로 실측 판명(2026-07-15) → 제거.
+  //    조특법30조 4분할(8604/8605/8608) 전체 status:추정 — send:true 전 프로브로 실입력코드 재확정 필수.
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약",       ytsCol: "RT_TAX_TREATY",     valueKey: "useAmt", rule: "value", status: "확정", send: false },
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
