@@ -139,6 +139,19 @@ interface PensionListItem {
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   lines: PensionLine[]
 }
+interface EtcLine {
+  code: string          // NTS amtClusCd (예 8750 월세)
+  label: string         // 항목명
+  ytsInput: number      // 전송 원천값 (월세=원본 지급총액)
+  ytsDdc: number        // YTS 공제액 (resultCol=RT_*, 항목별 비교 기준)
+}
+interface EtcListItem {
+  calcNo: string; nm: string; totPayAmt: number
+  etcDdc: number        // 기타 세액공제 합 (=Σ lines.ytsDdc, 본행 비교 기준)
+  exhausted?: boolean; exhaustLabel?: string | null
+  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  lines: EtcLine[]
+}
 interface NtsResult {
   prodTax: number | null; decidedTax: number | null; withheld: number | null
   workDdc: number | null; taxBase: number | null; resultCode: string | null
@@ -164,6 +177,8 @@ interface RowResult {
 const won  = (n: number | null | undefined) => n == null ? "—" : n.toLocaleString("ko-KR")
 const rate = (n: number | null | undefined) => n == null ? "—" : n.toFixed(1) + "%"
 const time = (ms: number) => (ms / 1000).toFixed(1) + "초"
+// 비교 본행 배경색: 일치=연녹 / 불일치=적색 / 미실행=무색 (모든 비교탭 공통 — 색은 여기 한 곳에서만 바꾼다)
+const matchRowBg = (diff: number | null) => diff === 0 ? "bg-green-50/40" : diff != null ? "bg-red-200/70" : ""
 
 // 비교일시 표기: YY.MM.DD HH:MM
 function formatRanAt(d: Date): string {
@@ -209,12 +224,13 @@ function errorRowResult(duration: number, ranAt?: string): RowResult {
 export function HometaxCalcPanel() {
   const [year,           setYear]           = useState(String(CUR_YEAR))       // 우리자료 귀속연도
   const [ntsYear,        setNtsYear]        = useState(NTS_YEARS[0])            // 국세청 모의계산 귀속연도
-  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension">("all")
+  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
   const [cardItems,      setCardItems]      = useState<CardListItem[]>([])
   const [mediItems,      setMediItems]      = useState<MediListItem[]>([])
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
+  const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
@@ -273,7 +289,7 @@ export function HometaxCalcPanel() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setResults({}); setLoading(true); setDiffOnly(false)
+      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setResults({}); setLoading(true); setDiffOnly(false)
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
         : `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=${tab}`
@@ -284,6 +300,7 @@ export function HometaxCalcPanel() {
         else if (tab === "card")    setCardItems(d.items ?? [])
         else if (tab === "medi")    setMediItems(d.items ?? [])
         else if (tab === "pension") setPensionItems(d.items ?? [])
+        else if (tab === "etc")     setEtcItems(d.items ?? [])
         else                        setAllItems(d.items ?? [])
       } catch { /* 무시 */ } finally {
         if (!cancelled) setLoading(false)
@@ -296,7 +313,7 @@ export function HometaxCalcPanel() {
   // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
   useEffect(() => {
-    if (tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension") return
+    if (tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension" && tab !== "etc") return
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
@@ -341,10 +358,10 @@ export function HometaxCalcPanel() {
   }
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
-  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch" } as const
+  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
   type BatchTab = keyof typeof BATCH_ENDPOINT
   const BATCH_TAB_COUNT: Record<BatchTab, number> = {
-    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length,
+    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
   }
   const batchEsRef = useRef<EventSource | null>(null)
 
@@ -416,7 +433,7 @@ export function HometaxCalcPanel() {
 
   const detailRes = detailFor ? results[detailFor] : null
   const detailRow = detailFor ? (allItems.find(i => i.calcNo === detailFor) ?? null) : null
-  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : allItems.length
+  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? etcItems.length : allItems.length
 
   // 탭별 YTS·NTS 값이 다른지 판정 (실행 전이면 false) — 차이 건수 집계·필터링에 공통 사용
   function giftHasDiff(i: GiftListItem): boolean {
@@ -435,12 +452,20 @@ export function HometaxCalcPanel() {
     if (!res) return false
     return i.prodTaxAmt !== (res.nts.prodTax ?? -1) || i.resIncmTax !== (res.nts.decidedTax ?? -1)
   }
+  // 기타 탭: 이질 항목이라 소계코드가 없어 lines 의 각 code 합으로 대조 (giftHasDiff 동형)
+  function etcHasDiff(i: EtcListItem): boolean {
+    const res = results[i.calcNo]
+    if (!res) return false
+    const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
+    return ntsTotal - i.etcDdc !== 0
+  }
 
   const diffCount =
     tab === "gift"    ? giftItems.filter(giftHasDiff).length :
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
     tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
     tab === "pension" ? pensionItems.filter(i => subtotalHasDiff(i, x => x.penDdc, PENSION_SUBTOTAL_CODE)).length :
+    tab === "etc"     ? etcItems.filter(etcHasDiff).length :
     allItems.filter(allHasDiff).length
 
   // 차이만 보기 필터 활성 시 현재 탭의 items를 차이나는 건만 추림
@@ -450,6 +475,7 @@ export function HometaxCalcPanel() {
   const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)) : cardItems
   const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(i => subtotalHasDiff(i, x => x.penDdc, PENSION_SUBTOTAL_CODE)) : pensionItems
+  const shownEtcItems     = showDiffOnly ? etcItems.filter(etcHasDiff) : etcItems
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -506,9 +532,13 @@ export function HometaxCalcPanel() {
             className={`px-3 py-1.5 border-l transition-colors ${tab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => setTab("pension")}
           >연금계좌</button>
+          <button
+            className={`px-3 py-1.5 border-l transition-colors ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("etc")}
+          >기타</button>
         </div>
 
-        {(tab === "gift" || tab === "card" || tab === "medi" || tab === "pension") && (
+        {(tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
           <>
             <Button
               size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs"
@@ -578,6 +608,7 @@ export function HometaxCalcPanel() {
         {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
+        {tab === "etc" && <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
       </div>
 
       {/* 상세조회 드로어 */}
@@ -720,7 +751,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -823,7 +854,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -920,7 +951,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -962,6 +993,111 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
                     <td /><td /><td colSpan={2} />
+                  </tr>
+                )
+              })}
+            </Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+// ── 기타 비교 테이블 (본행 = 기타 세액공제 합 / 세부행 = 항목별 대조) ──
+//   이질 항목(월세 등)이라 소계코드가 없어 lines 의 각 code 합으로 본행 대조.
+//   세부행은 항목별로 YTS공제(resultCol) ↔ NTS(ntsCode)를 직접 대조(medi 와 달리 세부행도 비교).
+function EtcTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
+  items: EtcListItem[]; loading: boolean
+  results: Record<string, RowResult>; running: Set<string>
+  onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+}) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+        <tr className="border-b text-xs text-muted-foreground">
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
+          <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 && !loading && (
+          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">기타 세액공제 데이터가 없습니다.</td></tr>
+        )}
+        {items.map(row => {
+          const res       = results[row.calcNo]
+          const isRunning = running.has(row.calcNo)
+          const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
+          const diff      = ntsTotal != null ? ntsTotal - row.etcDdc : null
+          const inputTotal = row.lines.reduce((s, l) => s + l.ytsInput, 0)
+          return (
+            <Fragment key={row.calcNo}>
+              {/* 본행 = 기타 세액공제 합 */}
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <PersonMainCells item={row} onShowProc={onShowProc} />
+                <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
+                <td className="px-3 py-2 text-center whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">기타공제 소계</td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(inputTotal)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.etcDdc)}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex justify-center"><MatchIcon yts={ntsTotal != null ? row.etcDdc : null} nts={ntsTotal} /></span>
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
+              </tr>
+              {/* 세부행 = 항목별 대조 (YTS공제 ↔ NTS) */}
+              {row.lines.map((line, i) => {
+                const last   = i === row.lines.length - 1
+                const ntsVal = res ? (res.ntsMap[line.code] ?? null) : null
+                const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
+                return (
+                  <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
+                    <td colSpan={8} />
+                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                      {line.label}
+                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.ytsInput)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    <td className="px-3 py-1 text-center">
+                      <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
+                    </td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${ldiff != null && ldiff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/40"}`}>
+                      {ldiff == null ? "—" : ldiff === 0 ? "0" : (ldiff > 0 ? "+" : "") + ldiff.toLocaleString("ko-KR")}
+                    </td>
+                    <td colSpan={2} />
                   </tr>
                 )
               })}
@@ -1017,7 +1153,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 연금계좌 세액공제 소계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${diff === 0 ? "bg-green-50/40" : diff != null ? "bg-yellow-50/40" : ""}`}>
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
