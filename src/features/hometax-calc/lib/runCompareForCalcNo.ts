@@ -70,6 +70,13 @@ function injectPensionVals(
   }
 }
 
+// ── 월세 PAY_WRK_MAIN.HOUSE_RENT → RENT_8750 가상컬럼 주입 (원본 지급총액) ──
+// NTS 8750 에 지급총액 전송 → NTS 가 한도(1000만)·공제율(총급여 15/17%)을 자체계산.
+// 공제대상(SP_HOUSE_RENT_AMT=한도후)이 아닌 원본을 보내 우리 한도로직까지 NTS가 독립검증. (2026-07-15 실측확정)
+function injectRentVals(houseRent: number, vals: Record<string, number>) {
+  if (houseRent > 0) vals["RENT_8750"] = houseRent
+}
+
 export interface CompareRunResult {
   calcNo: string
   yts: { totPayAmt: number; paymIncmTax: number; prodTaxAmt: number; resIncmTax: number; subIncmTax: number }
@@ -103,7 +110,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -132,6 +139,12 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     [calcNo]
   )
   injectPensionVals(penSpec, vals)
+
+  const [mainRow] = await ytsDb.query<{ HOUSE_RENT: number }>(
+    `SELECT HOUSE_RENT FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
+    [calcNo]
+  )
+  injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
 
   return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
 }

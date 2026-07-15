@@ -175,7 +175,7 @@ export const MAPPING_2025: MappingRow[] = [
 
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "결혼세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: false, note: "체크박스 고정 50만 — 전송방식(flag/useAmt) 실측 재확인" },
-  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "SP_HOUSE_RENT_AMT",   resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false },
+  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "PAY_WRK_MAIN.HOUSE_RENT(원본 지급총액) 주입 — NTS가 한도·공제율 자체계산(2026-07-15 실측확정)" },
   { group: "세액공제", ntsCode: "8753", label: "납세조합공제",     ytsCol: "RT_PTU",              valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "대상금액 컬럼 미확인 — 공제액 컬럼 사용" },
   { group: "세액공제", ntsCode: "8752", label: "주택차입금 이자세액", ytsCol: "RT_HBA",            valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "대상금액 컬럼 미확인" },
   { group: "세액공제", ntsCode: "8751", label: "외국납부세액",     ytsCol: "RT_FCG",              valueKey: "useAmt", rule: "value", status: "확정", send: false },
