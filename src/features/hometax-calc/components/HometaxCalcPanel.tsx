@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { PENSION_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/pension"
 import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
 
 const CUR_YEAR     = new Date().getFullYear()                          // 2026
@@ -132,10 +131,11 @@ interface PensionLine {
   code: string          // NTS amtClusCd (전송 코드)
   label: string         // 과학기술인/퇴직연금(IRP)/연금저축/ISA-퇴직/ISA-개인
   useAmt: number        // 전송 납입액 (PAY_WRK_PEN_SAVE_SPEC 코드별 합산)
+  ytsDdc: number        // YTS 항목별 세액공제액 (PEN_SAVE_SUB_AMT 코드별 합, NTS self 대조 기준)
 }
 interface PensionListItem {
   calcNo: string; nm: string; totPayAmt: number
-  penDdc: number        // YTS 연금계좌 세액공제 (=ΣRT_RSIGN_PEN_*, 비교 기준)
+  penDdc: number        // YTS 연금계좌 세액공제 합 (=Σ line.ytsDdc, 비교 기준)
   exhausted?: boolean; exhaustLabel?: string | null
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   lines: PensionLine[]
@@ -461,12 +461,19 @@ export function HometaxCalcPanel() {
     const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
     return ntsTotal - i.etcDdc !== 0
   }
+  // 연금계좌: 국세청 항목별 self(8701~8708) 합으로 대조 (etcHasDiff 동형)
+  function pensionHasDiff(i: PensionListItem): boolean {
+    const res = results[i.calcNo]
+    if (!res) return false
+    const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
+    return ntsTotal - i.penDdc !== 0
+  }
 
   const diffCount =
     tab === "gift"    ? giftItems.filter(giftHasDiff).length :
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
     tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
-    tab === "pension" ? pensionItems.filter(i => subtotalHasDiff(i, x => x.penDdc, PENSION_SUBTOTAL_CODE)).length :
+    tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
     tab === "etc"     ? etcItems.filter(etcHasDiff).length :
     allItems.filter(allHasDiff).length
 
@@ -476,7 +483,7 @@ export function HometaxCalcPanel() {
   const shownGiftItems    = showDiffOnly ? giftItems.filter(giftHasDiff) : giftItems
   const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)) : cardItems
   const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
-  const shownPensionItems = showDiffOnly ? pensionItems.filter(i => subtotalHasDiff(i, x => x.penDdc, PENSION_SUBTOTAL_CODE)) : pensionItems
+  const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
   const shownEtcItems     = showDiffOnly ? etcItems.filter(etcHasDiff) : etcItems
 
   return (
@@ -1119,9 +1126,10 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
 }
 
-// ── 연금계좌 비교 테이블 (본행 = 연금계좌 세액공제 소계 / 세부행 = 종류별 납입액) ──
-//   비교 기준: YTS 연금계좌 세액공제(=ΣRT_RSIGN_PEN_*) ↔ NTS 8706(연금계좌 총합).
-//   세부행은 "우리가 보낸 납입액"(입력)이며 종류별 공제는 NTS가 소계로만 반환하므로 대조 없음.
+// ── 연금계좌 비교 테이블 (본행 = 세액공제 합 / 세부행 = 종류별 self 대조) ──
+//   ★국세청이 항목별 self ddcAmt(8701~8708) 반환 → 세부행마다 YTS공제(계좌별 SUB 합) ↔ NTS(각 code) 직접대조.
+//   YTS 항목별 세액공제액 = PAY_WRK_PEN_SAVE_SPEC.PEN_SAVE_SUB_AMT 코드별 합(RT_ISA_PEN_AMT 단일컬럼 우회).
+//   ISA 8707/8708 도 계좌별로 분리 저장돼 각각 1:1 대조 가능(2026-07-15 실측확정).
 function PensionTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
   items: PensionListItem[]; loading: boolean
   results: Record<string, RowResult>; running: Set<string>
@@ -1157,12 +1165,12 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
         {items.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const ntsDdc    = res ? (res.ntsMap[PENSION_SUBTOTAL_CODE] ?? 0) : null
-          const diff      = ntsDdc != null ? ntsDdc - row.penDdc : null
+          const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
+          const diff      = ntsTotal != null ? ntsTotal - row.penDdc : null
           const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
           return (
             <Fragment key={row.calcNo}>
-              {/* 본행 = 연금계좌 세액공제 소계 */}
+              {/* 본행 = 연금계좌 세액공제 합 */}
               <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
@@ -1181,9 +1189,9 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">연금계좌공제 소계</td>
                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.penDdc)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
+                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
                 <td className="px-3 py-2 text-center">
-                  <span className="inline-flex justify-center"><MatchIcon yts={ntsDdc != null ? row.penDdc : null} nts={ntsDdc} /></span>
+                  <span className="inline-flex justify-center"><MatchIcon yts={ntsTotal != null ? row.penDdc : null} nts={ntsTotal} /></span>
                 </td>
                 <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
                   {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
@@ -1191,9 +1199,11 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
               </tr>
-              {/* 세부행 = 종류별 납입액 (입력) */}
+              {/* 세부행 = 종류별 self 대조 (전송 납입액 + YTS공제 ↔ NTS) */}
               {row.lines.map((line, i) => {
-                const last = i === row.lines.length - 1
+                const last   = i === row.lines.length - 1
+                const ntsVal = res ? (res.ntsMap[line.code] ?? null) : null
+                const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={8} />
@@ -1201,10 +1211,16 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                     </td>
-                    <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
-                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
-                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
-                    <td /><td /><td colSpan={2} />
+                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    <td className="px-3 py-1 text-center">
+                      <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
+                    </td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${ldiff != null && ldiff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/40"}`}>
+                      {ldiff == null ? "—" : ldiff === 0 ? "0" : (ldiff > 0 ? "+" : "") + ldiff.toLocaleString("ko-KR")}
+                    </td>
+                    <td colSpan={2} />
                   </tr>
                 )
               })}
@@ -1360,7 +1376,7 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
 
 // ── 매핑 현황(진도) 뷰 — MAPPING_2025 를 그대로 렌더(코드=화면 항상 동기) ──
 //   각 항목의 계약 5축(원천/IN/OUT/실측/전송)을 그룹별로 조회. 국세청 in-out 정리 진도판.
-const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌"])
+const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금"])
 // 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → 세액공제성 self → 없음(—)
 function outCodeOf(m: MappingRow): string {
   if (m.outCode) return m.outCode
@@ -1369,6 +1385,84 @@ function outCodeOf(m: MappingRow): string {
   // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 세액공제성 self
   if (OUT_GROUPS.has(m.group)) return m.ntsCode
   return "—"
+}
+
+// 소계형: 개별 입력행들이 하나의 소계 코드로 결과(ddcAmt)를 받는 그룹. 여기 매핑되면 self OUT 아님.
+//   코드=화면 동기: outCode/CARD_·MEDI_ prefix(=payload 실측근거)에서만 파생, 그룹명 하드코딩 금지.
+//   ytsOut = 실제 비교탭이 대조 기준으로 읽는 YTS 물리 공제컬럼(카드=OTO_CARD_ETC, 의료=RT_MEDI_AMT).
+const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
+  [CARD_SUBTOTAL_CODE, { label: "카드소득공제 소계", ytsOut: "OTO_CARD_ETC" }],
+  [MEDI_SUBTOTAL_CODE, { label: "의료비 세액공제 소계", ytsOut: "RT_MEDI_AMT" }],
+])
+
+// yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
+//   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.
+function ytsInOf(m: MappingRow): string {
+  const c = m.ytsCol
+  if (!c) return "—"
+  if (c.startsWith("CARD_")) return "CALC_PROC_CARD"       // JSON 가~아 사용액
+  if (c.startsWith("MEDI_")) return "CALC_PROC_MEDI"       // JSON 대상자별 지출금액
+  if (c.startsWith("PEN_"))  return "PEN_SAVE_PMT_AMT"     // PAY_WRK_PEN_SAVE_SPEC 납입액
+  if (c.startsWith("GIFT_")) return "GIFT_ABLE_SUB_AMT"    // PAY_WRK_GIFT_ADJ 공제대상금액(전송값)
+  if (c.startsWith("RENT_")) return "HOUSE_RENT"           // PAY_WRK_MAIN 월세 지급총액(원본)
+  return c
+}
+// yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).
+function ytsOutOf(m: MappingRow): string {
+  if (m.group === "기부금") return "GIFT_SUB_AMT"          // GiftTable 대조 기준
+  return m.resultCol ?? "—"
+}
+
+// 현황탭 렌더 단위: self형/입력전용은 매핑행 1:1, 소계형은 개별행 + 합성 소계행.
+//   IN/OUT을 국세청(nts)·우리(yts) 두 축으로 표시. nts IN=valueKey, nts OUT=ddcAmt,
+//   yts IN=ytsCol(전송 원천 컬럼), yts OUT=resultCol(YTS 자체 공제액 컬럼).
+interface StatusRow {
+  key:        string
+  label:      string
+  code:       string
+  ntsIn:      string   // 국세청에 넣는 필드키 (useAmt / incDdcNfpCnt / ddcTrgtAmt) — 소계행은 "—"
+  ntsOut:     string   // 국세청이 돌려주는 값 (ddcAmt) — 소계 멤버/입력전용은 "—"
+  ytsIn:      string   // 전송 원천 YTS39 컬럼 (ytsCol) — 소계행은 "—"
+  ytsOut:     string   // YTS39 자체 공제액 컬럼 (resultCol) — 소계 멤버는 소계행으로 모음
+  status:     string
+  isSubtotal: boolean
+}
+
+// 한 그룹의 매핑행 → 렌더행. self형=IN·OUT 한 행, 소계형=개별행(OUT —) + 소계행(IN —, OUT).
+function statusRowsOf(rows: MappingRow[]): StatusRow[] {
+  const out: StatusRow[] = []
+  const subCodes: string[] = []   // 이 그룹에 등장한 소계 코드(등장순, 중복제거)
+  for (const m of rows) {
+    const oc    = outCodeOf(m)
+    const isSub = SUBTOTAL_CODES.has(oc)
+    if (isSub && !subCodes.includes(oc)) subCodes.push(oc)
+    out.push({
+      key:   m.ntsCode + m.label,
+      label: m.label,
+      code:  m.ntsCode,
+      ntsIn: m.valueKey,
+      ntsOut: oc === "—" || isSub ? "—" : "ddcAmt",   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
+      ytsIn:  ytsInOf(m),
+      ytsOut: isSub ? "—" : ytsOutOf(m),               // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      status: m.status,
+      isSubtotal: false,
+    })
+  }
+  for (const code of subCodes) {
+    const meta = SUBTOTAL_CODES.get(code)!
+    out.push({
+      key:   "sub-" + code,
+      label: meta.label,
+      code,
+      ntsIn: "—",
+      ntsOut: "ddcAmt",
+      ytsIn:  "—",
+      ytsOut: meta.ytsOut,
+      status: "확정",   // 소계 대조 = 실측확정된 부분
+      isSubtotal: true,
+    })
+  }
+  return out
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1390,53 +1484,66 @@ function MappingStatusView() {
   const totSend = MAPPING_2025.filter(m => m.send).length
 
   return (
-    <div className="overflow-auto h-full p-3 space-y-5">
-      <div className="text-xs text-muted-foreground">
+    <div className="flex flex-col h-full">
+      <div className="text-xs text-muted-foreground px-3 pt-3 pb-2 shrink-0">
         전체 {totCnt}항목 · 확정 {totConf} · 전송 {totSend} — 국세청 in-out 정리 진도 (MAPPING_2025 자동 렌더)
       </div>
-      {groups.map(g => {
-        const conf = g.rows.filter(r => r.status === "확정").length
-        const sent = g.rows.filter(r => r.send).length
-        const pct  = Math.round((conf / g.rows.length) * 100)
-        return (
-          <section key={g.name}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <h3 className="text-sm font-semibold whitespace-nowrap">{g.name}</h3>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">확정 {conf}/{g.rows.length} · 전송 {sent}</span>
-              <div className="h-1.5 bg-muted rounded overflow-hidden w-full max-w-[160px]">
-                <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-            <div className="border rounded-md overflow-hidden">
-              <table className="w-full text-xs border-collapse">
-                <thead className="bg-muted/60">
-                  <tr className="text-[10px] text-muted-foreground text-left">
-                    <th className="px-2 py-1.5 font-medium">항목</th>
-                    <th className="px-2 py-1.5 font-medium">IN (넣는 code)</th>
-                    <th className="px-2 py-1.5 font-medium">OUT (받는 code)</th>
-                    <th className="px-2 py-1.5 font-medium">값키</th>
-                    <th className="px-2 py-1.5 font-medium text-center">확정</th>
+      {/* 전체 하나의 그리드 — table-fixed + colgroup 으로 그룹이 바뀌어도 열이 같은 위치에서 시작 */}
+      <div className="overflow-auto flex-1 px-3 pb-3">
+        <table className="w-full border-collapse table-fixed text-xs">
+          <colgroup>
+            <col className="w-56" />  {/* 항목 (고정·truncate) */}
+            <col className="w-14" />  {/* nts코드 */}
+            <col className="w-24" />  {/* nts IN */}
+            <col className="w-16" />  {/* nts OUT */}
+            <col />                   {/* yts IN (가변 흡수) */}
+            <col />                   {/* yts OUT (가변 흡수) */}
+            <col className="w-12" />  {/* 확정 */}
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-muted">
+            <tr className="text-[10px] text-muted-foreground text-left">
+              <th className="px-2 py-1.5 border-b border-r font-medium">항목</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium">nts코드</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium">nts IN</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium">nts OUT</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium">yts IN</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium">yts OUT</th>
+              <th className="px-2 py-1.5 border-b font-medium text-center">확정</th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.flatMap(g => {
+              const conf = g.rows.filter(r => r.status === "확정").length
+              const sent = g.rows.filter(r => r.send).length
+              const pct  = Math.round((conf / g.rows.length) * 100)
+              return [
+                <tr key={`h-${g.name}`} className="bg-muted/70 border-y">
+                  <td colSpan={7} className="px-2 py-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">확정 {conf}/{g.rows.length} · 전송 {sent}</span>
+                      <div className="h-1.5 bg-muted rounded overflow-hidden w-full max-w-[160px]">
+                        <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  </td>
+                </tr>,
+                ...statusRowsOf(g.rows).map(r => (
+                  <tr key={r.key} className={`border-t ${r.isSubtotal ? "bg-muted/40" : ""}`}>
+                    <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
+                    <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>{r.ntsIn}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] ${r.ntsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{r.ntsOut}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-muted-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`} title={r.ytsOut}>{r.ytsOut}</td>
+                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} /></td>
                   </tr>
-                </thead>
-                <tbody>
-                  {g.rows.map(m => {
-                    const out = outCodeOf(m)
-                    return (
-                      <tr key={m.ntsCode + m.label} className="border-t">
-                        <td className="px-2 py-1 whitespace-nowrap">{m.label}</td>
-                        <td className="px-2 py-1 font-mono text-[11px] font-semibold">{m.ntsCode}</td>
-                        <td className={`px-2 py-1 font-mono text-[11px] ${out === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{out}</td>
-                        <td className="px-2 py-1 font-mono text-[10px] text-muted-foreground">{m.valueKey}</td>
-                        <td className="px-2 py-1 text-center whitespace-nowrap"><StatusBadge status={m.status} /></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )
-      })}
+                )),
+              ]
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
