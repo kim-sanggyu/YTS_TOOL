@@ -168,8 +168,9 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
     if (item) (item as Record<string, string>)[field] = String(val)
   }
 
-  // 매핑표에서 send:true 인 행만 값 주입. 자녀(8763)·부양가족(8004~8009)은 incDdcNfpCnt 로 전송되고,
-  // 국세청이 8004~8009(유형별)를 보고 자녀공제(8763)를 자체산출한다. (2026-07-16 실측확정)
+  // 매핑표에서 send:true 인 행만 값 주입(incDdcNfpCnt/useAmt 등).
+  //   자녀공제(8763): 부양가족 8004~8009(유형별) + 8763 총인원 둘 다 필요(유형별만으론 미산출).
+  //   출산입양(8761): 순번별 8764~8766 이 산출(총인원 전송은 잉여). (2026-07-17 실측 정정)
   for (const m of MAPPING_2025) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송

@@ -55,7 +55,8 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "추정", send: true },
   { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "추정", send: true },
   { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "국세청은 8004~8009 유형별로 받음 → 미전송(2026-07-16 실측)" },
-  // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼). 국세청이 이걸로 자녀공제(8763) 자동산출.
+  // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼) = 부양가족 인적공제.
+  //   ※자녀공제(8763)는 유형별만으론 산출 안 됨(별도 총인원 필요). 출산입양(8761)은 순번별 8764~66이 산출. (2026-07-17 실측)
   { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
   { group: "인적공제", ntsCode: "8005", label: "부양가족-직계비속(자녀·손자녀·입양)", ytsCol: "FAM_8005", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-050" },
   { group: "인적공제", ntsCode: "8006", label: "부양가족-직계비속 그외",          ytsCol: "FAM_8006", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-055" },
@@ -130,16 +131,17 @@ export const MAPPING_2025: MappingRow[] = [
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: true, note: "혼인공제는 국세청 미검산(입력 ddcAmt 그대로 인정). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=RT_MRRG) → 결정세액에만 반영. tab 미부여=항목대조 제외(고정 50만·대조실익 없음). 2026-07-16 실측" },
-  { group: "세액공제", ntsCode: "8763", label: "자녀세액공제",  ytsCol: "RT_HWC_CNT",     resultCol: "RT_HWC_AMT",     valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "부양가족 8004~8009 유형별 전송 시 국세청 자동산출(2026-07-16 실측)" },
-  { group: "세액공제", ntsCode: "8761", label: "출산·입양",     ytsCol: "RT_PER_CHI_CNT", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "순번별 8764~8766 전송 시 국세청 자동산출(2026-07-16 실측)" },
-  // 출산·입양 순번별 (PAY_WRK_FMLY.PER_CHI_YN 3/5/7 = 첫째/둘째/셋째). 국세청이 이걸로 8761 자동산출.
-  { group: "세액공제", ntsCode: "8764", label: "출산입양-첫째",     ytsCol: "FAM_8764", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=3(30만) FMLY_RELN 550-050. OUT은 8761에 합산" },
-  { group: "세액공제", ntsCode: "8765", label: "출산입양-둘째",     ytsCol: "FAM_8765", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=5(50만). OUT은 8761에 합산" },
-  { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=7(70만). OUT은 8761에 합산" },
+  { group: "세액공제", ntsCode: "8763", label: "자녀세액공제",  ytsCol: "RT_HWC_CNT",     resultCol: "RT_HWC_AMT",     valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "★총인원(RT_HWC_CNT) 필수 전송. 8004~8009(유형별)만으론 8763=0 → 유형별+총인원 둘 다 있어야 산출(8~20세 조건이라 국세청이 직계비속 수만으론 미판단). 2026-07-17 실측 정정" },
+  // ── 출산·입양(8761) = 소계형(카드8430·의료8726 동형): 순번별 8764~8766(개별 IN)을 국세청이 합산해 8761(소계 OUT)로 회신 ──
+  //   ★8761 자체엔 값 전송 안 함 — 총인원(RT_PER_CHI_CNT) 전송은 국세청이 무시하는 잉여(2026-07-17 실측). 8761은 SUBTOTAL_CODES(소계코드)로만 존재.
+  //   순번별 (PAY_WRK_FMLY.PER_CHI_YN 3/5/7 = 첫째/둘째/셋째, 모두 FMLY_RELN 550-050). 8761 소계 OUT ↔ YTS RT_PER_CHI_AMT 대조.
+  { group: "세액공제", ntsCode: "8764", label: "출산입양-첫째",     ytsCol: "FAM_8764", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=3(30만). OUT은 소계 8761에 합산" },
+  { group: "세액공제", ntsCode: "8765", label: "출산입양-둘째",     ytsCol: "FAM_8765", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=5(50만). OUT은 소계 8761에 합산" },
+  { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=7(70만). OUT은 소계 8761에 합산" },
 
   // ── 세액공제: 보험료 (전송=공제대상금액 SPCL_*) ────────────────────────────
-  { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "추정", send: true },
-  { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액(SPCL_IF_GRT_INSU_AMT, 100만 capped) 전송 → NTS self OUT ddcAmt=12% ↔ RT_IF_GRT_INSU_AMT 원단위 일치. 지출총액 컬럼 없음, 한도 정액이라 공제대상 전송이 정답(2026-07-17 실측확정)" },
+  { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액 전송 → NTS self OUT ddcAmt=15% ↔ RT_IF_HDC_PERS_INSU_AMT 일치(X202600325=66,229). 8710과 독립 self, X2026 대상 3명(2026-07-17 실측확정)" },
 
   // ── 세액공제: 교육비 (ddcTrgtAmt, 구분별 분할) ─────────────────────────────
   { group: "세액공제", ntsCode: "8730", label: "교육비-소득자 본인", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "8730~8734 구분별 분할 — YTS 단일 공제대상컬럼이라 분리 불가" },

@@ -77,8 +77,9 @@ function injectRentVals(houseRent: number, vals: Record<string, number>) {
   if (houseRent > 0) vals["RENT_8750"] = houseRent
 }
 
-// ── 부양가족 유형별(8004~8009) PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼 주입 ──
-// 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받아 자녀공제(8763) 등을 자체산출. (2026-07-16 실측확정)
+// ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
+// 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
+// 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
 async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   const [r] = await ytsDb.query<Record<string, number>>(`
     SELECT

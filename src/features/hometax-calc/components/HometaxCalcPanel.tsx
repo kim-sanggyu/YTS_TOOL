@@ -1407,6 +1407,7 @@ function outCodeOf(m: MappingRow): string {
 const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   [CARD_SUBTOTAL_CODE, { label: "카드소득공제 소계", ytsOut: "OTO_CARD_ETC" }],
   [MEDI_SUBTOTAL_CODE, { label: "의료비 세액공제 소계", ytsOut: "RT_MEDI_AMT" }],
+  ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
 ])
 
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
@@ -1419,6 +1420,7 @@ function ytsInOf(m: MappingRow): string {
   if (c.startsWith("PEN_"))  return "PEN_SAVE_PMT_AMT"     // PAY_WRK_PEN_SAVE_SPEC 납입액
   if (c.startsWith("GIFT_")) return "GIFT_ABLE_SUB_AMT"    // PAY_WRK_GIFT_ADJ 공제대상금액(전송값)
   if (c.startsWith("RENT_")) return "HOUSE_RENT"           // PAY_WRK_MAIN 월세 지급총액(원본)
+  if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"         // 부양가족 유형별·출산 순번별 인원 집계
   return c
 }
 // yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).
@@ -1445,11 +1447,10 @@ interface StatusRow {
 // 한 그룹의 매핑행 → 렌더행. self형=IN·OUT 한 행, 소계형=개별행(OUT —) + 소계행(IN —, OUT).
 function statusRowsOf(rows: MappingRow[]): StatusRow[] {
   const out: StatusRow[] = []
-  const subCodes: string[] = []   // 이 그룹에 등장한 소계 코드(등장순, 중복제거)
-  for (const m of rows) {
+  const emitted = new Set<string>()   // 소계행을 이미 낸 코드(중복 방지)
+  rows.forEach((m, i) => {
     const oc    = outCodeOf(m)
     const isSub = SUBTOTAL_CODES.has(oc)
-    if (isSub && !subCodes.includes(oc)) subCodes.push(oc)
     // 혼인공제(8790): 특수전송(incDdcNfpCnt=1+ddcAmt 직접, 국세청 미검산) — 결정세액만 반영, 항목대조 안 함
     const isMrrg = m.ntsCode === "8790"
     out.push({
@@ -1463,21 +1464,23 @@ function statusRowsOf(rows: MappingRow[]): StatusRow[] {
       status: m.status,
       isSubtotal: false,
     })
-  }
-  for (const code of subCodes) {
-    const meta = SUBTOTAL_CODES.get(code)!
-    out.push({
-      key:   "sub-" + code,
-      label: meta.label,
-      code,
-      ntsIn: "—",
-      ntsOut: "ddcAmt",
-      ytsIn:  "—",
-      ytsOut: meta.ytsOut,
-      status: "확정",   // 소계 대조 = 실측확정된 부분
-      isSubtotal: true,
-    })
-  }
+    // 소계행은 해당 소계의 "마지막 멤버" 바로 뒤에 삽입 → 개별행 옆에 붙음(카드·의료는 그룹말미라 위치 동일, 출산입양은 세액공제 그룹 중간이라 8766 뒤로 이동)
+    if (isSub && !emitted.has(oc) && !rows.slice(i + 1).some(r => outCodeOf(r) === oc)) {
+      emitted.add(oc)
+      const meta = SUBTOTAL_CODES.get(oc)!
+      out.push({
+        key:   "sub-" + oc,
+        label: meta.label,
+        code:  oc,
+        ntsIn: "—",
+        ntsOut: "ddcAmt",
+        ytsIn:  "—",
+        ytsOut: meta.ytsOut,
+        status: "확정",   // 소계 대조 = 실측확정된 부분
+        isSubtotal: true,
+      })
+    }
+  })
   return out
 }
 
@@ -1513,7 +1516,7 @@ function MappingStatusView() {
             {/* nts코드 */}
             <col className="w-14" />
             {/* nts IN */}
-            <col className="w-24" />
+            <col className="w-40" />
             {/* nts OUT */}
             <col className="w-16" />
             {/* yts IN (가변 흡수) */}
@@ -1536,19 +1539,10 @@ function MappingStatusView() {
           </thead>
           <tbody>
             {groups.flatMap(g => {
-              const conf = g.rows.filter(r => r.status === "확정").length
-              const sent = g.rows.filter(r => r.send).length
-              const pct  = Math.round((conf / g.rows.length) * 100)
               return [
                 <tr key={`h-${g.name}`} className="bg-muted/70 border-y">
                   <td colSpan={7} className="px-2 py-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
-                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">확정 {conf}/{g.rows.length} · 전송 {sent}</span>
-                      <div className="h-1.5 bg-muted rounded overflow-hidden w-full max-w-[160px]">
-                        <div className="h-full bg-green-500" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
+                    <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
                   </td>
                 </tr>,
                 ...statusRowsOf(g.rows).map(r => (
