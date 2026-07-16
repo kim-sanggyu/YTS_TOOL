@@ -77,6 +77,29 @@ function injectRentVals(houseRent: number, vals: Record<string, number>) {
   if (houseRent > 0) vals["RENT_8750"] = houseRent
 }
 
+// ── 부양가족 유형별(8004~8009) PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼 주입 ──
+// 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받아 자녀공제(8763) 등을 자체산출. (2026-07-16 실측확정)
+async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
+  const [r] = await ytsDb.query<Record<string, number>>(`
+    SELECT
+      SUM(CASE WHEN FMLY_RELN IN ('550-020','550-030') THEN 1 ELSE 0 END) AS FAM_8004,
+      SUM(CASE WHEN FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8005,
+      SUM(CASE WHEN FMLY_RELN = '550-055' THEN 1 ELSE 0 END) AS FAM_8006,
+      SUM(CASE WHEN FMLY_RELN = '550-060' THEN 1 ELSE 0 END) AS FAM_8007,
+      SUM(CASE WHEN FMLY_RELN = '550-070' THEN 1 ELSE 0 END) AS FAM_8008,
+      SUM(CASE WHEN FMLY_RELN = '550-080' THEN 1 ELSE 0 END) AS FAM_8009,
+      SUM(CASE WHEN PER_CHI_YN = '3' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8764,
+      SUM(CASE WHEN PER_CHI_YN = '5' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8765,
+      SUM(CASE WHEN PER_CHI_YN = '7' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8766
+    FROM YTS39.PAY_WRK_FMLY
+    WHERE CALC_NO = :1 AND BAS_SUB_YN = 'Y'`, [calcNo])
+  if (!r) return
+  for (const code of ["8004", "8005", "8006", "8007", "8008", "8009", "8764", "8765", "8766"]) {
+    const n = Number(r[`FAM_${code}`] ?? 0)
+    if (n > 0) vals[`FAM_${code}`] = n
+  }
+}
+
 export interface CompareRunResult {
   calcNo: string
   yts: { totPayAmt: number; paymIncmTax: number; prodTaxAmt: number; resIncmTax: number; subIncmTax: number }
@@ -110,7 +133,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -145,6 +168,8 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     [calcNo]
   )
   injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
+
+  await injectFamilyVals(calcNo, vals)
 
   return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
 }

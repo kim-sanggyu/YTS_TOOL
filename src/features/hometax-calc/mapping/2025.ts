@@ -54,7 +54,14 @@ export const MAPPING_2025: MappingRow[] = [
   // ── 인적공제 (인원, incDdcNfpCnt) ──────────────────────────────────────────
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "추정", send: true },
   { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "추정", send: true },
-  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족", ytsCol: "BASC_SUB_FAMILY_CNT", valueKey: "incDdcNfpCnt", rule: "value",  status: "추정", send: true },
+  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "국세청은 8004~8009 유형별로 받음 → 미전송(2026-07-16 실측)" },
+  // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼). 국세청이 이걸로 자녀공제(8763) 자동산출.
+  { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
+  { group: "인적공제", ntsCode: "8005", label: "부양가족-직계비속(자녀·손자녀·입양)", ytsCol: "FAM_8005", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-050" },
+  { group: "인적공제", ntsCode: "8006", label: "부양가족-직계비속 그외",          ytsCol: "FAM_8006", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-055" },
+  { group: "인적공제", ntsCode: "8007", label: "부양가족-형제자매",              ytsCol: "FAM_8007", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-060" },
+  { group: "인적공제", ntsCode: "8008", label: "부양가족-수급자",                ytsCol: "FAM_8008", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-070" },
+  { group: "인적공제", ntsCode: "8009", label: "부양가족-위탁아동",              ytsCol: "FAM_8009", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-080" },
   { group: "인적공제", ntsCode: "8101", label: "추가공제-경로우대", ytsCol: "ADD_SUB_OAT_CNT",     valueKey: "incDdcNfpCnt", rule: "value",  status: "추정", send: true },
   { group: "인적공제", ntsCode: "8102", label: "추가공제-장애인",   ytsCol: "ADD_SUB_HDC_PERS_CNT",valueKey: "incDdcNfpCnt", rule: "value",  status: "추정", send: true },
   { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    valueKey: "incDdcNfpCnt", rule: "flag",   status: "추정", send: true },
@@ -122,12 +129,31 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약",       ytsCol: "RT_TAX_TREATY",     valueKey: "useAmt", rule: "value", status: "추정", send: false },
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
-  { group: "세액공제", ntsCode: "8763", label: "자녀세액공제",  ytsCol: "RT_HWC_CNT",     resultCol: "RT_HWC_AMT",     valueKey: "incDdcNfpCnt", rule: "value", status: "추정", send: true },
-  { group: "세액공제", ntsCode: "8761", label: "출산·입양",     ytsCol: "RT_PER_CHI_CNT", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "추정", send: true },
+  { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: true, note: "혼인공제는 국세청 미검산(입력 ddcAmt 그대로 인정). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=RT_MRRG) → 결정세액에만 반영. tab 미부여=항목대조 제외(고정 50만·대조실익 없음). 2026-07-16 실측" },
+  { group: "세액공제", ntsCode: "8763", label: "자녀세액공제",  ytsCol: "RT_HWC_CNT",     resultCol: "RT_HWC_AMT",     valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "부양가족 8004~8009 유형별 전송 시 국세청 자동산출(2026-07-16 실측)" },
+  { group: "세액공제", ntsCode: "8761", label: "출산·입양",     ytsCol: "RT_PER_CHI_CNT", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "순번별 8764~8766 전송 시 국세청 자동산출(2026-07-16 실측)" },
+  // 출산·입양 순번별 (PAY_WRK_FMLY.PER_CHI_YN 3/5/7 = 첫째/둘째/셋째). 국세청이 이걸로 8761 자동산출.
+  { group: "세액공제", ntsCode: "8764", label: "출산입양-첫째",     ytsCol: "FAM_8764", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=3(30만) FMLY_RELN 550-050. OUT은 8761에 합산" },
+  { group: "세액공제", ntsCode: "8765", label: "출산입양-둘째",     ytsCol: "FAM_8765", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=5(50만). OUT은 8761에 합산" },
+  { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "—", note: "PER_CHI_YN=7(70만). OUT은 8761에 합산" },
 
   // ── 세액공제: 보험료 (전송=공제대상금액 SPCL_*) ────────────────────────────
   { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "추정", send: true },
   { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
+
+  // ── 세액공제: 교육비 (ddcTrgtAmt, 구분별 분할) ─────────────────────────────
+  { group: "세액공제", ntsCode: "8730", label: "교육비-소득자 본인", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "8730~8734 구분별 분할 — YTS 단일 공제대상컬럼이라 분리 불가" },
+  { group: "세액공제", ntsCode: "8731", label: "교육비-미취학아동",  ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
+  { group: "세액공제", ntsCode: "8732", label: "교육비-초중고",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
+  { group: "세액공제", ntsCode: "8733", label: "교육비-대학교",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
+  { group: "세액공제", ntsCode: "8734", label: "교육비-장애인",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
+  
+  // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
+  { group: "세액공제", ntsCode: "8753", label: "납세조합공제",     ytsCol: "RT_PTU",              valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인 — 공제액 컬럼 사용" },
+  { group: "세액공제", ntsCode: "8752", label: "주택차입금 이자세액", ytsCol: "RT_HBA",            valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인" },
+  { group: "세액공제", ntsCode: "8751", label: "외국납부세액",     ytsCol: "RT_FCG",              valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "PAY_WRK_MAIN.HOUSE_RENT(원본 지급총액) 주입 — NTS가 한도·공제율 자체계산(2026-07-15 실측확정)" },
+
 
   // ── 세액공제: 의료비 — CALC_PROC_MEDI(JSON) 대상자별 "지출금액"을 MEDI_{코드} 가상컬럼으로 주입 ──
   //   NTS 8726(의료비집계)에 세액공제 총액 반환 → YTS 의료비_공제금액(=RT_MEDI_AMT)과 대조. (2026-07-12 실측확정)
@@ -137,16 +163,8 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
-  // ── 세액공제: 교육비 (ddcTrgtAmt, 구분별 분할) ─────────────────────────────
-  { group: "세액공제", ntsCode: "8730", label: "교육비-소득자 본인", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "8730~8734 구분별 분할 — YTS 단일 공제대상컬럼이라 분리 불가" },
-  { group: "세액공제", ntsCode: "8731", label: "교육비-미취학아동",  ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8732", label: "교육비-초중고",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8733", label: "교육비-대학교",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8734", label: "교육비-장애인",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-
   // ── 기부금 당해분 (PAY_WRK_GIFT → GIFT_{코드} 가상컬럼으로 주입) ──
-  { group: "기부금", ntsCode: "8740", label: "정치자금기부금-10만이하",    ytsCol: "GIFT_8740", valueKey: "useAmt", rule: "value", status: "확정", send: true,  note: "route에서 10만 경계 분리" },
-  { group: "기부금", ntsCode: "8741", label: "정치자금기부금-10만초과",    ytsCol: "GIFT_8741", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "NTS 내부 분리 코드 — 8740에 전체 금액 전송하면 NTS가 자동 분리, 별도 전송 시 이중계산" },
+  { group: "기부금", ntsCode: "8740", label: "정치자금기부금",    ytsCol: "GIFT_8740", valueKey: "useAmt", rule: "value", status: "확정", send: true,  note: "전액 8740 전송 → NTS가 10만 이하/초과 자동분리(8741 별도전송 금지). OUT self 8740=전체공제액(10만이하 100/110+초과 15%), 8741=10만이하 소계. 실측확정 2026-07-16" },
   { group: "기부금", ntsCode: "8783", label: "고향사랑기부금(일반)",       ytsCol: "GIFT_8783", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "기부금", ntsCode: "8784", label: "고향사랑기부금(특별재난)",   ytsCol: "GIFT_8784", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "기부금", ntsCode: "8743", label: "특례(법정)기부금",           ytsCol: "GIFT_8743", resultCol: "RT_DON_LAW",    valueKey: "useAmt", rule: "value", status: "확정", send: true },
@@ -171,7 +189,7 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "기부금", ntsCode: "8835", label: "일반기부금(종교외) 이월(-5년)", ytsCol: "GIFT_8835", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 세액공제: 연금계좌 — PAY_WRK_PEN_SAVE_SPEC 납입액(PEN_SAVE_PMT_AMT)을 PEN_{코드} 가상컬럼으로 주입 ──
-  //   PEN_SAVE_CLS→코드 매핑(mapping/pension.ts). NTS 8706(연금계좌 총합)에 세액공제 반환. (2026-07-12 실측확정)
+  //   PEN_SAVE_CLS→코드 매핑(mapping/pension.ts). 각 연금계좌 코드로 납입액 전송·항목별 self 대조. (2026-07-12 실측확정)
   //   ★납입액 전송(공제대상 아님) — NTS가 한도·공제율 자체계산. ISA도 전환액 원본이라 ×10 불필요.
   //   OUT = 각 code self ddcAmt(항목별 공제금액, 실측확정 2026-07-15). 국세청이 한도·공제율(12%) 자체계산.
   //   집계 OUT 8705(ISA합)·8706(총합)은 국세청이 별도로도 반환(IN 없는 결과전용) — 카탈로그 반영 예정.
@@ -181,12 +199,7 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8707" },
   { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8708" },
 
-  // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
-  { group: "세액공제", ntsCode: "8790", label: "결혼세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "추정", send: false, note: "체크박스 고정 50만 — 전송방식(flag/useAmt) 실측 재확인" },
-  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "PAY_WRK_MAIN.HOUSE_RENT(원본 지급총액) 주입 — NTS가 한도·공제율 자체계산(2026-07-15 실측확정)" },
-  { group: "세액공제", ntsCode: "8753", label: "납세조합공제",     ytsCol: "RT_PTU",              valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인 — 공제액 컬럼 사용" },
-  { group: "세액공제", ntsCode: "8752", label: "주택차입금 이자세액", ytsCol: "RT_HBA",            valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인" },
-  { group: "세액공제", ntsCode: "8751", label: "외국납부세액",     ytsCol: "RT_FCG",              valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  
 ]
 
 /** L03 응답 계산흐름 표시용 결과코드 (표시 순서) — 입력 아님, 파싱/추적용 */
@@ -213,6 +226,7 @@ export function mappingSelectCols(): string[] {
  *  const1=1, flag=원천값>0이면 1, value=원천값 그대로. */
 export function mappingSentValue(m: MappingRow, vals: Record<string, number>): number {
   if (!m.send) return 0
+  if (m.ntsCode === "8790") return m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0   // 혼인공제 특수: ddcAmt 직접전송(=RT_MRRG)
   if (m.rule === "const1") return 1
   const raw = m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0
   return m.rule === "flag" ? (raw > 0 ? 1 : 0) : raw

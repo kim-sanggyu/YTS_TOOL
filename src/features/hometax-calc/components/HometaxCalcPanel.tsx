@@ -5,6 +5,7 @@ import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText } 
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
@@ -566,8 +567,20 @@ export function HometaxCalcPanel() {
                 : "전체 실행"}
             </Button>
             {batchFile && !batchRunning && (
-              <span className="flex items-center gap-1 text-xs text-green-600" title={batchFile}>
-                <FileDown className="h-3.5 w-3.5" />저장됨: {batchFile}
+              <span
+                className="flex items-center gap-1 text-xs text-green-600 cursor-pointer hover:underline"
+                title={`${batchFile}\n(클릭 시 탐색기에서 위치 열기)`}
+                onClick={() => {
+                  fetch("/api/tools/hometax-calc/reveal-file", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ path: batchFile }),
+                  })
+                    .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "열기 실패") })
+                    .catch(e => toast.error(e instanceof Error ? e.message : "열기 실패"))
+                }}
+              >
+                <FileDown className="h-3.5 w-3.5" />결과파일
               </span>
             )}
             {batchError && (
@@ -1336,11 +1349,12 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
                 {res.inputs.map(inp => {
                   const zero   = inp.sent === 0
                   const ntsVal = res.ntsMap[inp.code]
+                  const isMrrg = inp.code === "8790"   // 혼인공제: 특수전송(incDdcNfpCnt=1+ddcAmt 직접)
                   return (
                     <tr key={inp.code} className={`border-t ${zero ? "text-muted-foreground/40" : "bg-blue-50/30"}`}>
                       <td className="px-2 py-1 font-mono">{inp.code}</td>
                       <td className="px-2 py-1">{inp.label}</td>
-                      <td className="px-2 py-1 font-mono text-[10px]">{inp.valueKey}</td>
+                      <td className="px-2 py-1 font-mono text-[10px]">{isMrrg ? "incDdcNfpCnt+ddcAmt" : inp.valueKey}</td>
                       <td className="px-2 py-1 font-mono text-[10px]">{inp.ytsCol ?? "—"}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{zero ? "0" : inp.sent.toLocaleString("ko-KR")}</td>
                       <td className="px-2 py-1 text-right tabular-nums">{ntsVal == null ? "—" : ntsVal.toLocaleString("ko-KR")}</td>
@@ -1436,14 +1450,16 @@ function statusRowsOf(rows: MappingRow[]): StatusRow[] {
     const oc    = outCodeOf(m)
     const isSub = SUBTOTAL_CODES.has(oc)
     if (isSub && !subCodes.includes(oc)) subCodes.push(oc)
+    // 혼인공제(8790): 특수전송(incDdcNfpCnt=1+ddcAmt 직접, 국세청 미검산) — 결정세액만 반영, 항목대조 안 함
+    const isMrrg = m.ntsCode === "8790"
     out.push({
       key:   m.ntsCode + m.label,
       label: m.label,
       code:  m.ntsCode,
-      ntsIn: m.valueKey,
-      ntsOut: oc === "—" || isSub ? "—" : "ddcAmt",   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
+      ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : m.valueKey,
+      ntsOut: isMrrg ? "—" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
       ytsIn:  ytsInOf(m),
-      ytsOut: isSub ? "—" : ytsOutOf(m),               // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      ytsOut: isMrrg ? "—" : (isSub ? "—" : ytsOutOf(m)),               // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       isSubtotal: false,
     })
@@ -1492,13 +1508,20 @@ function MappingStatusView() {
       <div className="overflow-auto flex-1 px-3 pb-3">
         <table className="w-full border-collapse table-fixed text-xs">
           <colgroup>
-            <col className="w-56" />  {/* 항목 (고정·truncate) */}
-            <col className="w-14" />  {/* nts코드 */}
-            <col className="w-24" />  {/* nts IN */}
-            <col className="w-16" />  {/* nts OUT */}
-            <col />                   {/* yts IN (가변 흡수) */}
-            <col />                   {/* yts OUT (가변 흡수) */}
-            <col className="w-12" />  {/* 확정 */}
+            {/* 항목 (고정·truncate) */}
+            <col className="w-56" />
+            {/* nts코드 */}
+            <col className="w-14" />
+            {/* nts IN */}
+            <col className="w-24" />
+            {/* nts OUT */}
+            <col className="w-16" />
+            {/* yts IN (가변 흡수) */}
+            <col />
+            {/* yts OUT (가변 흡수) */}
+            <col />
+            {/* 확정 */}
+            <col className="w-12" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted">
             <tr className="text-[10px] text-muted-foreground text-left">

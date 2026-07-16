@@ -168,11 +168,17 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
     if (item) (item as Record<string, string>)[field] = String(val)
   }
 
-  // 매핑표에서 send:true 인 행만, rule(const1/flag/value)에 따라 값 주입
+  // 매핑표에서 send:true 인 행만 값 주입. 자녀(8763)·부양가족(8004~8009)은 incDdcNfpCnt 로 전송되고,
+  // 국세청이 8004~8009(유형별)를 보고 자녀공제(8763)를 자체산출한다. (2026-07-16 실측확정)
   for (const m of MAPPING_2025) {
     if (!m.send) continue
+    if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
     setAmt(m.ntsCode, m.valueKey, mappingSentValue(m, vals))
   }
+
+  // 혼인세액공제(8790) 특수: 국세청이 검산하지 않고 입력 ddcAmt 를 그대로 인정 → incDdcNfpCnt=1 + ddcAmt=RT_MRRG.
+  const mrrg = Number(vals.RT_MRRG ?? 0)
+  if (mrrg > 0) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", mrrg) }
 
   const totPay  = Number(vals.TOT_PAY_AMT ?? 0)
   const prepaid = Number(vals.PAYM_INCM_TAX ?? 0)
