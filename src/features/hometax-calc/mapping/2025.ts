@@ -43,6 +43,8 @@ export interface MappingRow {
   /** 국세청 결과(OUT) 코드. 소계형만 명시(카드8430/의료8726/연금8706).
    *  미지정 = 세액공제성 그룹이면 self(ntsCode), 소득공제·입력이면 없음(—). */
   outCode?:  string
+  /** 상대 귀속연도(투자조합출자 등 연도별 코드). 현황탭이 입력연도(ntsYear)+offset 로 "○○○○년" 렌더. 0=당해,-1=직전,-2=2년전 */
+  yearOffset?: number
   note?:     string
 }
 
@@ -90,19 +92,23 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "특별소득공제", ntsCode: "8328", label: "장기주택저당 15이후 그밖",       ytsCol: "SP_LH_LRSF50_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8327/8328 라벨 중복표기 — 실측 재확인" },
   { group: "특별소득공제", ntsCode: "8329", label: "장기주택저당 15이후(10~15)",     ytsCol: "SP_LH_LRSF60_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
 
-  // ── 그밖의 소득공제 (useAmt) ───────────────────────────────────────────────
-  { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",            ytsCol: "OTO_PPF",                 valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8402", label: "소기업소상공인(노란우산)", ytsCol: "OTO_SM_ETPR_AMT",        valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8403", label: "주택마련-청약저축",        ytsCol: "OTO_HOUSE_LOAN_SBSC_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8404", label: "주택마련-근로자주택마련",  ytsCol: "OTO_HOUSE_LOAN_WRK_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8406", label: "주택청약종합저축(14이전)", ytsCol: "OTO_HOUSE_LOAN_ALL_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8406/8407 가입연도 분할 — 단일컬럼이라 분리 불가, 재확인" },
-  { group: "그밖의소득공제", ntsCode: "8407", label: "주택청약종합저축(15이후)", ytsCol: "OTO_HOUSE_LOAN_ALL_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8406/8407 가입연도 분할 — 단일컬럼이라 분리 불가, 재확인" },
-  { group: "그밖의소득공제", ntsCode: "8415", label: "투자조합출자(귀속-2 조합)", ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할 — 단일컬럼, 재확인" },
-  { group: "그밖의소득공제", ntsCode: "8416", label: "투자조합출자(귀속-2 벤처)", ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
-  { group: "그밖의소득공제", ntsCode: "8417", label: "투자조합출자(귀속-1 조합)", ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
-  { group: "그밖의소득공제", ntsCode: "8418", label: "투자조합출자(귀속-1 벤처)", ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
-  { group: "그밖의소득공제", ntsCode: "8419", label: "투자조합출자(당해 조합)",   ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "당해분 확정 / 과년도 분할은 추정" },
-  { group: "그밖의소득공제", ntsCode: "8420", label: "투자조합출자(당해 벤처)",   ytsCol: "OTO_IU_ETC",             valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "투자조합 다코드 분할" },
+  // ── 그밖의 소득공제 (useAmt) — 국세청 화면(그밖의소득공제 상세팝업) 기준 정리 (2026-07-17 화면·payload 실측) ──
+  { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",              ytsCol: "OTO_PPF",                 valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17). 국세청 self ddcAmt=납입액×40%(한도72만)" },
+  { group: "그밖의소득공제", ntsCode: "8402", label: "소기업소상공인공제부금(노란우산공제)", ytsCol: "OTO_SM_ETPR_AMT",       valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17). 국세청 self ddcAmt 회신" },
+  { group: "그밖의소득공제", ntsCode: "8403", label: "청약저축",                ytsCol: "OTO_HOUSE_LOAN_SBSC_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8405", label: "주택청약종합저축",          ytsCol: "OTO_HOUSE_LOAN_ALL_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "★기존 8406/8407 아닌 8405 (2026-07-17 화면실측)" },
+  { group: "그밖의소득공제", ntsCode: "8404", label: "근로자주택마련저축",         ytsCol: "OTO_HOUSE_LOAN_WRK_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
+  // 투자조합출자 = 3연도(입력연도-2~입력연도) × 3종류(벤처등/조합1/조합2), 화면 JF13. YTS OTO_IU_ETC 단일컬럼이라 분할 전송 불가(미확보). 연도는 yearOffset 로 동적 렌더.
+  { group: "그밖의소득공제", ntsCode: "8416", label: "벤처등", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -2, note: "투자조합출자 — OTO_IU_ETC 단일컬럼 분할불가(전송보류). 코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8415", label: "조합1", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -2 },
+  { group: "그밖의소득공제", ntsCode: "8421", label: "조합2", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -2 },
+  { group: "그밖의소득공제", ntsCode: "8418", label: "벤처등", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -1 },
+  { group: "그밖의소득공제", ntsCode: "8417", label: "조합1", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -1 },
+  { group: "그밖의소득공제", ntsCode: "8422", label: "조합2", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: -1 },
+  { group: "그밖의소득공제", ntsCode: "8420", label: "벤처등", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: 0 },
+  { group: "그밖의소득공제", ntsCode: "8419", label: "조합1", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: 0 },
+  { group: "그밖의소득공제", ntsCode: "8423", label: "조합2", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, yearOffset: 0 },
+  { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "미확보", send: false, note: "투자조합출자 소계(개별 8415~8423 합)" },
   // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
   //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)
   { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", valueKey: "useAmt", rule: "value", status: "확정", send: true },
@@ -113,11 +119,10 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제", ntsCode: "8450", label: "목돈안드는전세 이자상환",  ytsCol: null,                      valueKey: "useAmt", rule: "value", status: "미확보", send: false, note: "YTS39 대응컬럼 미확인" },
-  { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",     ytsCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주조합 출연금",       ytsCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8453", label: "고용유지중소기업 근로자",   ytsCol: "OTO_EMPL_MTN_WAGE_CUT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축", ytsCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주출연금 소득공제",       ytsCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",          ytsCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축",     ytsCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8453", label: "고용유지중소기업근로자소득공제",  ytsCol: "OTO_EMPL_MTN_WAGE_CUT",  valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "임금삭감액 기준. 코드 화면실측(2026-07-17)" },
 
   // ── 세액감면 (useAmt) ──────────────────────────────────────────────────────
   { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법",       ytsCol: "RT_IT_LAW",         valueKey: "useAmt", rule: "value", status: "추정", send: false },

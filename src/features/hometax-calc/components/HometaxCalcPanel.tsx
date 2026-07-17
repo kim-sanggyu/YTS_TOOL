@@ -638,7 +638,7 @@ export function HometaxCalcPanel() {
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "etc" && <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "status" && <MappingStatusView />}
+        {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>
 
       {/* 상세조회 드로어 */}
@@ -1451,7 +1451,7 @@ interface StatusRow {
 }
 
 // 한 그룹의 매핑행 → 렌더행. self형=IN·OUT 한 행, 소계형=개별행(OUT —) + 소계행(IN —, OUT).
-function statusRowsOf(rows: MappingRow[]): StatusRow[] {
+function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
   const out: StatusRow[] = []
   const emitted = new Set<string>()   // 소계행을 이미 낸 코드(중복 방지)
   rows.forEach((m, i) => {
@@ -1459,9 +1459,11 @@ function statusRowsOf(rows: MappingRow[]): StatusRow[] {
     const isSub = SUBTOTAL_CODES.has(oc)
     // 혼인공제(8790): 특수전송(incDdcNfpCnt=1+ddcAmt 직접, 국세청 미검산) — 결정세액만 반영, 항목대조 안 함
     const isMrrg = m.ntsCode === "8790"
+    // 연도별 코드(투자조합출자 등): 입력연도(ntsYear)+offset 로 "○○○○년" 을 라벨 앞에 렌더
+    const label = m.yearOffset != null ? `투자조합출자 ${ntsYear + m.yearOffset}년 ${m.label}` : m.label
     out.push({
       key:   m.ntsCode + m.label,
-      label: m.label,
+      label,
       code:  m.ntsCode,
       ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : m.valueKey,
       ntsOut: isMrrg ? "—" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
@@ -1497,7 +1499,8 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>
 }
 
-function MappingStatusView() {
+function MappingStatusView({ ntsYear }: { ntsYear: string }) {
+  const yy = Number(ntsYear)
   const groups: { name: string; rows: MappingRow[] }[] = []
   for (const m of MAPPING_2025) {
     let g = groups.find(x => x.name === m.group)
@@ -1551,7 +1554,7 @@ function MappingStatusView() {
                     <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
                   </td>
                 </tr>,
-                ...statusRowsOf(g.rows).map(r => (
+                ...statusRowsOf(g.rows, yy).map(r => (
                   <tr key={r.key} className={`border-t ${r.isSubtotal ? "bg-muted/40" : ""}`}>
                     <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
