@@ -1408,6 +1408,7 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   [CARD_SUBTOTAL_CODE, { label: "카드소득공제 소계", ytsOut: "OTO_CARD_ETC" }],
   [MEDI_SUBTOTAL_CODE, { label: "의료비 세액공제 소계", ytsOut: "RT_MEDI_AMT" }],
   ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
+  ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
 ])
 
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.

@@ -143,12 +143,11 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액(SPCL_IF_GRT_INSU_AMT, 100만 capped) 전송 → NTS self OUT ddcAmt=12% ↔ RT_IF_GRT_INSU_AMT 원단위 일치. 지출총액 컬럼 없음, 한도 정액이라 공제대상 전송이 정답(2026-07-17 실측확정)" },
   { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액 전송 → NTS self OUT ddcAmt=15% ↔ RT_IF_HDC_PERS_INSU_AMT 일치(X202600325=66,229). 8710과 독립 self, X2026 대상 3명(2026-07-17 실측확정)" },
 
-  // ── 세액공제: 교육비 (ddcTrgtAmt, 구분별 분할) ─────────────────────────────
-  { group: "세액공제", ntsCode: "8730", label: "교육비-소득자 본인", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "8730~8734 구분별 분할 — YTS 단일 공제대상컬럼이라 분리 불가" },
-  { group: "세액공제", ntsCode: "8731", label: "교육비-미취학아동",  ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8732", label: "교육비-초중고",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8733", label: "교육비-대학교",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
-  { group: "세액공제", ntsCode: "8734", label: "교육비-장애인",      ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "추정", send: false, note: "교육비 구분별 분할 필요" },
+  // ── 세액공제: 교육비 = 소계형(8735). ★국세청 서버는 구분(8730~34) 무시하고 ddcTrgtAmt×15%를 8735로 합산 ──
+  //   한도(초중고300만/대학900만)는 국세청 화면이 적용해 ddcTrgtAmt(공제대상)를 만들고, 서버는 그대로 신뢰(재한도 없음).
+  //   YTS는 구분별 한도후 값이 없고 한도후 총액(SPCL_EDU_AMT)만 있어, 대표코드 8730 한 칸에 총액을 ddcTrgtAmt로 몰아 전송.
+  //   8735 는 결과전용(직접입력 무시) → SUBTOTAL_CODES 로만 표현. useAmt·ddcLmtAmt·인원은 서버 무시(2026-07-17 실측확정).
+  { group: "세액공제", ntsCode: "8730", label: "교육비(공제대상 총액)", ytsCol: "SPCL_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "확정", send: true, outCode: "8735", note: "국세청 8730(본인칸)에 교육비 공제대상 총액(SPCL_EDU_AMT, 한도적용후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT 대조. 8731~34(구분별)는 한도후 데이터 없어 미사용(서버 계산 구분 무관)" },
   
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   { group: "세액공제", ntsCode: "8753", label: "납세조합공제",     ytsCol: "RT_PTU",              valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인 — 공제액 컬럼 사용" },
