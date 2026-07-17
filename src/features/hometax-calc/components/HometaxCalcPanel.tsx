@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef, Fragment } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText } from "lucide-react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
@@ -24,6 +25,12 @@ const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8998", label: "지방소득세" },
   { code: "8992", label: "차감징수세액" },
 ]
+
+// 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
+// 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
+const ETC_TAB_ITEMS = MAPPING_2025
+  .filter(m => m.tab === "기타" && m.send && m.resultCol)
+  .map(m => ({ code: m.ntsCode, label: m.label }))
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 interface ListItem {
@@ -233,6 +240,7 @@ export function HometaxCalcPanel() {
   const [mediItems,      setMediItems]      = useState<MediListItem[]>([])
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
+  const [etcCode,        setEtcCode]        = useState<string>(ETC_TAB_ITEMS[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운)
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
@@ -436,7 +444,18 @@ export function HometaxCalcPanel() {
 
   const detailRes = detailFor ? results[detailFor] : null
   const detailRow = detailFor ? (allItems.find(i => i.calcNo === detailFor) ?? null) : null
-  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? etcItems.length : allItems.length
+
+  // 기타 탭: 드롭다운으로 고른 한 항목(etcCode)만 남긴다 — 각 사람의 lines 를 해당 code 한 줄로 축소.
+  const etcByCode: EtcListItem[] = etcItems
+    .map(row => {
+      const line = row.lines.find(l => l.code === etcCode)
+      return line ? { ...row, lines: [line], etcDdc: line.ytsDdc } : null
+    })
+    .filter((r): r is EtcListItem => r !== null)
+
+  const etcLabel = ETC_TAB_ITEMS.find(i => i.code === etcCode)?.label ?? ""
+
+  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? etcByCode.length : allItems.length
 
   // 탭별 YTS·NTS 값이 다른지 판정 (실행 전이면 false) — 차이 건수 집계·필터링에 공통 사용
   function giftHasDiff(i: GiftListItem): boolean {
@@ -475,7 +494,7 @@ export function HometaxCalcPanel() {
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
     tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
     tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
-    tab === "etc"     ? etcItems.filter(etcHasDiff).length :
+    tab === "etc"     ? etcByCode.filter(etcHasDiff).length :
     allItems.filter(allHasDiff).length
 
   // 차이만 보기 필터 활성 시 현재 탭의 items를 차이나는 건만 추림
@@ -485,7 +504,7 @@ export function HometaxCalcPanel() {
   const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)) : cardItems
   const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
-  const shownEtcItems     = showDiffOnly ? etcItems.filter(etcHasDiff) : etcItems
+  const shownEtcItems     = showDiffOnly ? etcByCode.filter(etcHasDiff) : etcByCode
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -542,17 +561,26 @@ export function HometaxCalcPanel() {
             className={`px-3 py-1.5 border-l transition-colors ${tab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => setTab("pension")}
           >연금계좌</button>
-          <button
-            className={`px-3 py-1.5 border-l transition-colors ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("etc")}
-          >기타</button>
-        </div>
-
-        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
-          <button
-            className={`px-3 py-1.5 transition-colors ${tab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("status")}
-          >현황</button>
+          {/* 기타 = 드롭다운: 잡다 세액공제 항목 중 하나를 골라 본문 리스트 필터로 사용 */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setTab("etc")}
+            >
+              기타{etcLabel ? `: ${etcLabel}` : ""}
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc") }}>
+                {ETC_TAB_ITEMS.map(it => (
+                  <DropdownMenuRadioItem key={it.code} value={it.code} className="text-xs">
+                    {it.label}
+                    <span className="ml-2 font-mono text-[10px] text-muted-foreground/50">{it.code}</span>
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {(tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
@@ -612,8 +640,16 @@ export function HometaxCalcPanel() {
           </span>
         )}
 
+        {/* 현황 탭 — NTS 세션 영역 바로 앞(우측) */}
+        <div className="ml-auto flex rounded-md border overflow-hidden text-xs font-medium">
+          <button
+            className={`px-3 py-1.5 transition-colors ${tab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => setTab("status")}
+          >현황</button>
+        </div>
+
         {/* 세션 상태 */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <span className={`flex items-center gap-1.5 text-xs ${sessionInfo.active ? "text-green-600" : "text-muted-foreground"}`}>
             <span className={`h-2 w-2 rounded-full ${sessionInfo.active ? "bg-green-500" : "bg-muted-foreground/30"}`} />
             {sessionInfo.active ? `NTS 세션 활성 (${sessionInfo.ageMinutes}분)` : "NTS 세션 없음"}
