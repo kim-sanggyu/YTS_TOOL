@@ -31,6 +31,7 @@ const PREPAID = 5_000_000     // 기납부 500만
 const CODES = [
   "8900","8991","8001",
   "8730","8731","8732","8733","8734","8735",
+  "8751","8752","8753","8754",
   "8922","8923","8990","8992","8998","8999",
 ]
 function baseDetail() {
@@ -72,10 +73,12 @@ const fmt = n => Number(n ?? 0).toLocaleString("ko-KR")
 
 // ── 실험 정의 (★"ddcTrgtAmt 보내면 무엇을 돌려받나" — 응답 전체 변동코드 덤프) ──
 const EXPERIMENTS = [
-  { grp: "8735 소계코드에 직접 입력되나? (vs 개별 8730)", shots: [
-    { label: "8735 ddcTrgtAmt=500만", sets: [["8735","ddcTrgtAmt",5_000_000]] },
-    { label: "8735 useAmt=500만",     sets: [["8735","useAmt",5_000_000]] },
-    { label: "8730 ddcTrgtAmt=500만 (대조)", sets: [["8730","ddcTrgtAmt",5_000_000]] },
+  { grp: "기타세액공제 3항목 — 보내면 결과 어디로? (응답 전체 변동)", shots: [
+    { label: "외국납부 8751=200만 + 8754국외급여=2000만", sets: [["8751","useAmt",2_000_000],["8754","useAmt",20_000_000]] },
+    { label: "외국납부 8751=200만 (8754없이)",           sets: [["8751","useAmt",2_000_000]] },
+    { label: "주택차입금 8752=100만",                    sets: [["8752","useAmt",1_000_000]] },
+    { label: "납세조합 8753=120만 + ddcLmtAmt=100만",     sets: [["8753","useAmt",1_200_000],["8753","ddcLmtAmt",1_000_000]] },
+    { label: "납세조합 8753=120만 (lmt없이)",            sets: [["8753","useAmt",1_200_000]] },
   ]},
 ]
 const DUMP_ALL = true   // 응답 전체 변동코드 덤프 모드
@@ -138,15 +141,17 @@ async function main() {
     console.log(`── ${exp.grp} ──`)
     for (const shot of exp.shots) {
       const raw = await postL03(page, buildBody(shot.sets)); await page.waitForTimeout(400)
-      const m = toMap(raw)
-      if (DUMP_ALL) {
-        const codes = Array.from(new Set([...Object.keys(base), ...Object.keys(m)])).sort()
-        const changed = codes.filter(c => (base[c] ?? 0) !== (m[c] ?? 0))
-        console.log(`\n  [보낸값] ${shot.sets.map(([c, f, v]) => `${c}.${f}=${fmt(v)}`).join("  ")}`)
-        console.log(`  [돌려받은 변동코드 ${changed.length}개]`)
-        for (const c of changed) console.log(`     ${c}   ${fmt(base[c] ?? 0).padStart(12)} → ${fmt(m[c] ?? 0).padStart(12)}   (Δ ${fmt((m[c] ?? 0) - (base[c] ?? 0))})`)
-      } else {
-        console.log(`  ${shot.label.padEnd(16)} ${WATCH.map(c => `${c}=${fmt(m[c])}`).join("  ")}`)
+      // 응답 원본에서 관심 코드의 전체 필드(key) 덤프 → 결과가 어느 key로 들어오나 확인
+      let full; try { full = JSON.parse(raw) } catch {}
+      const list = full?.yrsTaxClcDetailDVOList || []
+      const watchCodes = [...new Set([...shot.sets.map(s => s[0]), "8906", "8998", "8999"])]
+      console.log(`\n  [보낸값] ${shot.sets.map(([c, f, v]) => `${c}.${f}=${fmt(v)}`).join("  ")}`)
+      console.log(`  [응답 — 관심코드 전체 필드]`)
+      for (const c of watchCodes) {
+        const it = list.find(x => String(x.amtClusCd) === c)
+        if (!it) { console.log(`     ${c}: (없음)`); continue }
+        const nz = Object.entries(it).filter(([k, v]) => !["amtClusCd", "attrYr", "ddcRtnId", "ereClCd", "yrsSrvcClCd", "statusValue", "ieTin"].includes(k) && v && v !== "0" && v !== "-1")
+        console.log(`     ${c}: ${nz.length ? nz.map(([k, v]) => `${k}=${fmt(v)}`).join("  ") : "(전 필드 0)"}`)
       }
     }
     console.log("")

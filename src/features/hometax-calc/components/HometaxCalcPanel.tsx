@@ -1411,6 +1411,10 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
 ])
 
+// 기타세액공제 ETX_ 가상컬럼 → PAY_WRK_MAIN 실제 원천 컬럼
+const ETX_SRC: Record<string, string> = {
+  ETX_8751: "FRGN_PAY_TAX", ETX_8754: "FRGN_TOT_PAY_AMT", ETX_8752: "HOUSE_ALR", ETX_8753: "ASSO_SUB_TAX_AMT",
+}
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
 //   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.
 function ytsInOf(m: MappingRow): string {
@@ -1422,6 +1426,7 @@ function ytsInOf(m: MappingRow): string {
   if (c.startsWith("GIFT_")) return "GIFT_ABLE_SUB_AMT"    // PAY_WRK_GIFT_ADJ 공제대상금액(전송값)
   if (c.startsWith("RENT_")) return "HOUSE_RENT"           // PAY_WRK_MAIN 월세 지급총액(원본)
   if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"         // 부양가족 유형별·출산 순번별 인원 집계
+  if (c.startsWith("ETX_"))  return ETX_SRC[c] ?? c        // 기타세액공제 PAY_WRK_MAIN 원천
   return c
 }
 // yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).

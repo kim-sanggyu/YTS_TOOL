@@ -77,6 +77,17 @@ function injectRentVals(houseRent: number, vals: Record<string, number>) {
   if (houseRent > 0) vals["RENT_8750"] = houseRent
 }
 
+// ── 기타세액공제 원천 PAY_WRK_MAIN → ETX_{코드} 가상컬럼 주입 (전부 useAmt 대상금액) ──
+// 8751 외국납부(FRGN_PAY_TAX) + 8754 국외총급여(FRGN_TOT_PAY_AMT, 한도계산 동반필수), 8752 주택차입금이자(HOUSE_ALR), 8753 납세조합(ASSO_SUB_TAX_AMT).
+// self 결과 ddcAmt ↔ RT_FCG/RT_HBA/RT_PTU 대조. 외국납부는 8751만 보내면 결과0(8754 필수). 코드·필드·결과key 실측확정, X2026 대상자 0이라 원단위 미검증. (2026-07-17)
+function injectEtcCreditVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
+  const put = (key: string, v: unknown) => { const n = Number(v ?? 0); if (n > 0) vals[key] = n }
+  put("ETX_8751", mainRow?.FRGN_PAY_TAX)       // 외국납부 소득금액납부세액(대상)
+  put("ETX_8754", mainRow?.FRGN_TOT_PAY_AMT)   // 국외근로총급여(한도계산용)
+  put("ETX_8752", mainRow?.HOUSE_ALR)          // 주택차입금 이자상환액(대상)
+  put("ETX_8753", mainRow?.ASSO_SUB_TAX_AMT)   // 납세조합 대상금액
+}
+
 // ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
 // 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
 // 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
@@ -134,7 +145,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -164,11 +175,12 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   )
   injectPensionVals(penSpec, vals)
 
-  const [mainRow] = await ytsDb.query<{ HOUSE_RENT: number }>(
-    `SELECT HOUSE_RENT FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
+  const [mainRow] = await ytsDb.query<Record<string, number>>(
+    `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
+  injectEtcCreditVals(mainRow, vals)
 
   await injectFamilyVals(calcNo, vals)
 

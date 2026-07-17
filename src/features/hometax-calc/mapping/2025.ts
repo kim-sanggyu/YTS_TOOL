@@ -150,9 +150,12 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액공제", ntsCode: "8730", label: "교육비(공제대상 총액)", ytsCol: "SPCL_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "확정", send: true, outCode: "8735", note: "국세청 8730(본인칸)에 교육비 공제대상 총액(SPCL_EDU_AMT, 한도적용후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT 대조. 8731~34(구분별)는 한도후 데이터 없어 미사용(서버 계산 구분 무관)" },
   
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
-  { group: "세액공제", ntsCode: "8753", label: "납세조합공제",     ytsCol: "RT_PTU",              valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인 — 공제액 컬럼 사용" },
-  { group: "세액공제", ntsCode: "8752", label: "주택차입금 이자세액", ytsCol: "RT_HBA",            valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "대상금액 컬럼 미확인" },
-  { group: "세액공제", ntsCode: "8751", label: "외국납부세액",     ytsCol: "RT_FCG",              valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  // ── 기타세액공제(납세조합·주택차입금이자·외국납부) = self형(결과 ddcAmt). 원천=PAY_WRK_MAIN, useAmt 대상금액 전송 ──
+  //   국세청 코드·필드·결과key 실측확정(2026-07-17, docs/hometax-capture + edu-rules-probe). ★X2026 대상자 0이라 원단위 미검증(첫 대상자 시 확인).
+  { group: "세액공제", ntsCode: "8753", label: "납세조합공제",        ytsCol: "ETX_8753", resultCol: "RT_PTU", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "PAY_WRK_MAIN.ASSO_SUB_TAX_AMT(대상금액,'공제세액'名이나 실제 대상) → self ddcAmt ↔ RT_PTU. ddcLmtAmt 불필요(서버 자체계산)" },
+  { group: "세액공제", ntsCode: "8752", label: "주택차입금 이자세액",   ytsCol: "ETX_8752", resultCol: "RT_HBA", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "PAY_WRK_MAIN.HOUSE_ALR(이자상환액,대상) → self ddcAmt(=30%) ↔ RT_HBA. 부수 8906 농특세20%" },
+  { group: "세액공제", ntsCode: "8751", label: "외국납부세액",        ytsCol: "ETX_8751", resultCol: "RT_FCG", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "PAY_WRK_MAIN.FRGN_PAY_TAX(국외납부세액,대상) → self ddcAmt ↔ RT_FCG. ★8754(국외총급여) 동반 필수(없으면 결과0, 한도=산출세액×국외소득/총급여)" },
+  { group: "세액공제", ntsCode: "8754", label: "외국납부-국외근로총급여", ytsCol: "ETX_8754", valueKey: "useAmt", rule: "value", status: "추정", send: true, outCode: "—", note: "외국납부세액공제 한도계산용 동반입력. 자체 결과 없음. PAY_WRK_MAIN.FRGN_TOT_PAY_AMT" },
   { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "PAY_WRK_MAIN.HOUSE_RENT(원본 지급총액) 주입 — NTS가 한도·공제율 자체계산(2026-07-15 실측확정)" },
 
 
