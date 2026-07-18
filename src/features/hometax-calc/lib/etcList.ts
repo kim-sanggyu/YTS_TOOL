@@ -30,6 +30,8 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
            c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
            ${ddcSel},
            NVL(m.HOUSE_RENT, 0) AS RENT_INPUT,
+           (SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s
+              WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '562-030') AS PPF_INPUT,
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
@@ -43,7 +45,10 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
     const lines: EtcLine[] = ETC_ROWS
       .map(m => {
         const ddc   = Number(r[`DDC_${m.ntsCode}`] ?? 0)
-        const input = m.ntsCode === "8750" ? Number(r.RENT_INPUT ?? 0) : ddc
+        // 전송 원천값(전송 사용액 표시용): 항목마다 다름. 월세=지급총액, 개인연금저축=562-030 납입액, 그 외=공제액 대체.
+        const input = m.ntsCode === "8750" ? Number(r.RENT_INPUT ?? 0)
+                    : m.ntsCode === "8401" ? Number(r.PPF_INPUT ?? 0)
+                    : ddc
         return { code: m.ntsCode, label: m.label, ytsInput: input, ytsDdc: ddc }
       })
       .filter(l => l.ytsDdc > 0)

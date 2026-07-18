@@ -70,6 +70,24 @@ function injectPensionVals(
   }
 }
 
+// ── 그밖의소득공제 개인연금저축(8401) → OTHER_8401 가상컬럼 주입 ──
+// PAY_WRK_PEN_SAVE_SPEC PEN_SAVE_CLS='562-030' 납입액 합(원본). NTS self ddcAmt=납입액×40%(한도72만) 자체계산 ↔ OTO_PPF. (2026-07-18 실측)
+function injectOtherSavingsVals(
+  specRows: { PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number }[],
+  vals:     Record<string, number>,
+) {
+  let ppf = 0
+  for (const row of specRows) if (row.PEN_SAVE_CLS === "562-030") ppf += Number(row.PEN_SAVE_PMT_AMT ?? 0)
+  if (ppf > 0) vals["OTHER_8401"] = ppf
+}
+
+// ── 그밖의소득공제 중 PAY_WRK_MAIN 원본 컬럼 기반 → OTHER_{코드} 주입 ──
+// 노란우산(8402): SM_ETPR_AMT(납입액). NTS self ddcAmt=min(납입액, 소득금액별한도) 자체계산 ↔ OTO_SM_ETPR_AMT. (2026-07-18 실측)
+function injectOtherMainVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
+  const n = Number(mainRow?.SM_ETPR_AMT ?? 0)
+  if (n > 0) vals["OTHER_8402"] = n
+}
+
 // ── 월세 PAY_WRK_MAIN.HOUSE_RENT → RENT_8750 가상컬럼 주입 (원본 지급총액) ──
 // NTS 8750 에 지급총액 전송 → NTS 가 한도(1000만)·공제율(총급여 15/17%)을 자체계산.
 // 공제대상(SP_HOUSE_RENT_AMT=한도후)이 아닌 원본을 보내 우리 한도로직까지 NTS가 독립검증. (2026-07-15 실측확정)
@@ -163,7 +181,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -192,17 +210,20 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     [calcNo]
   )
   injectPensionVals(penSpec, vals)
+  injectOtherSavingsVals(penSpec, vals)
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
             HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
-            LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60
+            LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
+            SM_ETPR_AMT
      FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
   injectEtcCreditVals(mainRow, vals)
   injectHousingVals(mainRow, vals)
+  injectOtherMainVals(mainRow, vals)
 
   await injectFamilyVals(calcNo, vals)
 

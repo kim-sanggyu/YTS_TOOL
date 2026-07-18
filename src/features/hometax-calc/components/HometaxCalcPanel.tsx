@@ -36,16 +36,18 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
-// 표시 순서는 상규님 지정(인적공제>연금>건강고용>주택자금>혼인자녀출산), 월세액 등 단일코드는 뒤에.
+// 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
+const ETC_SINGLE_ITEMS = MAPPING_2025
+  .filter(m => m.tab === "기타" && m.send && m.resultCol)
+  .map(m => ({ code: m.ntsCode, label: m.label }))
 const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "PERSONAL",      label: ETC_GROUPS.PERSONAL.label },
   { code: "PENSION_INS",   label: "연금보험료",      disabled: true },
   { code: "SPECIAL_INS",   label: "건강고용보험료",  disabled: true },
   { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
+  ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401"),   // 개인연금저축 = 주택자금 바로 아래
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
-  ...MAPPING_2025
-    .filter(m => m.tab === "기타" && m.send && m.resultCol)
-    .map(m => ({ code: m.ntsCode, label: m.label })),
+  ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401"),   // 나머지 단일코드(월세액 등)
 ]
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
@@ -628,10 +630,6 @@ export function HometaxCalcPanel() {
                 {ETC_TAB_ITEMS.map(it => (
                   <DropdownMenuRadioItem key={it.code} value={it.code} disabled={it.disabled} className="text-xs">
                     {it.label}
-                    {/* 실제 단일 NTS코드(숫자, 8750 등)만 코드 표시. 그룹·안내용 복합키는 생략 */}
-                    {/^\d/.test(it.code) && (
-                      <span className="ml-2 font-mono text-[10px] text-muted-foreground/50">{it.code}</span>
-                    )}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -1591,13 +1589,16 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
 
 // ── 매핑 현황(진도) 뷰 — MAPPING_2025 를 그대로 렌더(코드=화면 항상 동기) ──
 //   각 항목의 계약 5축(원천/IN/OUT/실측/전송)을 그룹별로 조회. 국세청 in-out 정리 진도판.
-const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금"])
-// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → 세액공제성 self → 없음(—)
+// self OUT(각 코드가 자기 ddcAmt 회신) 그룹. 연금보험료·특별소득공제(건강고용·주택자금)는 소득공제지만
+//   라이브 캡처로 코드별 self ddcAmt 회신 실측확정(2026-07-18). ※카드(소계 8430)는 그밖의소득공제라 아래서 CARD_ 우선처리로 제외.
+const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금", "연금보험료", "특별소득공제"])
+// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → self → 없음(—)
 function outCodeOf(m: MappingRow): string {
   if (m.outCode) return m.outCode
   if (m.ytsCol?.startsWith("CARD_")) return CARD_SUBTOTAL_CODE
   if (m.ytsCol?.startsWith("MEDI_")) return MEDI_SUBTOTAL_CODE
-  // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 세액공제성 self
+  if (m.ytsCol?.startsWith("OTHER_")) return m.ntsCode      // 그밖의소득공제 self(개인연금저축8401·노란우산8402, 실측)
+  // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 self
   if (OUT_GROUPS.has(m.group)) return m.ntsCode
   return "—"
 }
@@ -1616,6 +1617,17 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
 const ETX_SRC: Record<string, string> = {
   ETX_8751: "FRGN_PAY_TAX", ETX_8754: "FRGN_TOT_PAY_AMT", ETX_8752: "HOUSE_ALR", ETX_8753: "ASSO_SUB_TAX_AMT",
 }
+// 주택자금 LOAN_ 가상컬럼 → PAY_WRK_MAIN 원본 상환액 컬럼(원리금·장기주택저당)
+const LOAN_SRC: Record<string, string> = {
+  LOAN_8311: "HOUSE_RALR_LENDER", LOAN_8312: "HOUSE_RALR_HABT",
+  LOAN_8321: "LH_LRSF1", LOAN_8322: "LH_LRSF2", LOAN_8323: "LH_LRSF3",
+  LOAN_8324: "LH_LRSF10", LOAN_8325: "LH_LRSF20", LOAN_8326: "LH_LRSF30",
+  LOAN_8327: "LH_LRSF40", LOAN_8328: "LH_LRSF50", LOAN_8329: "LH_LRSF60",
+}
+// 그밖의소득공제 OTHER_ 가상컬럼 → 원본 원천(개인연금저축=PEN_SAVE_SPEC 562-030, 노란우산=PAY_WRK_MAIN.SM_ETPR_AMT)
+const OTHER_SRC: Record<string, string> = {
+  OTHER_8401: "PEN_SAVE_SPEC(562-030)", OTHER_8402: "SM_ETPR_AMT",
+}
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
 //   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.
 function ytsInOf(m: MappingRow): string {
@@ -1628,6 +1640,8 @@ function ytsInOf(m: MappingRow): string {
   if (c.startsWith("RENT_")) return "HOUSE_RENT"           // PAY_WRK_MAIN 월세 지급총액(원본)
   if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"         // 부양가족 유형별·출산 순번별 인원 집계
   if (c.startsWith("ETX_"))  return ETX_SRC[c] ?? c        // 기타세액공제 PAY_WRK_MAIN 원천
+  if (c.startsWith("LOAN_"))  return LOAN_SRC[c] ?? c      // 주택자금 PAY_WRK_MAIN 원본 상환액
+  if (c.startsWith("OTHER_")) return OTHER_SRC[c] ?? c     // 그밖의소득공제 원본 원천
   return c
 }
 // yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).
@@ -1721,8 +1735,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
       <div className="overflow-auto flex-1 px-3 pb-3">
         <table className="w-full border-collapse table-fixed text-xs">
           <colgroup>
-            {/* 항목 (고정·truncate) */}
-            <col className="w-56" />
+            {/* 항목 (고정·truncate) — w-56(14rem)에서 확대(20%→추가 10%) */}
+            <col className="w-[18.48rem]" />
             {/* nts코드 */}
             <col className="w-14" />
             {/* nts IN */}
