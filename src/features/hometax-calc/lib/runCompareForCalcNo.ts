@@ -88,6 +88,24 @@ function injectEtcCreditVals(mainRow: Record<string, number> | undefined, vals: 
   put("ETX_8753", mainRow?.ASSO_SUB_TAX_AMT)   // 납세조합 대상금액
 }
 
+// ── 주택자금(특별소득공제) 원천 PAY_WRK_MAIN → LOAN_{코드} 가상컬럼 주입 (원본 상환액 useAmt) ──
+// 원리금(8311 대출기관/8312 거주자) + 장기주택저당(8321~8329). 한도가 있어 원본 상환액을 보내 NTS 한도로직을 검증.
+// (한도후 공제액 SP_LH_LRSF*_AMT 를 보내면 이중캡) 대조는 화면단에서 SP_*_AMT. 코드 순서 실측확정(capture-io 2026-07-18).
+function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
+  const put = (code: string, v: unknown) => { const n = Number(v ?? 0); if (n > 0) vals[`LOAN_${code}`] = n }
+  put("8311", mainRow?.HOUSE_RALR_LENDER)   // 주택임차 원리금 대출기관
+  put("8312", mainRow?.HOUSE_RALR_HABT)     // 주택임차 원리금 거주자
+  put("8321", mainRow?.LH_LRSF1)            // 장기주택저당 2011이전 15년미만
+  put("8322", mainRow?.LH_LRSF2)            // 2011이전 15~29년
+  put("8323", mainRow?.LH_LRSF3)            // 2011이전 30년이상
+  put("8324", mainRow?.LH_LRSF10)           // 2012이후 15년이상 고정&비거치
+  put("8325", mainRow?.LH_LRSF20)           // 2012이후 15년이상 그밖
+  put("8326", mainRow?.LH_LRSF30)           // 2015이후 15년이상 고정&비거치
+  put("8327", mainRow?.LH_LRSF40)           // 2015이후 15년이상 고정or비거치
+  put("8328", mainRow?.LH_LRSF50)           // 2015이후 15년이상 그밖
+  put("8329", mainRow?.LH_LRSF60)           // 2015이후 10~15년
+}
+
 // ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
 // 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
 // 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
@@ -145,7 +163,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -176,11 +194,15 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   injectPensionVals(penSpec, vals)
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
-    `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
+    `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
+            HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
+            LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60
+     FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
   injectEtcCreditVals(mainRow, vals)
+  injectHousingVals(mainRow, vals)
 
   await injectFamilyVals(calcNo, vals)
 

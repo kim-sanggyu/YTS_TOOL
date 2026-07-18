@@ -7,6 +7,7 @@ import { getMediItems } from "@/features/hometax-calc/lib/mediList"
 import { getPensionItems } from "@/features/hometax-calc/lib/pensionList"
 import { getEtcItems } from "@/features/hometax-calc/lib/etcList"
 import { getPersonalItems } from "@/features/hometax-calc/lib/personalList"
+import { getHousingItems } from "@/features/hometax-calc/lib/housingList"
 
 export const revalidate = 0
 
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
     const kind  = group === "credit" ? "세액공제" : group === "income" ? "소득공제" : undefined
     return Response.json({ items: await getPersonalItems(year, kind) })
   }
+  if (type === "housing") return Response.json({ items: await getHousingItems(year) })
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string

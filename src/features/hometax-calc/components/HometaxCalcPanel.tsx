@@ -29,14 +29,15 @@ const NTS_FLOW: { code: string; label: string }[] = [
 // 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
 // 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
 // 기타 드롭다운 = 그룹 항목(여러 코드 묶음) + 단일코드 항목(매핑 tab:"기타") 순.
-// 인적공제(소득공제) / 혼인·자녀·출산(세액공제)를 성격별로 분리한 두 그룹.
-const PERSONAL_GROUPS: Record<string, { label: string; param: "income" | "credit" }> = {
-  PERSONAL:      { label: "인적공제",     param: "income" },  // 배우자·부양가족·추가공제(경로/장애/부녀/한부모)
-  FAMILY_CREDIT: { label: "혼인자녀출산", param: "credit" },  // 혼인·자녀·출산입양
+// 그룹 = 여러 코드를 한 표에 묶어 대조하는 뷰(PersonalTable 공용). listQs=목록조회 / batchEndpoint=전체실행.
+const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint: string }> = {
+  PERSONAL:      { label: "인적공제",     listQs: "type=personal&group=income", batchEndpoint: "personal-batch?group=income" },  // 배우자·부양가족·추가공제
+  FAMILY_CREDIT: { label: "혼인자녀출산", listQs: "type=personal&group=credit", batchEndpoint: "personal-batch?group=credit" },  // 혼인·자녀·출산입양
+  HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
-  ...Object.entries(PERSONAL_GROUPS).map(([code, g]) => ({ code, label: g.label })),
+  ...Object.entries(ETC_GROUPS).map(([code, g]) => ({ code, label: g.label })),
   { code: "PENSION_INS", label: "연금보험료", disabled: true },
   { code: "SPECIAL_INS", label: "건강고용보험료", disabled: true },
   ...MAPPING_2025
@@ -263,7 +264,7 @@ export function HometaxCalcPanel() {
   const [mediItems,      setMediItems]      = useState<MediListItem[]>([])
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
-  const [personalItems,  setPersonalItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
+  const [groupItems,  setGroupItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
   const [etcCode,        setEtcCode]        = useState<string>(ETC_TAB_ITEMS[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운)
   const [etcMenuOpen,    setEtcMenuOpen]    = useState(false)                                  // 기타 드롭다운 열림(항목 선택 시 닫기)
   const [loading,        setLoading]        = useState(false)
@@ -325,7 +326,7 @@ export function HometaxCalcPanel() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setPersonalItems([]); setResults({}); setLoading(true); setDiffOnly(false)
+      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({}); setLoading(true); setDiffOnly(false)
       if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
@@ -347,14 +348,13 @@ export function HometaxCalcPanel() {
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
 
-  // 기타>인적공제/혼인자녀출산 그룹 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
+  // 기타>그룹(인적공제/혼인자녀출산/주택자금) 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
   useEffect(() => {
-    if (tab !== "etc" || !PERSONAL_GROUPS[etcCode]) return
-    const group = PERSONAL_GROUPS[etcCode].param
+    if (tab !== "etc" || !ETC_GROUPS[etcCode]) return
     let cancelled = false
-    fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=personal&group=${group}`)
+    fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&${ETC_GROUPS[etcCode].listQs}`)
       .then(r => r.json())
-      .then(d => { if (!cancelled) setPersonalItems(d.items ?? []) })
+      .then(d => { if (!cancelled) setGroupItems(d.items ?? []) })
       .catch(() => { /* 무시 */ })
     return () => { cancelled = true }
   }, [tab, etcCode, year, ntsYear])
@@ -408,11 +408,10 @@ export function HometaxCalcPanel() {
   }
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
-  // personal = 기타>인적공제 그룹(탭이 아닌 서브모드) 전용 배치 — 대상은 인적공제 발생자 전원.
-  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch", personal: "personal-batch" } as const
+  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
   type BatchTab = keyof typeof BATCH_ENDPOINT
   const BATCH_TAB_COUNT: Record<BatchTab, number> = {
-    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length, personal: personalItems.length,
+    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
   }
   const batchEsRef = useRef<EventSource | null>(null)
 
@@ -423,15 +422,16 @@ export function HometaxCalcPanel() {
     setBatchError("사용자가 중단했습니다.")
   }
 
-  function runItemBatch(batchTab: BatchTab) {
+  // endpoint = 라우트명(그룹은 쿼리 포함 가능 예 "personal-batch?group=income"), total = 진행바 분모.
+  function runItemBatch(endpoint: string, total: number) {
     if (batchRunning) return
     setBatchRunning(true)
-    setBatchProgress({ done: 0, total: BATCH_TAB_COUNT[batchTab], skipped: 0 })
+    setBatchProgress({ done: 0, total, skipped: 0 })
     setBatchFile(null)
     setBatchError(null)
 
-    const groupQs = batchTab === "personal" ? `&group=${personalGroupParam}` : ""
-    const es = new EventSource(`/api/tools/hometax-calc/${BATCH_ENDPOINT[batchTab]}?year=${year}&ntsYear=${ntsYear}${groupQs}`)
+    const sep = endpoint.includes("?") ? "&" : "?"
+    const es = new EventSource(`/api/tools/hometax-calc/${endpoint}${sep}year=${year}&ntsYear=${ntsYear}`)
     batchEsRef.current = es
 
     es.addEventListener("start", (e) => {
@@ -496,10 +496,9 @@ export function HometaxCalcPanel() {
     .filter((r): r is EtcListItem => r !== null)
 
   const etcLabel = ETC_TAB_ITEMS.find(i => i.code === etcCode)?.label ?? ""
-  const isPersonalGroup = tab === "etc" && !!PERSONAL_GROUPS[etcCode]   // 기타>인적공제/혼인자녀출산 그룹 뷰
-  const personalGroupParam = PERSONAL_GROUPS[etcCode]?.param ?? "income"
+  const isGroup = tab === "etc" && !!ETC_GROUPS[etcCode]   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 뷰
 
-  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isPersonalGroup ? personalItems.length : etcByCode.length) : allItems.length
+  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isGroup ? groupItems.length : etcByCode.length) : allItems.length
 
   // 탭별 YTS·NTS 값이 다른지 판정 (실행 전이면 false) — 차이 건수 집계·필터링에 공통 사용
   function giftHasDiff(i: GiftListItem): boolean {
@@ -533,7 +532,7 @@ export function HometaxCalcPanel() {
     return ntsTotal - i.penDdc !== 0
   }
   // 인적공제 그룹: 항목별 code 대조 — 하나라도 YTS≠NTS 면 차이 (소득/세액 혼재라 합산 대신 항목별 판정)
-  function personalHasDiff(i: PersonalListItem): boolean {
+  function groupHasDiff(i: PersonalListItem): boolean {
     const res = results[i.calcNo]
     if (!res) return false
     return i.lines.some(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc)
@@ -544,7 +543,7 @@ export function HometaxCalcPanel() {
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
     tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
     tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
-    tab === "etc"     ? (isPersonalGroup ? personalItems.filter(personalHasDiff).length : etcByCode.filter(etcHasDiff).length) :
+    tab === "etc"     ? (isGroup ? groupItems.filter(groupHasDiff).length : etcByCode.filter(etcHasDiff).length) :
     allItems.filter(allHasDiff).length
 
   // 차이만 보기 필터 활성 시 현재 탭의 items를 차이나는 건만 추림
@@ -555,7 +554,7 @@ export function HometaxCalcPanel() {
   const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
   const shownEtcItems     = showDiffOnly ? etcByCode.filter(etcHasDiff) : etcByCode
-  const shownPersonalItems = showDiffOnly ? personalItems.filter(personalHasDiff) : personalItems
+  const shownGroupItems = showDiffOnly ? groupItems.filter(groupHasDiff) : groupItems
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -641,8 +640,12 @@ export function HometaxCalcPanel() {
           <>
             <Button
               size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs"
-              disabled={!batchRunning && BATCH_TAB_COUNT[isPersonalGroup ? "personal" : tab] === 0}
-              onClick={() => batchRunning ? stopBatch() : runItemBatch(isPersonalGroup ? "personal" : tab)}
+              disabled={!batchRunning && (isGroup ? groupItems.length === 0 : BATCH_TAB_COUNT[tab] === 0)}
+              onClick={() => batchRunning
+                ? stopBatch()
+                : isGroup
+                  ? runItemBatch(ETC_GROUPS[etcCode].batchEndpoint, groupItems.length)
+                  : runItemBatch(BATCH_ENDPOINT[tab], BATCH_TAB_COUNT[tab])}
             >
               {batchRunning
                 ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
@@ -730,8 +733,8 @@ export function HometaxCalcPanel() {
         {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "etc" && (isPersonalGroup
-          ? <PersonalTable items={shownPersonalItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
+        {tab === "etc" && (isGroup
+          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
           : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>

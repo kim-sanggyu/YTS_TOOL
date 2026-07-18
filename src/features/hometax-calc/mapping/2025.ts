@@ -84,17 +84,20 @@ export const MAPPING_2025: MappingRow[] = [
   //   코드·필드·OUT 라이브 캡처 실측확정(capture-io 2026-07-18). ytsCol DB코멘트 대조 일치.
   { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "특별소득공제", ntsCode: "8311", label: "주택임차차입 원리금-대출기관", ytsCol: "SP_HOUSE_RALR_LENDER_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8312", label: "주택임차차입 원리금-거주자",   ytsCol: "SP_HOUSE_RALR_HABT_AMT",   valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8321", label: "장기주택저당 11이전(15미만)",  ytsCol: "SP_LH_LRSF1_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8322", label: "장기주택저당 11이전(15~29)",   ytsCol: "SP_LH_LRSF2_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8323", label: "장기주택저당 11이전(30이상)",  ytsCol: "SP_LH_LRSF3_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8324", label: "장기주택저당 12이후 고정or비거치", ytsCol: "SP_LH_LRSF10_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8325", label: "장기주택저당 12이후 그밖",       ytsCol: "SP_LH_LRSF20_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8326", label: "장기주택저당 15이후 고정and비거치", ytsCol: "SP_LH_LRSF30_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "특별소득공제", ntsCode: "8327", label: "장기주택저당 15이후 고정or비거치", ytsCol: "SP_LH_LRSF40_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8327/8328 라벨 중복표기 — 실측 재확인" },
-  { group: "특별소득공제", ntsCode: "8328", label: "장기주택저당 15이후 그밖",       ytsCol: "SP_LH_LRSF50_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "8327/8328 라벨 중복표기 — 실측 재확인" },
-  { group: "특별소득공제", ntsCode: "8329", label: "장기주택저당 15이후(10~15)",     ytsCol: "SP_LH_LRSF60_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  // ── 주택자금(특별소득공제) — 한도 있어 원본 상환액(PAY_WRK_MAIN) LOAN_{코드} 주입 전송, NTS 한도로직 검증. ──
+  //   대조 공제액 = SP_*_AMT(한도후). 코드↔YTS컬럼 순서 실측·상규님 확정(capture-io 2026-07-18, 8321~8329 = LRSF1/2/3/10/20/30/40/50/60).
+  //   소계 OUT: 8310(원리금 소계)·8320(장기주택저당 소계). 전용 탭 없음(전체 결정세액 비교에 기여).
+  { group: "특별소득공제", ntsCode: "8311", label: "주택임차 원리금-대출기관",       ytsCol: "LOAN_8311", resultCol: "SP_HOUSE_RALR_LENDER_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8312", label: "주택임차 원리금-거주자",         ytsCol: "LOAN_8312", resultCol: "SP_HOUSE_RALR_HABT_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8321", label: "장기주택저당 2011이전 15년미만(600만)",        ytsCol: "LOAN_8321", resultCol: "SP_LH_LRSF1_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8322", label: "장기주택저당 2011이전 15~29년(1000만)",        ytsCol: "LOAN_8322", resultCol: "SP_LH_LRSF2_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8323", label: "장기주택저당 2011이전 30년이상(1500만)",        ytsCol: "LOAN_8323", resultCol: "SP_LH_LRSF3_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8324", label: "장기주택저당 2012이후 15년이상 고정&비거치(2000만)", ytsCol: "LOAN_8324", resultCol: "SP_LH_LRSF10_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8325", label: "장기주택저당 2012이후 15년이상 그밖",              ytsCol: "LOAN_8325", resultCol: "SP_LH_LRSF20_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8326", label: "장기주택저당 2015이후 15년이상 고정&비거치(2000만)", ytsCol: "LOAN_8326", resultCol: "SP_LH_LRSF30_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8327", label: "장기주택저당 2015이후 15년이상 고정or비거치(1800만)", ytsCol: "LOAN_8327", resultCol: "SP_LH_LRSF40_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8328", label: "장기주택저당 2015이후 15년이상 그밖(800만)",         ytsCol: "LOAN_8328", resultCol: "SP_LH_LRSF50_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8329", label: "장기주택저당 2015이후 10~15년(600만)",             ytsCol: "LOAN_8329", resultCol: "SP_LH_LRSF60_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 그밖의 소득공제 (useAmt) — 국세청 화면(그밖의소득공제 상세팝업) 기준 정리 (2026-07-17 화면·payload 실측) ──
   { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",              ytsCol: "OTO_PPF",                 valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17). 국세청 self ddcAmt=납입액×40%(한도72만)" },
