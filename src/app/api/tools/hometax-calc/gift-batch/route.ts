@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     ntsYear,
     rows => {
       const filePath = saveWorkbook(rows, year, ntsYear)
-      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))   // 복원용 JSON 캐시
+      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)   // 복원용 JSON 캐시(엑셀 경로 포함)
       return filePath
     },
     loadBatchResults(year, ntsYear)?.rows,   // 지문 같은 사람은 국세청 호출 스킵

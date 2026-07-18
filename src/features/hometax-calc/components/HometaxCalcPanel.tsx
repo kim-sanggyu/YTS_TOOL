@@ -294,6 +294,7 @@ export function HometaxCalcPanel() {
     } catch { /* 무시 */ }
     setResults({})
     setCachedAt(null)
+    setBatchFile(null)
   }
 
   useEffect(() => {
@@ -328,7 +329,7 @@ export function HometaxCalcPanel() {
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
-      .then((d: { savedAt: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
+      .then((d: { savedAt: string | null; filePath?: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
         if (cancelled || !d.rows?.length) return
         setResults(prev => {
           const next = { ...prev }
@@ -342,6 +343,7 @@ export function HometaxCalcPanel() {
           return next
         })
         setCachedAt(d.savedAt)
+        setBatchFile(d.filePath ?? null)   // 복원 후에도 마지막 배치 엑셀 "결과파일 열기" 가능
       })
       .catch(() => { /* 캐시 없음/오류 무시 */ })
     return () => { cancelled = true }
@@ -416,6 +418,7 @@ export function HometaxCalcPanel() {
     es.addEventListener("done", (e) => {
       const { filePath } = JSON.parse((e as MessageEvent).data) as { filePath: string }
       setBatchFile(filePath)
+      setCachedAt(new Date().toISOString())   // 방금 돌린 결과도 캐시에 저장됨 → "저장된 결과 한 벌"로 통일 표시
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
@@ -594,29 +597,32 @@ export function HometaxCalcPanel() {
                 ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
                 : "전체 실행"}
             </Button>
-            {batchFile && !batchRunning && (
-              <span
-                className="flex items-center gap-1 text-xs text-green-600 cursor-pointer hover:underline"
-                title={`${batchFile}\n(클릭 시 탐색기에서 위치 열기)`}
-                onClick={() => {
-                  fetch("/api/tools/hometax-calc/reveal-file", {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ path: batchFile }),
-                  })
-                    .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "열기 실패") })
-                    .catch(e => toast.error(e instanceof Error ? e.message : "열기 실패"))
-                }}
-              >
-                <FileDown className="h-3.5 w-3.5" />결과파일
-              </span>
-            )}
             {batchError && (
               <span className="text-xs text-red-600">{batchError}</span>
             )}
-            {cachedAt && !batchRunning && !batchFile && (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground" title="저장된 이전 실행 결과를 불러왔습니다. 다시 실행하면 갱신됩니다.">
-                이전 실행 결과 ({formatRanAt(new Date(cachedAt))})
+            {/* 저장된 전체실행 결과 = 한 벌. 방금 돌렸든 복원됐든 항상 같은 모양: 실행시각 + (방금 돌렸으면)결과파일 + 지우기 */}
+            {cachedAt && !batchRunning && (
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span title="저장된 전체실행 결과입니다. 다시 실행하면 갱신됩니다.">
+                  실행 {formatRanAt(new Date(cachedAt))}
+                </span>
+                {batchFile && (
+                  <span
+                    className="flex items-center gap-1 text-green-600 cursor-pointer hover:underline"
+                    title={`${batchFile}\n(클릭 시 탐색기에서 위치 열기)`}
+                    onClick={() => {
+                      fetch("/api/tools/hometax-calc/reveal-file", {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body:    JSON.stringify({ path: batchFile }),
+                      })
+                        .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "열기 실패") })
+                        .catch(e => toast.error(e instanceof Error ? e.message : "열기 실패"))
+                    }}
+                  >
+                    <FileDown className="h-3.5 w-3.5" />결과파일
+                  </span>
+                )}
                 <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
                   지우기
                 </Button>

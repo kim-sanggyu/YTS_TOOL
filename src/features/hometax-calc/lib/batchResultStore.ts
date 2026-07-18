@@ -21,6 +21,7 @@ interface StoreFile {
   year: string
   ntsYear: string
   savedAt: string      // ISO — 마지막 upsert 시각
+  filePath?: string    // 마지막 배치가 생성한 엑셀 스냅샷 경로 — 복원 후에도 "결과파일 열기" 가능하게. 개별실행 upsert는 안 건드림
   rows: Record<string, StoredRow>
 }
 
@@ -39,12 +40,13 @@ export function loadBatchResults(year: string, ntsYear: string): StoreFile | nul
   return read(year, ntsYear)
 }
 
-export function upsertBatchResults(year: string, ntsYear: string, rows: StoredRow[]): void {
+export function upsertBatchResults(year: string, ntsYear: string, rows: StoredRow[], filePath?: string): void {
   if (rows.length === 0) return
   fs.mkdirSync(DIR, { recursive: true })
   const store = read(year, ntsYear) ?? { year, ntsYear, savedAt: "", rows: {} }
   for (const r of rows) store.rows[r.calcNo] = r
   store.savedAt = new Date().toISOString()
+  if (filePath) store.filePath = filePath   // 배치 실행만 엑셀 경로 갱신(개별실행은 미지정 → 기존 경로 유지)
   fs.writeFileSync(fileFor(year, ntsYear), JSON.stringify(store))
 }
 
