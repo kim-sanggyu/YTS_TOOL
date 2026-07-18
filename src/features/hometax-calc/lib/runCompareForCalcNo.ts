@@ -70,15 +70,22 @@ function injectPensionVals(
   }
 }
 
-// ── 그밖의소득공제 개인연금저축(8401) → OTHER_8401 가상컬럼 주입 ──
-// PAY_WRK_PEN_SAVE_SPEC PEN_SAVE_CLS='562-030' 납입액 합(원본). NTS self ddcAmt=납입액×40%(한도72만) 자체계산 ↔ OTO_PPF. (2026-07-18 실측)
+// ── 그밖의소득공제 중 PAY_WRK_PEN_SAVE_SPEC 납입액(CLS별) → OTHER_{코드} 가상컬럼 주입 ──
+// NTS self ddcAmt=납입액×40%(한도) 자체계산. 개인연금저축(72만한도) + 주택마련저축(청약/주택청약종합/근로자). (2026-07-18 실측)
+const OTHER_PEN_CLS: Record<string, string> = {
+  "562-030": "8401",   // 개인연금저축 (OUT ×40% 한도72만 ↔ OTO_PPF)
+  "562-050": "8403",   // 청약저축 (↔ OTO_HOUSE_LOAN_SBSC_AMT)
+  "562-060": "8405",   // 주택청약종합저축 (↔ OTO_HOUSE_LOAN_ALL_AMT)
+  "562-080": "8404",   // 근로자주택마련저축 (↔ OTO_HOUSE_LOAN_WRK_AMT)
+}
 function injectOtherSavingsVals(
   specRows: { PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number }[],
   vals:     Record<string, number>,
 ) {
-  let ppf = 0
-  for (const row of specRows) if (row.PEN_SAVE_CLS === "562-030") ppf += Number(row.PEN_SAVE_PMT_AMT ?? 0)
-  if (ppf > 0) vals["OTHER_8401"] = ppf
+  for (const row of specRows) {
+    const code = OTHER_PEN_CLS[row.PEN_SAVE_CLS]
+    if (code) vals[`OTHER_${code}`] = (vals[`OTHER_${code}`] ?? 0) + Number(row.PEN_SAVE_PMT_AMT ?? 0)
+  }
 }
 
 // ── 그밖의소득공제 중 PAY_WRK_MAIN 원본 컬럼 기반 → OTHER_{코드} 주입 ──

@@ -32,6 +32,7 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
            NVL(m.HOUSE_RENT, 0) AS RENT_INPUT,
            (SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s
               WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '562-030') AS PPF_INPUT,
+           NVL(m.SM_ETPR_AMT, 0) AS SM_ETPR_INPUT,
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
@@ -48,6 +49,7 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
         // 전송 원천값(전송 사용액 표시용): 항목마다 다름. 월세=지급총액, 개인연금저축=562-030 납입액, 그 외=공제액 대체.
         const input = m.ntsCode === "8750" ? Number(r.RENT_INPUT ?? 0)
                     : m.ntsCode === "8401" ? Number(r.PPF_INPUT ?? 0)
+                    : m.ntsCode === "8402" ? Number(r.SM_ETPR_INPUT ?? 0)
                     : ddc
         return { code: m.ntsCode, label: m.label, ytsInput: input, ytsDdc: ddc }
       })

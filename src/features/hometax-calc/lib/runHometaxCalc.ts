@@ -174,7 +174,8 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
   for (const m of MAPPING_2025) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
-    setAmt(m.ntsCode, m.valueKey, mappingSentValue(m, vals))
+    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때(예 주택청약종합저축 표시8405/입력8407)
+    setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals))
   }
 
   // 혼인세액공제(8790) 특수: 국세청이 검산하지 않고 입력 ddcAmt 를 그대로 인정 → incDdcNfpCnt=1 + ddcAmt=RT_MRRG.

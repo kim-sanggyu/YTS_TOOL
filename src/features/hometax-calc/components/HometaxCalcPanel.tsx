@@ -34,6 +34,7 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   PERSONAL:      { label: "인적공제",     listQs: "type=personal&group=income", batchEndpoint: "personal-batch?group=income" },  // 배우자·부양가족·추가공제
   FAMILY_CREDIT: { label: "혼인자녀출산", listQs: "type=personal&group=credit", batchEndpoint: "personal-batch?group=credit" },  // 혼인·자녀·출산입양
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
+  HOUSING_SAVINGS: { label: "주택마련저축", listQs: "type=housingsavings",        batchEndpoint: "housingsavings-batch" },         // 청약저축·주택청약종합·근로자주택마련(×40%)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
@@ -45,9 +46,10 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "PENSION_INS",   label: "연금보험료",      disabled: true },
   { code: "SPECIAL_INS",   label: "건강고용보험료",  disabled: true },
   { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
-  ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401"),   // 개인연금저축 = 주택자금 바로 아래
+  ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401" || i.code === "8402"),   // 주택자금 아래: 개인연금저축 > 소기업소상공인
+  { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
-  ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401"),   // 나머지 단일코드(월세액 등)
+  ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
 ]
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
@@ -183,6 +185,7 @@ interface PersonalLine {
   code: string          // NTS 회신 amtClusCd (배우자8002/부양가족8003/추가공제8101~04/혼인8790/자녀8763/출산8761)
   label: string; kind: string   // 소득공제/세액공제
   ytsDdc: number        // YTS 공제액 (NTS ntsMap[code] 와 대조)
+  ytsInput?: number     // 전송 사용액(납입액 등) — 주택마련저축 등 일부 그룹만
 }
 interface PersonalListItem {
   calcNo: string; nm: string; totPayAmt: number
@@ -1352,6 +1355,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const showInput = items.some(it => it.lines.some(l => l.ytsInput != null))   // 전송 사용액(납입액) 있는 그룹만 컬럼 표시
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1365,6 +1369,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          {showInput && <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>}
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
           <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
@@ -1375,7 +1380,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={15} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={showInput ? 16 : 15} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
         )}
         {items.map(row => {
           const res       = results[row.calcNo]
@@ -1400,6 +1405,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                   </div>
                 </td>
                 <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{title} ({row.lines.length}항목)</td>
+                {showInput && <td className="px-3 py-2" />}
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-center">
@@ -1424,6 +1430,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                       <span className="ml-1.5 text-[10px] text-muted-foreground/40">{line.kind}</span>
                     </td>
+                    {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.ytsInput != null ? won(line.ytsInput) : "—"}</td>}
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
@@ -1624,9 +1631,13 @@ const LOAN_SRC: Record<string, string> = {
   LOAN_8324: "LH_LRSF10", LOAN_8325: "LH_LRSF20", LOAN_8326: "LH_LRSF30",
   LOAN_8327: "LH_LRSF40", LOAN_8328: "LH_LRSF50", LOAN_8329: "LH_LRSF60",
 }
-// 그밖의소득공제 OTHER_ 가상컬럼 → 원본 원천(개인연금저축=PEN_SAVE_SPEC 562-030, 노란우산=PAY_WRK_MAIN.SM_ETPR_AMT)
+// 그밖의소득공제 OTHER_ 가상컬럼 → 원본 원천(개인연금저축·주택마련저축=PEN_SAVE_SPEC CLS별, 노란우산=PAY_WRK_MAIN.SM_ETPR_AMT)
 const OTHER_SRC: Record<string, string> = {
-  OTHER_8401: "PEN_SAVE_SPEC(562-030)", OTHER_8402: "SM_ETPR_AMT",
+  OTHER_8401: "PEN_SAVE_SPEC(562-030)",   // 개인연금저축
+  OTHER_8402: "SM_ETPR_AMT",              // 소기업소상공인
+  OTHER_8403: "PEN_SAVE_SPEC(562-050)",   // 청약저축
+  OTHER_8404: "PEN_SAVE_SPEC(562-080)",   // 근로자주택마련저축
+  OTHER_8405: "PEN_SAVE_SPEC(562-060)",   // 주택청약종합저축
 }
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
 //   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.
@@ -1679,7 +1690,8 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
     out.push({
       key:   m.ntsCode + m.label,
       label,
-      code:  m.ntsCode,
+      // 실제 국세청 입력코드가 표시코드와 다르면 병기(예 주택청약종합저축 표시8405/입력8407)
+      code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
       ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : m.valueKey,
       ntsOut: isMrrg ? "—" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
       ytsIn:  ytsInOf(m),
