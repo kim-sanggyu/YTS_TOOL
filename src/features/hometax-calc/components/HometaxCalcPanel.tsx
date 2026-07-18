@@ -58,6 +58,8 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
 interface ListItem {
   calcNo: string; nm: string
   totPayAmt: number; prodTaxAmt: number; resIncmTax: number; effctvTaxRate: number
+  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  exhausted?: boolean; exhaustLabel?: string | null
 }
 interface GiftLine {
   code: string | null   // NTS amtClusCd (없으면 미매핑)
@@ -218,7 +220,6 @@ interface RowResult {
 
 // ── 유틸 ─────────────────────────────────────────────────────────────────────
 const won  = (n: number | null | undefined) => n == null ? "—" : n.toLocaleString("ko-KR")
-const rate = (n: number | null | undefined) => n == null ? "—" : n.toFixed(1) + "%"
 const time = (ms: number) => (ms / 1000).toFixed(1) + "초"
 // 비교 본행 배경색: 일치=연녹 / 불일치=적색 / 미실행=무색 (모든 비교탭 공통 — 색은 여기 한 곳에서만 바꾼다)
 const matchRowBg = (diff: number | null) => diff === 0 ? "bg-green-50/40" : diff != null ? "bg-red-200/70" : ""
@@ -734,7 +735,7 @@ export function HometaxCalcPanel() {
 
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} />}
+        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
@@ -763,51 +764,57 @@ export function HometaxCalcPanel() {
 }
 
 // ── 전체 비교 테이블 ─────────────────────────────────────────────────────────
-function AllTable({ items, loading, results, running, onRun, onDetail }: {
+function AllTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
   items: ListItem[]; loading: boolean
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const diffCell = (d: number | null) => (
+    <td className={`px-3 py-2 text-right tabular-nums text-xs ${d != null && d !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+      {d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "") + d.toLocaleString("ko-KR")}
+    </td>
+  )
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
           <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">산출세액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">실효세율</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap" colSpan={2}>산출세액 (YTS/NTS)</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap" colSpan={2}>결정세액 (YTS/NTS)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">실행일</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 산출세액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 산출세액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 결정세액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 결정세액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
-        </tr>
-        <tr className="border-b text-[10px] text-muted-foreground/60 bg-muted/70">
-          <th colSpan={5} /><th />
-          <th className="px-3 py-1 text-right font-normal">YTS39</th>
-          <th className="px-3 py-1 text-right font-normal">NTS</th>
-          <th className="px-3 py-1 text-right font-normal">YTS39</th>
-          <th className="px-3 py-1 text-right font-normal">NTS</th>
-          <th colSpan={2} />
         </tr>
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={12} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
+          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
         )}
         {items.map(row => {
-          const res = results[row.calcNo]
+          const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const prodMatch = res ? row.prodTaxAmt === (res.nts.prodTax ?? -1) : null
-          const resMatch  = res ? row.resIncmTax  === (res.nts.decidedTax ?? -1) : null
+          const prodNts   = res ? res.nts.prodTax : null
+          const dcdNts    = res ? res.nts.decidedTax : null
+          const prodDiff  = prodNts != null ? prodNts - row.prodTaxAmt : null
+          const dcdDiff   = dcdNts  != null ? dcdNts  - row.resIncmTax : null
+          const rowDiff   = res ? ((prodDiff === 0 && dcdDiff === 0) ? 0 : 1) : null
           return (
-            <tr key={row.calcNo} className={`border-b hover:bg-muted/20 ${res && prodMatch && resMatch ? "bg-green-50/30" : res ? "bg-yellow-50/30" : ""}`}>
+            <tr key={row.calcNo} className={`border-b hover:bg-muted/20 ${matchRowBg(rowDiff)}`}>
               <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
-              <td className="px-3 py-2">{row.nm}</td>
+              <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+              <PersonMainCells item={row} onShowProc={onShowProc} />
               <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{won(row.prodTaxAmt)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{rate(row.effctvTaxRate)}</td>
               <td className="px-3 py-2 text-center whitespace-nowrap">
                 <div className="flex items-center justify-center gap-1">
                   <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
@@ -820,19 +827,15 @@ function AllTable({ items, loading, results, running, onRun, onDetail }: {
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-xs">{won(row.prodTaxAmt)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-xs">
-                <span className="flex items-center justify-end gap-1">
-                  {res ? won(res.nts.prodTax) : "—"}
-                  {res && <MatchIcon yts={row.prodTaxAmt} nts={res.nts.prodTax} />}
-                </span>
+                <span className="flex items-center justify-end gap-1">{res ? won(prodNts) : "—"}{res && <MatchIcon yts={row.prodTaxAmt} nts={prodNts} />}</span>
               </td>
+              {diffCell(prodDiff)}
               <td className="px-3 py-2 text-right tabular-nums text-xs">{won(row.resIncmTax)}</td>
               <td className="px-3 py-2 text-right tabular-nums text-xs">
-                <span className="flex items-center justify-end gap-1">
-                  {res ? won(res.nts.decidedTax) : "—"}
-                  {res && <MatchIcon yts={row.resIncmTax} nts={res.nts.decidedTax} />}
-                </span>
+                <span className="flex items-center justify-end gap-1">{res ? won(dcdNts) : "—"}{res && <MatchIcon yts={row.resIncmTax} nts={dcdNts} />}</span>
               </td>
-              <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res?.ranAt ?? "—"}</td>
+              {diffCell(dcdDiff)}
+              <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
               <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
             </tr>
           )
