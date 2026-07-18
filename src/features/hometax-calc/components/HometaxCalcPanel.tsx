@@ -35,6 +35,7 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   FAMILY_CREDIT: { label: "혼인자녀출산", listQs: "type=personal&group=credit", batchEndpoint: "personal-batch?group=credit" },  // 혼인·자녀·출산입양
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
   HOUSING_SAVINGS: { label: "주택마련저축", listQs: "type=housingsavings",        batchEndpoint: "housingsavings-batch" },         // 청약저축·주택청약종합·근로자주택마련(×40%)
+  INVESTMENT:      { label: "투자조합출자", listQs: "type=investment",            batchEndpoint: "investment-batch" },            // 3연도×3종류(벤처100/70/30%·조합10%)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
@@ -48,6 +49,7 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
   ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401" || i.code === "8402"),   // 주택자금 아래: 개인연금저축 > 소기업소상공인
   { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
+  { code: "INVESTMENT",      label: ETC_GROUPS.INVESTMENT.label },            // 주택마련저축 아래: 투자조합출자(그룹)
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
   ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
 ]
@@ -1638,6 +1640,8 @@ const OTHER_SRC: Record<string, string> = {
   OTHER_8403: "PEN_SAVE_SPEC(562-050)",   // 청약저축
   OTHER_8404: "PEN_SAVE_SPEC(562-080)",   // 근로자주택마련저축
   OTHER_8405: "PEN_SAVE_SPEC(562-060)",   // 주택청약종합저축
+  // 투자조합출자(8415~8423) = PEN_SAVE_SPEC 562-110, INVST_CLS/INVST_YY 로 연도/종류 분리
+  ...Object.fromEntries(["8415","8416","8417","8418","8419","8420","8421","8422","8423"].map(c => [`OTHER_${c}`, "PEN_SAVE_SPEC(562-110)"])),
 }
 // yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
 //   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.

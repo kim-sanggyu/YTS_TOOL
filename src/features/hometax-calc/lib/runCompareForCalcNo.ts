@@ -6,6 +6,7 @@ import { giftNtsCode } from "@/features/hometax-calc/mapping/gift"
 import { CARD_CATS, parseCardProc } from "@/features/hometax-calc/mapping/card"
 import { MEDI_CATS, parseMediProc } from "@/features/hometax-calc/mapping/medi"
 import { pensionNtsCode } from "@/features/hometax-calc/mapping/pension"
+import { investmentCode } from "@/features/hometax-calc/mapping/investment"
 
 // 결과대사·body 에 항상 필요한 기본 컬럼
 const BASE_COLS = ["TOT_PAY_AMT", "PAYM_INCM_TAX", "PROD_TAX_AMT", "RES_INCM_TAX", "SUB_INCM_TAX"]
@@ -84,6 +85,21 @@ function injectOtherSavingsVals(
 ) {
   for (const row of specRows) {
     const code = OTHER_PEN_CLS[row.PEN_SAVE_CLS]
+    if (code) vals[`OTHER_${code}`] = (vals[`OTHER_${code}`] ?? 0) + Number(row.PEN_SAVE_PMT_AMT ?? 0)
+  }
+}
+
+// ── 투자조합출자(그밖의소득공제 8415~8423) → OTHER_{코드} 주입 ──
+// PAY_WRK_PEN_SAVE_SPEC INVST_CLS(2벤처/1조합1/3조합2)×INVST_YY 로 연도/종류별 납입액 합 전송.
+// code = investmentCode(INVST_CLS, INVST_YY-ntsYear). NTS self ddcAmt(벤처100/70/30%·조합10%) ↔ SUM(PEN_SAVE_SUB_AMT). (2026-07-18 실측)
+function injectInvestmentVals(
+  specRows: { PEN_SAVE_CLS: string; INVST_CLS: string | null; INVST_YY: string | null; PEN_SAVE_PMT_AMT: number }[],
+  baseYear: number,   // YTS 당해(dataYear) — INVST_YY 와의 차이가 연차(0=당해,-1,-2)
+  vals:     Record<string, number>,
+) {
+  for (const row of specRows) {
+    if (row.PEN_SAVE_CLS !== "562-110" || !row.INVST_CLS || !row.INVST_YY) continue   // 투자조합출자 = 562-110
+    const code = investmentCode(String(row.INVST_CLS), Number(row.INVST_YY) - baseYear)
     if (code) vals[`OTHER_${code}`] = (vals[`OTHER_${code}`] ?? 0) + Number(row.PEN_SAVE_PMT_AMT ?? 0)
   }
 }
@@ -212,12 +228,13 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   injectCardVals((row.CALC_PROC_CARD as string) ?? null, vals)
   injectMediVals((row.CALC_PROC_MEDI as string) ?? null, vals)
 
-  const penSpec = await ytsDb.query<{ PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number }>(
-    `SELECT PEN_SAVE_CLS, PEN_SAVE_PMT_AMT FROM YTS39.PAY_WRK_PEN_SAVE_SPEC WHERE CALC_NO = :1`,
+  const penSpec = await ytsDb.query<{ PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number; INVST_CLS: string | null; INVST_YY: string | null }>(
+    `SELECT PEN_SAVE_CLS, PEN_SAVE_PMT_AMT, INVST_CLS, INVST_YY FROM YTS39.PAY_WRK_PEN_SAVE_SPEC WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectPensionVals(penSpec, vals)
   injectOtherSavingsVals(penSpec, vals)
+  injectInvestmentVals(penSpec, Number(dataYear), vals)   // 오프셋 기준=YTS 당해(dataYear), NTS 당해로 정렬
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
