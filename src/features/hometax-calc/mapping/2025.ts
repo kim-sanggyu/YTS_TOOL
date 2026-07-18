@@ -70,12 +70,14 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=500,000(50만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=56, 배우자없음+직계비속0+부녀자로 격리 — 한부모(8104)와 배타관계)" },
   { group: "인적공제", ntsCode: "8104", label: "추가공제-한부모",   ytsCol: "ADD_SUB_SNGL_PRNT_AMT",valueKey: "incDdcNfpCnt", rule: "flag",  status: "확정", send: true, note: "self ddcAmt=1,000,000(100만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=46/47, 배우자없음+직계비속 → 한부모 자동 적용)" },
 
-  // ── 연금보험료공제 (소득공제, useAmt) ──────────────────────────────────────
-  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "추정", send: true },
-  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_AMT",valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  // ── 연금보험료공제 (소득공제, useAmt) — 전액공제(OUT ddcAmt=useAmt), 소계 OUT=8919 ──
+  //   대상금액(_AMT) 전송 → NTS self ddcAmt 전액 회신. *_OBJ_AMT(공제대상)=*_AMT 동일값.
+  //   코드·필드·OUT 라이브 캡처 실측확정(capture-io 2026-07-18, n=2). ytsCol DB코멘트 대조 일치.
+  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_AMT",valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 특별소득공제 (useAmt) ──────────────────────────────────────────────────
   { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: true },
