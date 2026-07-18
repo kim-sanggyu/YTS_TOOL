@@ -80,8 +80,10 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 특별소득공제 (useAmt) ──────────────────────────────────────────────────
-  { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: true },
-  { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: true },
+  //   보험료공제(건강·고용)는 전액공제(OUT ddcAmt=useAmt), 소계 OUT=8920. *_OBJ_AMT(대상)=*_AMT 동일값.
+  //   코드·필드·OUT 라이브 캡처 실측확정(capture-io 2026-07-18). ytsCol DB코멘트 대조 일치.
+  { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "특별소득공제", ntsCode: "8311", label: "주택임차차입 원리금-대출기관", ytsCol: "SP_HOUSE_RALR_LENDER_AMT", valueKey: "useAmt", rule: "value", status: "추정", send: false },
   { group: "특별소득공제", ntsCode: "8312", label: "주택임차차입 원리금-거주자",   ytsCol: "SP_HOUSE_RALR_HABT_AMT",   valueKey: "useAmt", rule: "value", status: "추정", send: false },
   { group: "특별소득공제", ntsCode: "8321", label: "장기주택저당 11이전(15미만)",  ytsCol: "SP_LH_LRSF1_AMT",  valueKey: "useAmt", rule: "value", status: "추정", send: false },

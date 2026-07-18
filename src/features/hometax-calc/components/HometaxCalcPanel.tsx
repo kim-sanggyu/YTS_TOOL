@@ -38,6 +38,7 @@ const PERSONAL_GROUPS: Record<string, { label: string; param: "income" | "credit
 const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   ...Object.entries(PERSONAL_GROUPS).map(([code, g]) => ({ code, label: g.label })),
   { code: "PENSION_INS", label: "연금보험료", disabled: true },
+  { code: "SPECIAL_INS", label: "보험료공제(건강·고용)", disabled: true },
   ...MAPPING_2025
     .filter(m => m.tab === "기타" && m.send && m.resultCol)
     .map(m => ({ code: m.ntsCode, label: m.label })),
