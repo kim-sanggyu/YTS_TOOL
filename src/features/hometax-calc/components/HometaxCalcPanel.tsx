@@ -36,10 +36,13 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
+// 표시 순서는 상규님 지정(인적공제>연금>건강고용>주택자금>혼인자녀출산), 월세액 등 단일코드는 뒤에.
 const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
-  ...Object.entries(ETC_GROUPS).map(([code, g]) => ({ code, label: g.label })),
-  { code: "PENSION_INS", label: "연금보험료", disabled: true },
-  { code: "SPECIAL_INS", label: "건강고용보험료", disabled: true },
+  { code: "PERSONAL",      label: ETC_GROUPS.PERSONAL.label },
+  { code: "PENSION_INS",   label: "연금보험료",      disabled: true },
+  { code: "SPECIAL_INS",   label: "건강고용보험료",  disabled: true },
+  { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
+  { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
   ...MAPPING_2025
     .filter(m => m.tab === "기타" && m.send && m.resultCol)
     .map(m => ({ code: m.ntsCode, label: m.label })),
