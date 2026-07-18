@@ -6,6 +6,7 @@ import { getCardItems } from "@/features/hometax-calc/lib/cardList"
 import { getMediItems } from "@/features/hometax-calc/lib/mediList"
 import { getPensionItems } from "@/features/hometax-calc/lib/pensionList"
 import { getEtcItems } from "@/features/hometax-calc/lib/etcList"
+import { getPersonalItems } from "@/features/hometax-calc/lib/personalList"
 
 export const revalidate = 0
 
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
   if (type === "medi")    return Response.json({ items: await getMediItems(year) })
   if (type === "pension") return Response.json({ items: await getPensionItems(year) })
   if (type === "etc")     return Response.json({ items: await getEtcItems(year) })
+  if (type === "personal") return Response.json({ items: await getPersonalItems(year) })
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string

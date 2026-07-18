@@ -28,9 +28,14 @@ const NTS_FLOW: { code: string; label: string }[] = [
 
 // 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
 // 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
-const ETC_TAB_ITEMS = MAPPING_2025
-  .filter(m => m.tab === "기타" && m.send && m.resultCol)
-  .map(m => ({ code: m.ntsCode, label: m.label }))
+// 기타 드롭다운 = 그룹 항목(여러 코드 묶음) + 단일코드 항목(매핑 tab:"기타") 순.
+const PERSONAL_GROUP_CODE = "PERSONAL"   // 인적공제 그룹(배우자·부양가족·추가공제·혼인·자녀·출산 묶음)
+const ETC_TAB_ITEMS = [
+  { code: PERSONAL_GROUP_CODE, label: "인적공제" },
+  ...MAPPING_2025
+    .filter(m => m.tab === "기타" && m.send && m.resultCol)
+    .map(m => ({ code: m.ntsCode, label: m.label })),
+]
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 interface ListItem {
@@ -161,6 +166,17 @@ interface EtcListItem {
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   lines: EtcLine[]
 }
+interface PersonalLine {
+  code: string          // NTS 회신 amtClusCd (배우자8002/부양가족8003/추가공제8101~04/혼인8790/자녀8763/출산8761)
+  label: string; kind: string   // 소득공제/세액공제
+  ytsDdc: number        // YTS 공제액 (NTS ntsMap[code] 와 대조)
+}
+interface PersonalListItem {
+  calcNo: string; nm: string; totPayAmt: number
+  exhausted?: boolean; exhaustLabel?: string | null
+  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  lines: PersonalLine[]
+}
 interface NtsResult {
   prodTax: number | null; decidedTax: number | null; withheld: number | null
   workDdc: number | null; taxBase: number | null; resultCode: string | null
@@ -240,6 +256,7 @@ export function HometaxCalcPanel() {
   const [mediItems,      setMediItems]      = useState<MediListItem[]>([])
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
+  const [personalItems,  setPersonalItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
   const [etcCode,        setEtcCode]        = useState<string>(ETC_TAB_ITEMS[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운)
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
@@ -300,7 +317,7 @@ export function HometaxCalcPanel() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
-      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setResults({}); setLoading(true); setDiffOnly(false)
+      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setPersonalItems([]); setResults({}); setLoading(true); setDiffOnly(false)
       if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
@@ -321,6 +338,17 @@ export function HometaxCalcPanel() {
     load()
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
+
+  // 기타>인적공제 그룹 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
+  useEffect(() => {
+    if (tab !== "etc" || etcCode !== PERSONAL_GROUP_CODE) return
+    let cancelled = false
+    fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=personal`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setPersonalItems(d.items ?? []) })
+      .catch(() => { /* 무시 */ })
+    return () => { cancelled = true }
+  }, [tab, etcCode, year, ntsYear])
 
   // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
@@ -371,10 +399,11 @@ export function HometaxCalcPanel() {
   }
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
-  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
+  // personal = 기타>인적공제 그룹(탭이 아닌 서브모드) 전용 배치 — 대상은 인적공제 발생자 전원.
+  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch", personal: "personal-batch" } as const
   type BatchTab = keyof typeof BATCH_ENDPOINT
   const BATCH_TAB_COUNT: Record<BatchTab, number> = {
-    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
+    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length, personal: personalItems.length,
   }
   const batchEsRef = useRef<EventSource | null>(null)
 
@@ -457,8 +486,9 @@ export function HometaxCalcPanel() {
     .filter((r): r is EtcListItem => r !== null)
 
   const etcLabel = ETC_TAB_ITEMS.find(i => i.code === etcCode)?.label ?? ""
+  const isPersonalGroup = tab === "etc" && etcCode === PERSONAL_GROUP_CODE   // 기타>인적공제 그룹 뷰
 
-  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? etcByCode.length : allItems.length
+  const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isPersonalGroup ? personalItems.length : etcByCode.length) : allItems.length
 
   // 탭별 YTS·NTS 값이 다른지 판정 (실행 전이면 false) — 차이 건수 집계·필터링에 공통 사용
   function giftHasDiff(i: GiftListItem): boolean {
@@ -491,13 +521,19 @@ export function HometaxCalcPanel() {
     const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
     return ntsTotal - i.penDdc !== 0
   }
+  // 인적공제 그룹: 항목별 code 대조 — 하나라도 YTS≠NTS 면 차이 (소득/세액 혼재라 합산 대신 항목별 판정)
+  function personalHasDiff(i: PersonalListItem): boolean {
+    const res = results[i.calcNo]
+    if (!res) return false
+    return i.lines.some(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc)
+  }
 
   const diffCount =
     tab === "gift"    ? giftItems.filter(giftHasDiff).length :
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
     tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
     tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
-    tab === "etc"     ? etcByCode.filter(etcHasDiff).length :
+    tab === "etc"     ? (isPersonalGroup ? personalItems.filter(personalHasDiff).length : etcByCode.filter(etcHasDiff).length) :
     allItems.filter(allHasDiff).length
 
   // 차이만 보기 필터 활성 시 현재 탭의 items를 차이나는 건만 추림
@@ -508,6 +544,7 @@ export function HometaxCalcPanel() {
   const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
   const shownEtcItems     = showDiffOnly ? etcByCode.filter(etcHasDiff) : etcByCode
+  const shownPersonalItems = showDiffOnly ? personalItems.filter(personalHasDiff) : personalItems
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -590,8 +627,8 @@ export function HometaxCalcPanel() {
           <>
             <Button
               size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs"
-              disabled={!batchRunning && BATCH_TAB_COUNT[tab] === 0}
-              onClick={() => batchRunning ? stopBatch() : runItemBatch(tab)}
+              disabled={!batchRunning && BATCH_TAB_COUNT[isPersonalGroup ? "personal" : tab] === 0}
+              onClick={() => batchRunning ? stopBatch() : runItemBatch(isPersonalGroup ? "personal" : tab)}
             >
               {batchRunning
                 ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
@@ -679,7 +716,9 @@ export function HometaxCalcPanel() {
         {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "etc" && <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
+        {tab === "etc" && (isPersonalGroup
+          ? <PersonalTable items={shownPersonalItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
+          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>
 
@@ -1267,6 +1306,106 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                     </td>
                     <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    <td className="px-3 py-1 text-center">
+                      <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
+                    </td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${ldiff != null && ldiff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/40"}`}>
+                      {ldiff == null ? "—" : ldiff === 0 ? "0" : (ldiff > 0 ? "+" : "") + ldiff.toLocaleString("ko-KR")}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                )
+              })}
+            </Fragment>
+          )
+        })}
+      </tbody>
+    </table>
+  )
+}
+
+// 인적공제 그룹 = 본인 제외, 배우자·부양가족·추가공제(소득공제) + 혼인·자녀·출산(세액공제) 항목별 대조.
+// 소득/세액 혼재라 소계 합산은 무의미 → 본행은 "N항목 중 M 불일치" 요약, 세부행이 항목별 YTS↔NTS 판정.
+function PersonalTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
+  items: PersonalListItem[]; loading: boolean
+  results: Record<string, RowResult>; running: Set<string>
+  onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+}) {
+  return (
+    <table className="w-full text-sm border-collapse">
+      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+        <tr className="border-b text-xs text-muted-foreground">
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
+          <th className="px-3 py-2 text-left font-medium">이름</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
+          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
+          <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 && !loading && (
+          <tr><td colSpan={15} className="px-3 py-8 text-center text-sm text-muted-foreground">인적공제 데이터가 없습니다.</td></tr>
+        )}
+        {items.map(row => {
+          const res       = results[row.calcNo]
+          const isRunning = running.has(row.calcNo)
+          const mismatch  = res ? row.lines.filter(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc).length : null
+          return (
+            <Fragment key={row.calcNo}>
+              {/* 본행 = 인적공제 요약(항목수·불일치 건수). 소득/세액 혼재라 공제액 합산은 표시 안 함. */}
+              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(mismatch)}`}>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <PersonMainCells item={row} onShowProc={onShowProc} />
+                <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
+                <td className="px-3 py-2 text-center whitespace-nowrap">
+                  <div className="flex items-center justify-center gap-1">
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">인적공제 ({row.lines.length}항목)</td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 text-center">
+                  <span className="inline-flex justify-center"><MatchIcon yts={mismatch != null ? 0 : null} nts={mismatch} /></span>
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums text-xs ${mismatch ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
+                  {mismatch == null ? "—" : mismatch === 0 ? "0" : `${mismatch}건`}
+                </td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
+              </tr>
+              {/* 세부행 = 항목별 YTS 공제 ↔ NTS ntsMap[code] */}
+              {row.lines.map((line, i) => {
+                const last   = i === row.lines.length - 1
+                const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
+                const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
+                return (
+                  <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
+                    <td colSpan={8} />
+                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                      {line.label}
+                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                      <span className="ml-1.5 text-[10px] text-muted-foreground/40">{line.kind}</span>
+                    </td>
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
