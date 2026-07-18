@@ -50,11 +50,11 @@ function buildWorkbook(rows: BatchRow<PersonalListItem>[]) {
   return wb
 }
 
-function saveWorkbook(rows: BatchRow<PersonalListItem>[], year: string, ntsYear: string): string {
+function saveWorkbook(rows: BatchRow<PersonalListItem>[], year: string, ntsYear: string, group: string): string {
   const dir = path.join(process.cwd(), "data", "hometax-personal-batch")
   fs.mkdirSync(dir, { recursive: true })
   const ts = new Date().toISOString().replace(/[:.]/g, "-")
-  const filePath = path.join(dir, `personal-batch-${year}-nts${ntsYear}-${ts}.xlsx`)
+  const filePath = path.join(dir, `personal-${group || "all"}-batch-${year}-nts${ntsYear}-${ts}.xlsx`)
   const buf = XLSX.write(buildWorkbook(rows), { type: "buffer", bookType: "xlsx" }) as Buffer
   fs.writeFileSync(filePath, buf)
   return path.relative(process.cwd(), filePath)
@@ -66,12 +66,14 @@ export async function GET(req: NextRequest) {
 
   const year    = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
+  const group   = req.nextUrl.searchParams.get("group")
+  const kind    = group === "credit" ? "세액공제" : group === "income" ? "소득공제" : undefined
 
   const stream = streamCompareBatch(
-    () => getPersonalItems(year),
+    () => getPersonalItems(year, kind),
     ntsYear,
     rows => {
-      const filePath = saveWorkbook(rows, year, ntsYear)
+      const filePath = saveWorkbook(rows, year, ntsYear, group ?? "")
       upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)   // 복원용 JSON 캐시(엑셀 경로 포함)
       return filePath
     },

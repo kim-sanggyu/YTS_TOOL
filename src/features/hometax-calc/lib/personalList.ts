@@ -1,5 +1,5 @@
 import { ytsDb } from "@/lib/db/oracle"
-import { PERSONAL_ROWS } from "@/features/hometax-calc/mapping/personal"
+import { PERSONAL_ROWS, type PersonalKind } from "@/features/hometax-calc/mapping/personal"
 import { exhaustInfo } from "@/features/hometax-calc/lib/exhaust"
 import { calcMethodLabel, workStatusLabel } from "@/features/hometax-calc/lib/personInfo"
 
@@ -12,11 +12,13 @@ export interface PersonalListItem {
 }
 
 // 인적공제 그룹(본인 제외) 사람별 YTS 공제액. 값(>0) 있는 항목만 line 으로.
-// NTS 대조값은 화면에서 results.ntsMap[code] 로 조인(9개 코드 전부 이미 send/요청됨).
-export async function getPersonalItems(year: string): Promise<PersonalListItem[]> {
+// kind 지정 시 그 성격(소득공제=인적공제 / 세액공제=혼인·자녀·출산)만 필터.
+// NTS 대조값은 화면에서 results.ntsMap[code] 로 조인(코드 전부 이미 send/요청됨).
+export async function getPersonalItems(year: string, kind?: PersonalKind): Promise<PersonalListItem[]> {
+  const cols      = kind ? PERSONAL_ROWS.filter(r => r.kind === kind) : PERSONAL_ROWS
   const prefix    = `X${year}%`
-  const ddcSel    = PERSONAL_ROWS.map(r => `NVL(c.${r.ytsCol}, 0) AS DDC_${r.code}`).join(", ")
-  const anyPositive = PERSONAL_ROWS.map(r => `NVL(c.${r.ytsCol}, 0) > 0`).join(" OR ")
+  const ddcSel    = cols.map(r => `NVL(c.${r.ytsCol}, 0) AS DDC_${r.code}`).join(", ")
+  const anyPositive = cols.map(r => `NVL(c.${r.ytsCol}, 0) > 0`).join(" OR ")
 
   const rows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
@@ -33,7 +35,7 @@ export async function getPersonalItems(year: string): Promise<PersonalListItem[]
   `, [prefix])
 
   return rows.map(r => {
-    const lines: PersonalLine[] = PERSONAL_ROWS
+    const lines: PersonalLine[] = cols
       .map(row => ({ code: row.code, label: row.label, kind: row.kind, ytsDdc: Number(r[`DDC_${row.code}`] ?? 0) }))
       .filter(l => l.ytsDdc > 0)
     const ex = exhaustInfo(r.EXHAUSTED_POINT as string | null)

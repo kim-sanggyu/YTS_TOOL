@@ -29,9 +29,13 @@ const NTS_FLOW: { code: string; label: string }[] = [
 // 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
 // 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
 // 기타 드롭다운 = 그룹 항목(여러 코드 묶음) + 단일코드 항목(매핑 tab:"기타") 순.
-const PERSONAL_GROUP_CODE = "PERSONAL"   // 인적공제 그룹(배우자·부양가족·추가공제·혼인·자녀·출산 묶음)
+// 인적공제(소득공제) / 혼인·자녀·출산(세액공제)를 성격별로 분리한 두 그룹.
+const PERSONAL_GROUPS: Record<string, { label: string; param: "income" | "credit" }> = {
+  PERSONAL:      { label: "인적공제",     param: "income" },  // 배우자·부양가족·추가공제(경로/장애/부녀/한부모)
+  FAMILY_CREDIT: { label: "혼인자녀출산", param: "credit" },  // 혼인·자녀·출산입양
+}
 const ETC_TAB_ITEMS = [
-  { code: PERSONAL_GROUP_CODE, label: "인적공제" },
+  ...Object.entries(PERSONAL_GROUPS).map(([code, g]) => ({ code, label: g.label })),
   ...MAPPING_2025
     .filter(m => m.tab === "기타" && m.send && m.resultCol)
     .map(m => ({ code: m.ntsCode, label: m.label })),
@@ -258,6 +262,7 @@ export function HometaxCalcPanel() {
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
   const [personalItems,  setPersonalItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
   const [etcCode,        setEtcCode]        = useState<string>(ETC_TAB_ITEMS[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운)
+  const [etcMenuOpen,    setEtcMenuOpen]    = useState(false)                                  // 기타 드롭다운 열림(항목 선택 시 닫기)
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
@@ -339,11 +344,12 @@ export function HometaxCalcPanel() {
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
 
-  // 기타>인적공제 그룹 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
+  // 기타>인적공제/혼인자녀출산 그룹 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
   useEffect(() => {
-    if (tab !== "etc" || etcCode !== PERSONAL_GROUP_CODE) return
+    if (tab !== "etc" || !PERSONAL_GROUPS[etcCode]) return
+    const group = PERSONAL_GROUPS[etcCode].param
     let cancelled = false
-    fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=personal`)
+    fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=personal&group=${group}`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setPersonalItems(d.items ?? []) })
       .catch(() => { /* 무시 */ })
@@ -421,7 +427,8 @@ export function HometaxCalcPanel() {
     setBatchFile(null)
     setBatchError(null)
 
-    const es = new EventSource(`/api/tools/hometax-calc/${BATCH_ENDPOINT[batchTab]}?year=${year}&ntsYear=${ntsYear}`)
+    const groupQs = batchTab === "personal" ? `&group=${personalGroupParam}` : ""
+    const es = new EventSource(`/api/tools/hometax-calc/${BATCH_ENDPOINT[batchTab]}?year=${year}&ntsYear=${ntsYear}${groupQs}`)
     batchEsRef.current = es
 
     es.addEventListener("start", (e) => {
@@ -486,7 +493,8 @@ export function HometaxCalcPanel() {
     .filter((r): r is EtcListItem => r !== null)
 
   const etcLabel = ETC_TAB_ITEMS.find(i => i.code === etcCode)?.label ?? ""
-  const isPersonalGroup = tab === "etc" && etcCode === PERSONAL_GROUP_CODE   // 기타>인적공제 그룹 뷰
+  const isPersonalGroup = tab === "etc" && !!PERSONAL_GROUPS[etcCode]   // 기타>인적공제/혼인자녀출산 그룹 뷰
+  const personalGroupParam = PERSONAL_GROUPS[etcCode]?.param ?? "income"
 
   const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isPersonalGroup ? personalItems.length : etcByCode.length) : allItems.length
 
@@ -602,7 +610,7 @@ export function HometaxCalcPanel() {
             onClick={() => setTab("pension")}
           >연금계좌</button>
           {/* 기타 = 드롭다운: 잡다 세액공제 항목 중 하나를 골라 본문 리스트 필터로 사용 */}
-          <DropdownMenu>
+          <DropdownMenu open={etcMenuOpen} onOpenChange={setEtcMenuOpen}>
             <DropdownMenuTrigger
               className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
               onClick={() => setTab("etc")}
@@ -611,11 +619,14 @@ export function HometaxCalcPanel() {
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc") }}>
+              <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc"); setEtcMenuOpen(false) }}>
                 {ETC_TAB_ITEMS.map(it => (
                   <DropdownMenuRadioItem key={it.code} value={it.code} className="text-xs">
                     {it.label}
-                    <span className="ml-2 font-mono text-[10px] text-muted-foreground/50">{it.code}</span>
+                    {/* 그룹(복합키 PERSONAL/FAMILY_CREDIT)은 실제 코드가 아니라 코드 표시 생략, 단일코드(8750 등)만 표시 */}
+                    {!PERSONAL_GROUPS[it.code] && (
+                      <span className="ml-2 font-mono text-[10px] text-muted-foreground/50">{it.code}</span>
+                    )}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -717,7 +728,7 @@ export function HometaxCalcPanel() {
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
         {tab === "etc" && (isPersonalGroup
-          ? <PersonalTable items={shownPersonalItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
+          ? <PersonalTable items={shownPersonalItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
           : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>
@@ -1328,8 +1339,8 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
 
 // 인적공제 그룹 = 본인 제외, 배우자·부양가족·추가공제(소득공제) + 혼인·자녀·출산(세액공제) 항목별 대조.
 // 소득/세액 혼재라 소계 합산은 무의미 → 본행은 "N항목 중 M 불일치" 요약, 세부행이 항목별 YTS↔NTS 판정.
-function PersonalTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: PersonalListItem[]; loading: boolean
+function PersonalTable({ items, title, loading, results, running, onRun, onDetail, onShowProc }: {
+  items: PersonalListItem[]; title: string; loading: boolean
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -1357,7 +1368,7 @@ function PersonalTable({ items, loading, results, running, onRun, onDetail, onSh
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={15} className="px-3 py-8 text-center text-sm text-muted-foreground">인적공제 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={15} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
         )}
         {items.map(row => {
           const res       = results[row.calcNo]
@@ -1381,7 +1392,7 @@ function PersonalTable({ items, loading, results, running, onRun, onDetail, onSh
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">인적공제 ({row.lines.length}항목)</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{title} ({row.lines.length}항목)</td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-center">

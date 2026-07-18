@@ -24,7 +24,11 @@ export async function GET(req: NextRequest) {
   if (type === "medi")    return Response.json({ items: await getMediItems(year) })
   if (type === "pension") return Response.json({ items: await getPensionItems(year) })
   if (type === "etc")     return Response.json({ items: await getEtcItems(year) })
-  if (type === "personal") return Response.json({ items: await getPersonalItems(year) })
+  if (type === "personal") {
+    const group = req.nextUrl.searchParams.get("group")
+    const kind  = group === "credit" ? "세액공제" : group === "income" ? "소득공제" : undefined
+    return Response.json({ items: await getPersonalItems(year, kind) })
+  }
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string
