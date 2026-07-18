@@ -34,8 +34,10 @@ const PERSONAL_GROUPS: Record<string, { label: string; param: "income" | "credit
   PERSONAL:      { label: "인적공제",     param: "income" },  // 배우자·부양가족·추가공제(경로/장애/부녀/한부모)
   FAMILY_CREDIT: { label: "혼인자녀출산", param: "credit" },  // 혼인·자녀·출산입양
 }
-const ETC_TAB_ITEMS = [
+// disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
+const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   ...Object.entries(PERSONAL_GROUPS).map(([code, g]) => ({ code, label: g.label })),
+  { code: "PENSION_INS", label: "연금보험료", disabled: true },
   ...MAPPING_2025
     .filter(m => m.tab === "기타" && m.send && m.resultCol)
     .map(m => ({ code: m.ntsCode, label: m.label })),
@@ -621,10 +623,10 @@ export function HometaxCalcPanel() {
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc"); setEtcMenuOpen(false) }}>
                 {ETC_TAB_ITEMS.map(it => (
-                  <DropdownMenuRadioItem key={it.code} value={it.code} className="text-xs">
+                  <DropdownMenuRadioItem key={it.code} value={it.code} disabled={it.disabled} className="text-xs">
                     {it.label}
-                    {/* 그룹(복합키 PERSONAL/FAMILY_CREDIT)은 실제 코드가 아니라 코드 표시 생략, 단일코드(8750 등)만 표시 */}
-                    {!PERSONAL_GROUPS[it.code] && (
+                    {/* 실제 단일 NTS코드(숫자, 8750 등)만 코드 표시. 그룹·안내용 복합키는 생략 */}
+                    {/^\d/.test(it.code) && (
                       <span className="ml-2 font-mono text-[10px] text-muted-foreground/50">{it.code}</span>
                     )}
                   </DropdownMenuRadioItem>
