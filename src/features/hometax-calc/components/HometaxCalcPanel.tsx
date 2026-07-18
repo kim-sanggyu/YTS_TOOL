@@ -372,7 +372,7 @@ export function HometaxCalcPanel() {
   // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
   useEffect(() => {
-    if (tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension" && tab !== "etc") return
+    if (tab !== "all" && tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension" && tab !== "etc") return
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
@@ -418,10 +418,10 @@ export function HometaxCalcPanel() {
   }
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
-  const BATCH_ENDPOINT = { gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
+  const BATCH_ENDPOINT = { all: "all-batch", gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
   type BatchTab = keyof typeof BATCH_ENDPOINT
   const BATCH_TAB_COUNT: Record<BatchTab, number> = {
-    gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
+    all: allItems.length, gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
   }
   const batchEsRef = useRef<EventSource | null>(null)
 
@@ -642,7 +642,7 @@ export function HometaxCalcPanel() {
           </DropdownMenu>
         </div>
 
-        {(tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
+        {(tab === "all" || tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
           <>
             <Button
               size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs"
