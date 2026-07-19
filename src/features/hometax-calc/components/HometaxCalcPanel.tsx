@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef, Fragment } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown } from "lucide-react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
@@ -137,13 +137,13 @@ function PersonMainCells({ item, onShowProc }: {
 function ProcTotalView({ info }: { info: { calcNo: string; nm: string; text: string } }) {
   return (
     <div className="flex flex-col h-full min-h-0">
-      <SheetHeader className="border-b pr-12">
-        <SheetTitle className="flex items-center gap-2">
+      <div className="border-b px-4 py-3 pr-12 shrink-0">
+        <div className="flex items-center gap-2">
           <span className="font-mono text-sm">{info.calcNo}</span>
           <span className="text-foreground">{info.nm}</span>
           <span className="text-muted-foreground text-sm font-normal">계산과정</span>
-        </SheetTitle>
-      </SheetHeader>
+        </div>
+      </div>
       <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
         <pre
           className="whitespace-pre text-xs leading-relaxed"
@@ -312,6 +312,14 @@ export function HometaxCalcPanel() {
     const id = setInterval(check, 30000)
     return () => clearInterval(id)
   }, [])
+
+  // 계산과정 팝업 ESC 닫기
+  useEffect(() => {
+    if (!procTotalFor) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setProcTotalFor(null) }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [procTotalFor])
 
   async function startSession() {
     setSessionLoading(true)
@@ -764,12 +772,35 @@ export function HometaxCalcPanel() {
         </SheetContent>
       </Sheet>
 
-      {/* 계산과정 전체 텍스트 드로어 */}
-      <Sheet open={procTotalFor !== null} onOpenChange={o => { if (!o) setProcTotalFor(null) }}>
-        <SheetContent side="right" className="w-full p-0" style={{ maxWidth: "min(92vw, 64rem)" }}>
-          {procTotalFor && <ProcTotalView info={procTotalFor} />}
-        </SheetContent>
-      </Sheet>
+      {/* 계산과정 팝업 — 좌: 계산과정(YTS) / 우: 실행과정(NTS 대조, 결과 있으면). 각 패널 세로·가로 스크롤 */}
+      {procTotalFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setProcTotalFor(null)}
+        >
+          <div
+            className="relative flex overflow-hidden rounded-lg border bg-background shadow-xl"
+            style={{ width: "94vw", height: "90vh" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className="absolute right-2 top-2 z-10 rounded p-1 text-muted-foreground hover:bg-muted"
+              onClick={() => setProcTotalFor(null)}
+              aria-label="닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex min-w-0 flex-1 flex-col border-r">
+              <ProcTotalView info={procTotalFor} />
+            </div>
+            {results[procTotalFor.calcNo] && (
+              <div className="flex min-w-0 flex-1 flex-col">
+                <DetailView res={results[procTotalFor.calcNo]} row={null} calcNo={procTotalFor.calcNo} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1480,19 +1511,20 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <SheetHeader className="border-b pr-12">
-        <SheetTitle className="flex items-center gap-2">
+      <div className="border-b px-4 py-3 pr-12 shrink-0">
+        <div className="flex items-center gap-2">
           <span className="font-mono text-sm">{calcNo}</span>
           {row && <span className="text-foreground">{row.nm}</span>}
+          <span className="text-muted-foreground text-sm font-normal">실행과정</span>
           <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             응답 {nts.resultCode ?? "—"}
           </span>
-        </SheetTitle>
+        </div>
         <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
           <span>총급여 <b className="text-foreground tabular-nums">{won(yts?.totPayAmt ?? row?.totPayAmt)}</b></span>
           <span>기납부 <b className="text-foreground tabular-nums">{won(yts?.paymIncmTax)}</b></span>
         </div>
-      </SheetHeader>
+      </div>
 
       <div className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-6">
         {/* 1) 결과 비교 */}
