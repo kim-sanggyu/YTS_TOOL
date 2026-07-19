@@ -7,7 +7,7 @@ import { getMediItems } from "@/features/hometax-calc/lib/mediList"
 import { getPensionItems } from "@/features/hometax-calc/lib/pensionList"
 import { getEtcItems } from "@/features/hometax-calc/lib/etcList"
 import { getPersonalItems } from "@/features/hometax-calc/lib/personalList"
-import { getHousingItems, getHousingSavingsItems } from "@/features/hometax-calc/lib/housingList"
+import { getHousingItems, getHousingSavingsItems, getOtherIncomeItems } from "@/features/hometax-calc/lib/housingList"
 import { getInvestmentItems } from "@/features/hometax-calc/lib/investmentList"
 
 export const revalidate = 0
@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
   }
   if (type === "housing") return Response.json({ items: await getHousingItems(year) })
   if (type === "housingsavings") return Response.json({ items: await getHousingSavingsItems(year) })
+  if (type === "otherincome") return Response.json({ items: await getOtherIncomeItems(year) })
   if (type === "investment") return Response.json({ items: await getInvestmentItems(year, ntsYear) })
 
   return Response.json({ items: await getAllItems(year) })

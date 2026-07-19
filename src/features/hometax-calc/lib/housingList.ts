@@ -83,3 +83,15 @@ export const getHousingSavingsItems = (year: string) => getGroupItems(year, HOUS
     ? `SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '${cls}'`
     : null
 })
+
+// 그밖의소득공제(잡) = 우리사주출연금(8452)·장기집합(8451)·청년형(8501)·고용유지중소기업(8453). self 대조(YTS OTO_* ↔ NTS 각 코드).
+// 전송 사용액 = 우리사주 MAIN.STOCK_URDM / 고용유지 MAIN.EMPL_MTN_WAGE_CUT / 장기집합 PEN 562-100 합 / 청년형 PEN 562-140 합.
+const OTHER_INCOME_ROWS = MAPPING_2025.filter(m => ["8451", "8452", "8453", "8501"].includes(m.ntsCode) && m.resultCol)
+const OI_PEN_CLS:  Record<string, string> = { "8451": "562-100", "8501": "562-140" }
+const OI_MAIN_COL: Record<string, string> = { "8452": "STOCK_URDM", "8453": "EMPL_MTN_WAGE_CUT" }
+export const getOtherIncomeItems = (year: string) => getGroupItems(year, OTHER_INCOME_ROWS, m => {
+  const cls = OI_PEN_CLS[m.ntsCode]
+  if (cls) return `SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '${cls}'`
+  const col = OI_MAIN_COL[m.ntsCode]
+  return col ? `NVL(m.${col}, 0)` : null
+})

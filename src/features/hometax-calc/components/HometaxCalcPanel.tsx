@@ -36,11 +36,14 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
   HOUSING_SAVINGS: { label: "주택마련저축", listQs: "type=housingsavings",        batchEndpoint: "housingsavings-batch" },         // 청약저축·주택청약종합·근로자주택마련(×40%)
   INVESTMENT:      { label: "투자조합출자", listQs: "type=investment",            batchEndpoint: "investment-batch" },            // 3연도×3종류(벤처100/70/30%·조합10%)
+  OTHER_INCOME:    { label: "그밖의소득공제", listQs: "type=otherincome",          batchEndpoint: "otherincome-batch" },           // 우리사주(8452)·장기집합(8451)·청년형(8501)·고용유지(8453)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
+// 그밖의소득공제 그룹(OTHER_INCOME)으로 묶는 코드 — 개별 단일항목 목록에선 제외.
+const OTHER_INCOME_CODES = ["8451", "8452", "8453", "8501"]
 const ETC_SINGLE_ITEMS = MAPPING_2025
-  .filter(m => m.tab === "기타" && m.send && m.resultCol)
+  .filter(m => m.tab === "기타" && m.send && m.resultCol && !OTHER_INCOME_CODES.includes(m.ntsCode))
   .map(m => ({ code: m.ntsCode, label: m.label }))
 const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "PERSONAL",      label: ETC_GROUPS.PERSONAL.label },
@@ -50,6 +53,7 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401" || i.code === "8402"),   // 주택자금 아래: 개인연금저축 > 소기업소상공인
   { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
   { code: "INVESTMENT",      label: ETC_GROUPS.INVESTMENT.label },            // 주택마련저축 아래: 투자조합출자(그룹)
+  { code: "OTHER_INCOME",    label: ETC_GROUPS.OTHER_INCOME.label },          // 투자조합출자 아래: 그밖의소득공제(그룹)
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
   ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
 ]
@@ -1647,6 +1651,10 @@ const OTHER_SRC: Record<string, string> = {
   OTHER_8403: "PEN_SAVE_SPEC(562-050)",   // 청약저축
   OTHER_8404: "PEN_SAVE_SPEC(562-080)",   // 근로자주택마련저축
   OTHER_8405: "PEN_SAVE_SPEC(562-060)",   // 주택청약종합저축
+  OTHER_8452: "STOCK_URDM",               // 우리사주출연금 (PAY_WRK_MAIN)
+  OTHER_8451: "PEN_SAVE_SPEC(562-100)",   // 장기집합투자증권저축
+  OTHER_8501: "PEN_SAVE_SPEC(562-140)",   // 청년형 장기집합투자증권저축
+  OTHER_8453: "EMPL_MTN_WAGE_CUT",        // 고용유지중소기업 임금삭감액 (PAY_WRK_MAIN)
   // 투자조합출자(8415~8423) = PEN_SAVE_SPEC 562-110, INVST_CLS/INVST_YY 로 연도/종류 분리
   ...Object.fromEntries(["8415","8416","8417","8418","8419","8420","8421","8422","8423"].map(c => [`OTHER_${c}`, "PEN_SAVE_SPEC(562-110)"])),
 }
