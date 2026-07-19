@@ -14,7 +14,7 @@ export interface HousingListItem {
 // 소득공제 그룹 공용: 매핑 rows(resultCol=YTS 공제액)로 사람별 항목 대조 조회. 값(>0) 있는 항목만 line.
 // NTS 대조값은 화면에서 results.ntsMap[code] 로 조인. inputExpr(옵션): 각 행의 전송값(납입액 등) SQL 표현식.
 async function getGroupItems(
-  year: string, rows: MappingRow[], inputExpr?: (m: MappingRow) => string | null,
+  year: string, rows: MappingRow[], inputExpr?: (m: MappingRow) => string | null, kind: string = "소득공제",
 ): Promise<HousingListItem[]> {
   if (rows.length === 0) return []
   const ddcSel      = rows.map(m => `NVL(c.${m.resultCol}, 0) AS DDC_${m.ntsCode}`).join(", ")
@@ -40,7 +40,7 @@ async function getGroupItems(
   return dbRows.map(r => {
     const lines: HousingLine[] = rows
       .map(m => ({
-        code: m.ntsCode, label: m.label, kind: "소득공제", ytsDdc: Number(r[`DDC_${m.ntsCode}`] ?? 0),
+        code: m.ntsCode, label: m.label, kind, ytsDdc: Number(r[`DDC_${m.ntsCode}`] ?? 0),
         ...(inputExpr ? { ytsInput: Number(r[`IN_${m.ntsCode}`] ?? 0) } : {}),
       }))
       .filter(l => l.ytsDdc > 0)
@@ -95,3 +95,12 @@ export const getOtherIncomeItems = (year: string) => getGroupItems(year, OTHER_I
   const col = OI_MAIN_COL[m.ntsCode]
   return col ? `NVL(m.${col}, 0)` : null
 })
+
+// 기타세액공제(잡) = 외국납부(8751)·주택차입금이자(8752)·납세조합(8753). self 대조(YTS RT_* ↔ NTS 각 코드).
+// 전송 사용액(대상금액) = PAY_WRK_MAIN 원천. 8754(국외총급여)는 동반입력·결과없음이라 제외(resultCol 없음).
+const ETC_CREDIT_ROWS = MAPPING_2025.filter(m => ["8751", "8752", "8753"].includes(m.ntsCode) && m.resultCol)
+const EC_MAIN_COL: Record<string, string> = { "8751": "FRGN_PAY_TAX", "8752": "HOUSE_ALR", "8753": "ASSO_SUB_TAX_AMT" }
+export const getEtcCreditItems = (year: string) => getGroupItems(year, ETC_CREDIT_ROWS, m => {
+  const col = EC_MAIN_COL[m.ntsCode]
+  return col ? `NVL(m.${col}, 0)` : null
+}, "세액공제")
