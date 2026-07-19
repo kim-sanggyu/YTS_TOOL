@@ -634,5 +634,11 @@
     "amtClusCd": "8610",
     "valueKey": "useAmt",
     "label": "핵심인력 성과보상기금"
+  },
+  {
+    "idx": 110,
+    "amtClusCd": "8501",
+    "valueKey": "useAmt",
+    "label": "청년형 장기집합투자증권저축"
   }
 ]

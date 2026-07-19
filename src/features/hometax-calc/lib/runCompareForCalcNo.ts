@@ -78,6 +78,8 @@ const OTHER_PEN_CLS: Record<string, string> = {
   "562-050": "8403",   // 청약저축 (↔ OTO_HOUSE_LOAN_SBSC_AMT)
   "562-060": "8405",   // 주택청약종합저축 (↔ OTO_HOUSE_LOAN_ALL_AMT)
   "562-080": "8404",   // 근로자주택마련저축 (↔ OTO_HOUSE_LOAN_WRK_AMT)
+  "562-100": "8451",   // 장기집합투자증권저축 (OUT ×40% 한도240만 ↔ OTO_LONG_STOCK_SAVING)
+  "562-140": "8501",   // 청년형 장기집합투자증권저축 (OUT ×40% 한도240만 ↔ OTO_YM_LONG_STOCK_SAVING)
 }
 function injectOtherSavingsVals(
   specRows: { PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number }[],
@@ -107,8 +109,10 @@ function injectInvestmentVals(
 // ── 그밖의소득공제 중 PAY_WRK_MAIN 원본 컬럼 기반 → OTHER_{코드} 주입 ──
 // 노란우산(8402): SM_ETPR_AMT(납입액). NTS self ddcAmt=min(납입액, 소득금액별한도) 자체계산 ↔ OTO_SM_ETPR_AMT. (2026-07-18 실측)
 function injectOtherMainVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
-  const n = Number(mainRow?.SM_ETPR_AMT ?? 0)
-  if (n > 0) vals["OTHER_8402"] = n
+  const put = (key: string, v: unknown) => { const n = Number(v ?? 0); if (n > 0) vals[key] = n }
+  put("OTHER_8402", mainRow?.SM_ETPR_AMT)        // 소기업소상공인(노란우산)
+  put("OTHER_8452", mainRow?.STOCK_URDM)         // 우리사주조합 출연금 (전액공제, 한도1500만)
+  put("OTHER_8453", mainRow?.EMPL_MTN_WAGE_CUT)  // 고용유지중소기업 임금삭감액 (×50%, 한도1000만)
 }
 
 // ── 월세 PAY_WRK_MAIN.HOUSE_RENT → RENT_8750 가상컬럼 주입 (원본 지급총액) ──
@@ -240,7 +244,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
             HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
             LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
-            SM_ETPR_AMT
+            SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT
      FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )

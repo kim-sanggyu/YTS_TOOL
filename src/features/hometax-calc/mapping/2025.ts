@@ -133,10 +133,10 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주출연금 소득공제",       ytsCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
-  { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",          ytsCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
-  { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축",     ytsCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "코드 화면실측(2026-07-17)" },
-  { group: "그밖의소득공제", ntsCode: "8453", label: "고용유지중소기업근로자소득공제",  ytsCol: "OTO_EMPL_MTN_WAGE_CUT",  valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "임금삭감액 기준. 코드 화면실측(2026-07-17)" },
+  { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주출연금 소득공제",       ytsCol: "OTHER_8452", resultCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.STOCK_URDM→OTHER_8452. OUT self 전액(한도1500만) ↔ OTO_SU. 라이브 캡처 실측(2026-07-19, 1,000,000→1,000,000)" },
+  { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",          ytsCol: "OTHER_8451", resultCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-100 Σ납입액→OTHER_8451. OUT self ×40%(한도240만) ↔ OTO_LONG_STOCK_SAVING. 라이브 캡처 실측(2026-07-19, 2,000,000→800,000)" },
+  { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축",     ytsCol: "OTHER_8501", resultCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-140 Σ납입액→OTHER_8501. OUT self ×40%(한도240만) ↔ OTO_YM_LONG_STOCK_SAVING. 카탈로그 미등재 코드였음, 라이브 캡처 실측(2026-07-19, 3,000,000→1,200,000)" },
+  { group: "그밖의소득공제", ntsCode: "8453", label: "고용유지중소기업근로자소득공제",  ytsCol: "OTHER_8453", resultCol: "OTO_EMPL_MTN_WAGE_CUT",  valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.EMPL_MTN_WAGE_CUT(임금삭감액)→OTHER_8453. OUT self ×50%(한도1000만) ↔ OTO_EMPL_MTN_WAGE_CUT. 라이브 캡처 실측(2026-07-19, 4,000,000→2,000,000)" },
 
   // ── 세액감면 (useAmt) ──────────────────────────────────────────────────────
   { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법",       ytsCol: "RT_IT_LAW",         valueKey: "useAmt", rule: "value", status: "추정", send: false },
