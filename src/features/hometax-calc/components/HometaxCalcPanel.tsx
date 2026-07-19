@@ -221,8 +221,12 @@ interface RowResult {
 // ── 유틸 ─────────────────────────────────────────────────────────────────────
 const won  = (n: number | null | undefined) => n == null ? "—" : n.toLocaleString("ko-KR")
 const time = (ms: number) => (ms / 1000).toFixed(1) + "초"
-// 비교 본행 배경색: 일치=연녹 / 불일치=적색 / 미실행=무색 (모든 비교탭 공통 — 색은 여기 한 곳에서만 바꾼다)
-const matchRowBg = (diff: number | null) => diff === 0 ? "bg-green-50/40" : diff != null ? "bg-red-200/70" : ""
+// 오류 행 = 국세청 계산 실패/성공외 응답 (성공 "S"·미실행 null 외의 resultCode). 세션만료·차단·예외 등.
+const isErrorRow = (res: RowResult | undefined) => !!res && res.nts.resultCode != null && res.nts.resultCode !== "S"
+// 비교 본행 배경색(모든 비교탭 공통 — 색은 여기 한 곳에서만 바꾼다):
+//   선택(클릭)=파랑 최우선 > 오류=주황 > 그 외(일치·불일치·미실행) 무색. 일치·불일치는 ✓/✗ 아이콘·차이 컬럼으로 구분.
+const rowBg = (res: RowResult | undefined, selected: boolean) =>
+  selected ? "bg-blue-100/70" : isErrorRow(res) ? "bg-amber-200/70" : ""
 
 // 비교일시 표기: YY.MM.DD HH:MM
 function formatRanAt(d: Date): string {
@@ -282,6 +286,7 @@ export function HometaxCalcPanel() {
   const [running,        setRunning]        = useState<Set<string>>(new Set())
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
   const [detailFor,      setDetailFor]      = useState<string | null>(null)
+  const [selectedCalcNo, setSelectedCalcNo] = useState<string | null>(null)   // 클릭된 본행(파랑 표시) — 드로어(detailFor)와 분리
   const [procTotalFor,   setProcTotalFor]   = useState<{ calcNo: string; nm: string; text: string } | null>(null)
   const [sessionInfo,    setSessionInfo]    = useState<{ active: boolean; ageMinutes: number | null }>({ active: false, ageMinutes: null })
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -735,14 +740,14 @@ export function HometaxCalcPanel() {
 
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
-        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />}
+        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
+        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
+        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
+        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
+        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
         {tab === "etc" && (isGroup
-          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />
-          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} />)}
+          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />
+          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>
 
@@ -764,8 +769,8 @@ export function HometaxCalcPanel() {
 }
 
 // ── 전체 비교 테이블 ─────────────────────────────────────────────────────────
-function AllTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: ListItem[]; loading: boolean
+function AllTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: ListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -808,9 +813,8 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           const dcdNts    = res ? res.nts.decidedTax : null
           const prodDiff  = prodNts != null ? prodNts - row.prodTaxAmt : null
           const dcdDiff   = dcdNts  != null ? dcdNts  - row.resIncmTax : null
-          const rowDiff   = res ? ((prodDiff === 0 && dcdDiff === 0) ? 0 : 1) : null
           return (
-            <tr key={row.calcNo} className={`border-b hover:bg-muted/20 ${matchRowBg(rowDiff)}`}>
+            <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
               <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
               <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
               <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -846,8 +850,8 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
 }
 
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
-function GiftTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: GiftListItem[]; loading: boolean
+function GiftTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: GiftListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -888,7 +892,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -950,8 +954,8 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 신용카드 비교 테이블 (본행 = 카드소득공제 소계 / 세부행 = 가~아 전송 사용액) ──
 //   비교 기준: YTS 카드소득공제(=OTO_CARD_ETC) ↔ NTS 8430(카드소계).
 //   세부행은 "우리가 보낸 사용액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
-function CardTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: CardListItem[]; loading: boolean
+function CardTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: CardListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -991,7 +995,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1047,8 +1051,8 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 의료비 비교 테이블 (본행 = 의료비 세액공제 소계 / 세부행 = 대상자별 지출금액) ──
 //   비교 기준: YTS 의료비 세액공제(=RT_MEDI_AMT) ↔ NTS 8726(의료비집계).
 //   세부행은 "우리가 보낸 지출금액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
-function MediTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: MediListItem[]; loading: boolean
+function MediTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: MediListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -1088,7 +1092,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1144,8 +1148,8 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 기타 비교 테이블 (본행 = 기타 세액공제 합 / 세부행 = 항목별 대조) ──
 //   이질 항목(월세 등)이라 소계코드가 없어 lines 의 각 code 합으로 본행 대조.
 //   세부행은 항목별로 YTS공제(resultCol) ↔ NTS(ntsCode)를 직접 대조(medi 와 달리 세부행도 비교).
-function EtcTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: EtcListItem[]; loading: boolean
+function EtcTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: EtcListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -1185,7 +1189,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 기타 세액공제 합 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1250,8 +1254,8 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
 //   ★국세청이 항목별 self ddcAmt(8701~8708) 반환 → 세부행마다 YTS공제(계좌별 SUB 합) ↔ NTS(각 code) 직접대조.
 //   YTS 항목별 세액공제액 = PAY_WRK_PEN_SAVE_SPEC.PEN_SAVE_SUB_AMT 코드별 합(RT_ISA_PEN_AMT 단일컬럼 우회).
 //   ISA 8707/8708 도 계좌별로 분리 저장돼 각각 1:1 대조 가능(2026-07-15 실측확정).
-function PensionTable({ items, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: PensionListItem[]; loading: boolean
+function PensionTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: PensionListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -1291,7 +1295,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 연금계좌 세액공제 합 */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(diff)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1354,8 +1358,8 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
 
 // 인적공제 그룹 = 본인 제외, 배우자·부양가족·추가공제(소득공제) + 혼인·자녀·출산(세액공제) 항목별 대조.
 // 소득/세액 혼재라 소계 합산은 무의미 → 본행은 "N항목 중 M 불일치" 요약, 세부행이 항목별 YTS↔NTS 판정.
-function PersonalTable({ items, title, loading, results, running, onRun, onDetail, onShowProc }: {
-  items: PersonalListItem[]; title: string; loading: boolean
+function PersonalTable({ items, title, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+  items: PersonalListItem[]; title: string; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
@@ -1394,7 +1398,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 인적공제 요약(항목수·불일치 건수). 소득/세액 혼재라 공제액 합산은 표시 안 함. */}
-              <tr className={`[&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${matchRowBg(mismatch)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
