@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 import { ytsDb } from "@/lib/db/oracle"
 import { runHometaxCompare, type HometaxCompareResult } from "@/features/hometax-calc/lib/runHometaxCalc"
-import { mappingSelectCols } from "@/features/hometax-calc/mapping/2025"
+import { mappingSelectCols, MAPPING_2025 } from "@/features/hometax-calc/mapping/2025"
 import { giftNtsCode } from "@/features/hometax-calc/mapping/gift"
 import { CARD_CATS, parseCardProc } from "@/features/hometax-calc/mapping/card"
 import { MEDI_CATS, parseMediProc } from "@/features/hometax-calc/mapping/medi"
@@ -183,6 +183,9 @@ export interface CompareRunResult {
   inputs:       HometaxCompareResult["inputs"]
   missing:      HometaxCompareResult["missing"]
   ntsMap:       Record<string, number>
+  ntsIn:        HometaxCompareResult["ntsIn"]    // 코드별 전송(IN) 전 필드
+  ntsOut:       HometaxCompareResult["ntsOut"]   // 코드별 회신(OUT) 전 필드
+  ytsDdcMap:    Record<string, number>           // 코드별 YTS 자체 공제액(resultCol) — NTS OUT 대조용
   unknownCols:  string[]
   inputHash:    string   // 국세청에 보낸 값(vals)+ntsYear 지문 — 캐시 스킵 판정용
 }
@@ -213,7 +216,9 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
   const unknownCols = wanted.filter(c => !isVirtual(c) && !existing.has(c))
-  const cols = [...new Set([...BASE_COLS, ...mapCols])]
+  // resultCol(YTS 자체 공제액 컬럼)도 조회 — 상세뷰 코드별 YTS↔NTS 대조용
+  const resultCols = [...new Set(MAPPING_2025.filter(m => m.resultCol).map(m => m.resultCol!))].filter(c => existing.has(c))
+  const cols = [...new Set([...BASE_COLS, ...mapCols, ...resultCols])]
 
   // 카드 원천(CLOB JSON)은 숫자컬럼과 별도로 조회
   const sql = `SELECT ${cols.map(c => `c.${c}`).join(", ")}, c.CALC_PROC_CARD, c.CALC_PROC_MEDI FROM YTS39.PAY_WRK_CALC c WHERE c.CALC_NO = :1`
@@ -263,6 +268,12 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
   const { calcNo, vals, unknownCols, inputHash } = input
   const compare = await runHometaxCompare(vals, ntsYear)
 
+  // 코드별 YTS 자체 공제액(resultCol) — 상세뷰에서 NTS OUT(ddcAmt)과 대조
+  const ytsDdcMap: Record<string, number> = {}
+  for (const m of MAPPING_2025) {
+    if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.ntsCode] = Number(vals[m.resultCol] ?? 0)
+  }
+
   return {
     calcNo,
     yts: {
@@ -277,6 +288,9 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
     inputs:       compare.inputs,
     missing:      compare.missing,
     ntsMap:       compare.ntsMap,
+    ntsIn:        compare.ntsIn,
+    ntsOut:       compare.ntsOut,
+    ytsDdcMap,
     unknownCols,
     inputHash,
   }

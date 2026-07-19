@@ -10,6 +10,7 @@ import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 const CUR_YEAR     = new Date().getFullYear()                          // 2026
 const YEAR_OPTIONS = [String(CUR_YEAR), String(CUR_YEAR - 1)]         // ["2026", "2025"]
@@ -25,6 +26,11 @@ const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8998", label: "지방소득세" },
   { code: "8992", label: "차감징수세액" },
 ]
+
+// NTS 코드 → 라벨 (실행과정 IN/OUT 전체표 항목명). 매핑 + 계산흐름코드에서 파생.
+const CODE_LABEL: Record<string, string> = {}
+for (const _m of MAPPING_2025) if (!CODE_LABEL[_m.ntsCode]) CODE_LABEL[_m.ntsCode] = _m.label
+for (const _f of NTS_FLOW) if (!CODE_LABEL[_f.code]) CODE_LABEL[_f.code] = _f.label
 
 // 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
 // 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
@@ -134,7 +140,48 @@ function PersonMainCells({ item, onShowProc }: {
 }
 
 // ── 계산과정(CALC_PROC_TOTAL) 전체 텍스트 드로어 ─────────────────────────────
-function ProcTotalView({ info }: { info: { calcNo: string; nm: string; text: string } }) {
+// 계산과정 항목행 파싱: "(잔액) [잔액] - [공제금액] ([항목명])" → 공제금액·항목명
+const PROC_ROW_RE = /\(잔액\)\s+[\d,]+\s+-\s+([\d,]+)\s+\(([^)]+?)\s*\)/
+// 계산과정 라벨 → NTS 코드 (self형·매핑 확실한 것만. 소계형=카드·의료·교육·기부·투자조합은 라벨 1:N이라 제외)
+const PROC_LABEL_CODE: Record<string, string> = {
+  "본인": "8001", "배우자": "8002", "부양가족": "8003",
+  "경로우대": "8101", "장애인": "8102", "부녀자": "8103", "한부모가족": "8104",
+  "국민연금": "8201",
+  "개인연금저축": "8401", "소기업·소상공인공제부금": "8402",
+  "청약저축": "8403", "주택청약종합저축": "8405", "근로자주택마련저축": "8404",
+  "우리사주조합출연금": "8452", "고용유지중소기업근로자": "8453",
+  "장기집합투자증권저축공제": "8451", "청년형장기집합투자증권저축": "8501",
+  "소득세법": "8601", "조특법(30조제외)": "8602", "조세조약": "8606",
+  "근로소득세액": "8923", "결혼세액공제": "8790", "자녀": "8763", "출산입양": "8761",
+}
+// 계산과정 한 줄의 대조 색: 매핑코드의 YTS 공제금액 ↔ NTS ntsMap[code]. 불일치=적, 일치=청, 그 외 무색.
+function procLineClass(line: string, ntsMap?: Record<string, number>): string {
+  if (!ntsMap) return ""
+  const m = PROC_ROW_RE.exec(line)
+  if (!m) return ""
+  const code = PROC_LABEL_CODE[m[2].trim()]
+  if (!code || ntsMap[code] == null) return ""
+  const ytsAmt = Number(m[1].replace(/,/g, ""))
+  const ntsAmt = ntsMap[code]
+  if (!ytsAmt && !ntsAmt) return ""
+  return ytsAmt === ntsAmt ? "text-blue-600" : "text-red-600 font-semibold"
+}
+
+// 계산과정에 등장하는 코드 순서(위→아래, 매핑된 것만) — 실행과정 표를 계산 순서로 정렬하는 데 씀
+function procCodeOrder(text: string): string[] {
+  const order: string[] = []
+  const seen = new Set<string>()
+  for (const line of text.split("\n")) {
+    const m = PROC_ROW_RE.exec(line)
+    if (!m) continue
+    const code = PROC_LABEL_CODE[m[2].trim()]
+    if (code && !seen.has(code)) { seen.add(code); order.push(code) }
+  }
+  return order
+}
+
+function ProcTotalView({ info, ntsMap }: { info: { calcNo: string; nm: string; text: string }; ntsMap?: Record<string, number> }) {
+  const lines = info.text.split("\n")
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="border-b px-4 py-3 pr-12 shrink-0">
@@ -142,13 +189,20 @@ function ProcTotalView({ info }: { info: { calcNo: string; nm: string; text: str
           <span className="font-mono text-sm">{info.calcNo}</span>
           <span className="text-foreground">{info.nm}</span>
           <span className="text-muted-foreground text-sm font-normal">계산과정</span>
+          {ntsMap && (
+            <span className="text-[10px] text-muted-foreground/60">
+              (<span className="text-red-600">■</span>불일치 <span className="text-blue-600">■</span>일치)
+            </span>
+          )}
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-auto px-4 py-3">
-        <pre
-          className="whitespace-pre text-xs leading-relaxed"
-          style={{ fontFamily: "'D2Coding', 'GulimChe', '굴림체', monospace" }}
-        >{info.text}</pre>
+      <div
+        className="flex-1 min-h-0 overflow-auto px-4 py-3 text-xs leading-relaxed"
+        style={{ fontFamily: "'D2Coding', 'GulimChe', '굴림체', monospace" }}
+      >
+        {lines.map((line, i) => (
+          <div key={i} className={`whitespace-pre ${procLineClass(line, ntsMap)}`}>{line || " "}</div>
+        ))}
       </div>
     </div>
   )
@@ -220,6 +274,9 @@ interface RowResult {
   nts: NtsResult
   inputs: InputRow[]
   ntsMap: Record<string, number>
+  ntsIn: NtsIoRow[]
+  ntsOut: NtsIoRow[]
+  ytsDdcMap: Record<string, number>
   missing: MissingRow[]
   ranAt: string; duration: number
 }
@@ -259,6 +316,9 @@ function buildRowResult(json: any, duration: number, ranAt?: string): RowResult 
     nts:      json.nts     ?? { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: json.error ? "E" : null },
     inputs:   json.inputs  ?? [],
     ntsMap:   json.ntsMap  ?? {},
+    ntsIn:    json.ntsIn   ?? [],
+    ntsOut:   json.ntsOut  ?? [],
+    ytsDdcMap: json.ytsDdcMap ?? {},
     missing:  json.missing ?? [],
     ranAt:    ranAt ?? formatRanAt(new Date()),
     duration,
@@ -269,7 +329,7 @@ function errorRowResult(duration: number, ranAt?: string): RowResult {
   return {
     yts: null,
     nts: { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: "E" },
-    inputs: [], ntsMap: {}, missing: [],
+    inputs: [], ntsMap: {}, ntsIn: [], ntsOut: [], ytsDdcMap: {}, missing: [],
     ranAt: ranAt ?? formatRanAt(new Date()), duration,
   }
 }
@@ -791,11 +851,11 @@ export function HometaxCalcPanel() {
               <X className="h-4 w-4" />
             </button>
             <div className="flex min-w-0 flex-1 flex-col border-r">
-              <ProcTotalView info={procTotalFor} />
+              <ProcTotalView info={procTotalFor} ntsMap={results[procTotalFor.calcNo]?.ntsMap} />
             </div>
             {results[procTotalFor.calcNo] && (
               <div className="flex min-w-0 flex-1 flex-col">
-                <DetailView res={results[procTotalFor.calcNo]} row={null} calcNo={procTotalFor.calcNo} />
+                <DetailView res={results[procTotalFor.calcNo]} row={null} calcNo={procTotalFor.calcNo} procOrder={procCodeOrder(procTotalFor.text)} />
               </div>
             )}
           </div>
@@ -1498,7 +1558,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
 }
 
 // ── 상세조회 뷰 ──────────────────────────────────────────────────────────────
-function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null; calcNo: string }) {
+function DetailView({ res, row, calcNo, procOrder }: { res: RowResult; row: ListItem | null; calcNo: string; procOrder?: string[] }) {
   const yts = res.yts
   const nts = res.nts
   const ok  = nts.resultCode === "S" || nts.resultCode === null
@@ -1508,6 +1568,16 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
     { label: "결정세액", yts: yts?.resIncmTax ?? row?.resIncmTax ?? null, nts: nts.decidedTax },
     { label: "차감징수", yts: yts?.subIncmTax ?? null,                    nts: nts.withheld },
   ]
+
+  // NTS 원본 IN/OUT 코드 union (전송 payload ∪ 회신) — 코드별 전 필드 대조
+  const ioMap = new Map<string, { i?: NtsIoRow; o?: NtsIoRow }>()
+  res.ntsIn.forEach(r => ioMap.set(r.code, { ...ioMap.get(r.code), i: r }))
+  res.ntsOut.forEach(r => ioMap.set(r.code, { ...ioMap.get(r.code), o: r }))
+  // 정렬: 계산과정 등장 순서(procOrder) 우선 → 계산과정에 없는 코드는 코드 오름차순으로 뒤에
+  const orderIdx = (c: string) => { const i = procOrder ? procOrder.indexOf(c) : -1; return i >= 0 ? i : Number.MAX_SAFE_INTEGER }
+  const ioRows = [...ioMap.entries()].map(([code, v]) => ({ code, ...v }))
+    .sort((a, b) => orderIdx(a.code) - orderIdx(b.code) || a.code.localeCompare(b.code))
+  const ioNum = (n?: number) => (n ? n.toLocaleString("ko-KR") : "—")
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -1619,10 +1689,64 @@ function DetailView({ res, row, calcNo }: { res: RowResult; row: ListItem | null
           </div>
         </section>
 
-        {/* 4) 미전송 항목 */}
+        {/* 4) NTS 원본 IN/OUT + YTS 대조 (코드별 전 필드, 불일치 적색·일치 청색) */}
+        {(res.ntsIn.length > 0 || res.ntsOut.length > 0) && (
+          <section>
+            <div className="flex items-baseline justify-between mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground">④ NTS 원본 IN / OUT + YTS 대조</h3>
+              <span className="text-[10px] text-muted-foreground/60">
+                <span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치
+              </span>
+            </div>
+            <div className="border rounded-md overflow-auto">
+              <table className="w-full text-xs border-collapse whitespace-nowrap">
+                <thead className="bg-muted/60">
+                  <tr className="text-[10px] text-muted-foreground">
+                    <th className="px-2 py-1.5 text-left font-medium">코드</th>
+                    <th className="px-2 py-1.5 text-left font-medium">항목</th>
+                    <th className="px-2 py-1.5 text-right font-medium">IN 금액</th>
+                    <th className="px-2 py-1.5 text-right font-medium">IN 인원</th>
+                    <th className="px-2 py-1.5 text-right font-medium">IN 대상</th>
+                    <th className="px-2 py-1.5 text-right font-medium border-l">YTS 공제</th>
+                    <th className="px-2 py-1.5 text-right font-medium">NTS 공제</th>
+                    <th className="px-2 py-1.5 text-center font-medium w-8">판정</th>
+                    <th className="px-2 py-1.5 text-right font-medium border-l">OUT 대상</th>
+                    <th className="px-2 py-1.5 text-right font-medium">OUT 한도</th>
+                    <th className="px-2 py-1.5 text-right font-medium">OUT 인원</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ioRows.map(({ code, i, o }) => {
+                    const ytsD = res.ytsDdcMap[code]
+                    const ntsD = o?.ddcAmt
+                    const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
+                    const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
+                    return (
+                      <tr key={code} className={`border-t ${cmp === "diff" ? "bg-red-50/50" : ""}`}>
+                        <td className="px-2 py-1 font-mono">{code}</td>
+                        <td className="px-2 py-1">{CODE_LABEL[code] ?? "—"}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${i?.useAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.useAmt)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${i?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.incDdcNfpCnt)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${i?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.ddcTrgtAmt)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums border-l ${cmpCls || (ytsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ytsD)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${cmpCls || (ntsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ntsD)}</td>
+                        <td className={`px-2 py-1 text-center ${cmpCls}`}>{cmp === "diff" ? "✗" : cmp === "match" ? "✓" : "—"}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums border-l ${o?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcTrgtAmt)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${o?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcLmtAmt)}</td>
+                        <td className={`px-2 py-1 text-right tabular-nums ${o?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.incDdcNfpCnt)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {/* 5) 미전송 항목 */}
         {res.missing.length > 0 && (
           <section>
-            <h3 className="text-xs font-semibold text-red-600 mb-2">④ 미전송 항목 (차이 원인 후보)</h3>
+            <h3 className="text-xs font-semibold text-red-600 mb-2">⑤ 미전송 항목 (차이 원인 후보)</h3>
             <div className="border border-red-200 rounded-md bg-red-50/40 p-3 space-y-1">
               {res.missing.map(e => (
                 <div key={e.code} className="flex justify-between text-xs">

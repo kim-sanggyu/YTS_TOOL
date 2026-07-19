@@ -118,6 +118,16 @@ export interface NtsCompareResult {
   resultCode: string | null
 }
 
+// 국세청 L03 detail 한 행의 전 필드(IN=보낸 payload / OUT=회신) — 코드별 전체 표시용
+export interface NtsIoRow {
+  code:          string
+  useAmt:        number
+  ddcLmtAmt:     number
+  incDdcNfpCnt:  number
+  ddcTrgtAmt:    number
+  ddcAmt:        number
+}
+
 export interface HometaxCompareResult {
   nts:          NtsCompareResult
   coveredCodes: string[]
@@ -127,7 +137,26 @@ export interface HometaxCompareResult {
   missing:      { code: string; label: string; ytsCol: string | null; amount: number; status: string }[]
   /** NTS 응답 코드별 ddcAmt 전체 맵 (계산흐름·반영액 추적용) */
   ntsMap:       Record<string, number>
+  /** 국세청에 보낸 payload 전체(값 있는 코드) — 코드별 IN 전 필드 */
+  ntsIn:        NtsIoRow[]
+  /** 국세청 회신 전체(값 있는 코드) — 코드별 OUT 전 필드 */
+  ntsOut:       NtsIoRow[]
 }
+
+const _num = (v: unknown): number => { const n = Number(v ?? 0); return Number.isFinite(n) ? n : 0 }
+function toIoRow(it: Record<string, unknown>): NtsIoRow {
+  return {
+    code:         String(it.amtClusCd),
+    useAmt:       _num(it.useAmt),
+    ddcLmtAmt:    _num(it.ddcLmtAmt),
+    incDdcNfpCnt: _num(it.incDdcNfpCnt),
+    ddcTrgtAmt:   _num(it.ddcTrgtAmt),
+    ddcAmt:       _num(it.ddcAmt),
+  }
+}
+// IN 의미필드(한도 에코 ddcLmtAmt 제외) / OUT 은 전 필드 중 하나라도
+const _hasIn  = (r: NtsIoRow) => r.useAmt || r.incDdcNfpCnt || r.ddcTrgtAmt || r.ddcAmt
+const _hasOut = (r: NtsIoRow) => r.useAmt || r.incDdcNfpCnt || r.ddcTrgtAmt || r.ddcAmt || r.ddcLmtAmt
 
 // 코드 카탈로그·입력요약·결과흐름코드는 mapping/2025.ts 로 이관 (단일 원천).
 
@@ -238,6 +267,11 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       ntsMap[code] = typeof v === "number" ? v : v != null ? Number(v) : 0
     }
 
+    // 코드별 IN/OUT 전 필드 보존 (상세뷰 전체표시용) — IN=보낸 payload, OUT=회신
+    const sentList = (body as { yrsTaxClcDetailDVOList?: Array<Record<string, unknown>> }).yrsTaxClcDetailDVOList ?? []
+    const ntsIn  = sentList.map(toIoRow).filter(_hasIn)
+    const ntsOut = list.map(toIoRow).filter(_hasOut)
+
     return {
       nts: {
         prodTax:    pickDdcAmt(list, "8990"),
@@ -251,6 +285,8 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       inputs,
       missing,
       ntsMap,
+      ntsIn,
+      ntsOut,
     }
   } catch (e) {
     // 예외 시 세션 초기화
