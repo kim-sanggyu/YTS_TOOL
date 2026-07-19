@@ -12,8 +12,6 @@ export interface CardListItem {
 // 카드공제 발생 건(CALC_PROC_CARD 존재 + OTO_CARD_ETC>0)의 가~아 사용액 라인.
 // YTS 카드공제(비교 기준) = OTO_CARD_ETC(=최종공제금액), NTS 8430(카드소계)과 대조.
 export async function getCardItems(year: string): Promise<CardListItem[]> {
-  const prefix = `X${year}%`
-
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number
     OTO_CARD_ETC: number; CALC_PROC_CARD: string | null
@@ -28,12 +26,12 @@ export async function getCardItems(year: string): Promise<CardListItem[]> {
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
-    WHERE c.CALC_NO LIKE :1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
       AND c.CALC_PROC_CARD IS NOT NULL
       AND NVL(c.OTO_CARD_ETC, 0) > 0
     ORDER BY c.CALC_NO
-  `, [prefix])
+  `, [year])
 
   return rows.map(r => {
     const parsed = parseCardProc(r.CALC_PROC_CARD)

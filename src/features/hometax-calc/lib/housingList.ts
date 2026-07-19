@@ -17,7 +17,6 @@ async function getGroupItems(
   year: string, rows: MappingRow[], inputExpr?: (m: MappingRow) => string | null,
 ): Promise<HousingListItem[]> {
   if (rows.length === 0) return []
-  const prefix      = `X${year}%`
   const ddcSel      = rows.map(m => `NVL(c.${m.resultCol}, 0) AS DDC_${m.ntsCode}`).join(", ")
   const anyPositive = rows.map(m => `NVL(c.${m.resultCol}, 0) > 0`).join(" OR ")
   const inSel = inputExpr
@@ -32,11 +31,11 @@ async function getGroupItems(
            ${ddcSel}${inSel}
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
-    WHERE c.CALC_NO LIKE :1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
       AND (${anyPositive})
     ORDER BY c.CALC_NO
-  `, [prefix])
+  `, [year])
 
   return dbRows.map(r => {
     const lines: HousingLine[] = rows
@@ -62,7 +61,17 @@ async function getGroupItems(
 
 // 주택자금(특별소득공제) = 원본전송(LOAN_) 배선 행(원리금·장기주택저당).
 const HOUSING_ROWS = MAPPING_2025.filter(m => m.ytsCol?.startsWith("LOAN_") && m.resultCol)
-export const getHousingItems = (year: string) => getGroupItems(year, HOUSING_ROWS)
+// 전송 사용액(원본 상환액) 원천 PAY_WRK_MAIN 컬럼 — runCompareForCalcNo.injectHousingVals 와 동일 매핑.
+const HOUSING_INPUT_COL: Record<string, string> = {
+  "8311": "HOUSE_RALR_LENDER", "8312": "HOUSE_RALR_HABT",
+  "8321": "LH_LRSF1",  "8322": "LH_LRSF2",  "8323": "LH_LRSF3",
+  "8324": "LH_LRSF10", "8325": "LH_LRSF20", "8326": "LH_LRSF30",
+  "8327": "LH_LRSF40", "8328": "LH_LRSF50", "8329": "LH_LRSF60",
+}
+export const getHousingItems = (year: string) => getGroupItems(year, HOUSING_ROWS, m => {
+  const col = HOUSING_INPUT_COL[m.ntsCode]
+  return col ? `NVL(m.${col}, 0)` : null
+})
 
 // 주택마련저축(그밖의소득공제) = 청약저축(8403)·주택청약종합저축(8405)·근로자주택마련저축(8404).
 // 전송 사용액(납입액) = PAY_WRK_PEN_SAVE_SPEC CLS별 합(562-050/060/080).

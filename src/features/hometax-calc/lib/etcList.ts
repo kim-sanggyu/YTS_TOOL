@@ -19,7 +19,6 @@ const ETC_ROWS = MAPPING_2025.filter(m => m.tab === "기타" && m.send && m.resu
 
 export async function getEtcItems(year: string): Promise<EtcListItem[]> {
   if (ETC_ROWS.length === 0) return []
-  const prefix = `X${year}%`
 
   const ddcSel      = ETC_ROWS.map(m => `NVL(c.${m.resultCol}, 0) AS DDC_${m.ntsCode}`).join(", ")
   const anyPositive = ETC_ROWS.map(m => `NVL(c.${m.resultCol}, 0) > 0`).join(" OR ")
@@ -36,11 +35,11 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
-    WHERE c.CALC_NO LIKE :1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
       AND (${anyPositive})
     ORDER BY c.CALC_NO
-  `, [prefix])
+  `, [year])
 
   return rows.map(r => {
     const lines: EtcLine[] = ETC_ROWS

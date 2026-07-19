@@ -9,7 +9,6 @@ import type { HousingListItem, HousingLine } from "@/features/hometax-calc/lib/h
 //   code = investmentCode(INVST_CLS, INVST_YY - ntsYear). 라이브 캡처 실측확정(2026-07-18).
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function getInvestmentItems(year: string, ntsYear: string): Promise<HousingListItem[]> {
-  const prefix  = `X${year}%`
   const base    = Number(year)   // 오프셋 기준=YTS 당해(dataYear). INVST_YY-base 로 연차, 라벨도 실제 투자연도(INVST_YY) 표시
 
   const rows = await ytsDb.query<{
@@ -24,11 +23,11 @@ export async function getInvestmentItems(year: string, ntsYear: string): Promise
            p.INVST_CLS, p.INVST_YY, p.PEN_SAVE_PMT_AMT, p.PEN_SAVE_SUB_AMT
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     JOIN YTS39.PAY_WRK_PEN_SAVE_SPEC p ON p.CALC_NO = c.CALC_NO AND p.PEN_SAVE_CLS = '562-110' AND p.INVST_CLS IN ('1','2','3')
-    WHERE c.CALC_NO LIKE :1
+    WHERE m.YY = :1
     ORDER BY c.CALC_NO
-  `, [prefix])
+  `, [year])
 
   const map = new Map<string, HousingListItem>()
   for (const r of rows) {

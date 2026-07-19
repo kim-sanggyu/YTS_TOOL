@@ -24,10 +24,10 @@ export async function getAllItems(year: string): Promise<AllListItem[]> {
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
-    WHERE c.CALC_NO LIKE :1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
     ORDER BY c.CALC_NO
-  `, [`X${year}%`])
+  `, [year])
 
   return rows.map(r => {
     const ex = exhaustInfo(r.EXHAUSTED_POINT)

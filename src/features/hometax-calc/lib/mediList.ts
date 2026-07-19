@@ -14,8 +14,6 @@ export interface MediListItem {
 // 의료비공제 발생 건(CALC_PROC_MEDI 존재 + RT_MEDI_AMT>0)의 대상자별 지출금액 라인.
 // YTS 의료비 세액공제(비교 기준) = RT_MEDI_AMT(=의료비_공제금액), NTS 8726(의료비집계)과 대조.
 export async function getMediItems(year: string): Promise<MediListItem[]> {
-  const prefix = `X${year}%`
-
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
     RT_MEDI_AMT: number; CALC_PROC_MEDI: string | null
@@ -30,12 +28,12 @@ export async function getMediItems(year: string): Promise<MediListItem[]> {
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
-    LEFT JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
-    WHERE c.CALC_NO LIKE :1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
       AND c.CALC_PROC_MEDI IS NOT NULL
       AND NVL(c.RT_MEDI_AMT, 0) > 0
     ORDER BY c.CALC_NO
-  `, [prefix])
+  `, [year])
 
   return rows.map(r => {
     const parsed = parseMediProc(r.CALC_PROC_MEDI)

@@ -867,8 +867,8 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">연도</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제금액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제금액</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
           <th className="px-3 py-2 text-center font-medium w-10 whitespace-nowrap">일치</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
