@@ -74,6 +74,8 @@ interface ListItem {
   totPayAmt: number; prodTaxAmt: number; resIncmTax: number; effctvTaxRate: number
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   exhausted?: boolean; exhaustLabel?: string | null
+  // 중간 계(YTS) — NTS 대조로 단계별 차이 진단. NTS 코드: 특별8920·그밖의8921·차감소득8916·감면계8924·세액공제계8923
+  spclSubSum?: number; otoSum?: number; biaAmt?: number; taxCut?: number; rtSum?: number
 }
 // 상세조회 드로어(DetailView)가 실제로 쓰는 최소 필드 — all탭 외 다른 탭(기부금/카드/의료비/연금/기타)
 // 리스트 아이템도 전부 이 필드는 갖고 있어서, 어느 탭에서 열든 계산과정·이름을 채울 수 있다.
@@ -938,9 +940,13 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
-  const diffCell = (d: number | null) => (
-    <td className={`px-3 py-2 text-right tabular-nums text-xs ${d != null && d !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
-      {d == null ? "—" : d === 0 ? "0" : (d > 0 ? "+" : "") + d.toLocaleString("ko-KR")}
+  // 한 항목을 "YTS값 (차이)" 1컬럼으로. 차이=NTS−YTS: null(미실행)="(—)", 0=정상(회색), ≠0=이상(빨강)
+  const calcCell = (yts: number | undefined, diff: number | null) => (
+    <td className="px-3 py-2 text-right tabular-nums text-xs whitespace-nowrap">
+      {won(yts)}{" "}
+      <span className={diff == null ? "text-muted-foreground/40" : diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}>
+        ({diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")})
+      </span>
     </td>
   )
   return (
@@ -955,19 +961,20 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
           <th className="px-3 py-2 text-center font-medium">실행</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 산출세액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 산출세액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 결정세액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 결정세액</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차이</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">특별소득공제(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">그밖의소득공제(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차감소득금액(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">산출세액(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">세액감면(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">세액공제(차이)</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">결정세액(차이)</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
         </tr>
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
+          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
         )}
         {items.map(row => {
           const res       = results[row.calcNo]
@@ -976,6 +983,11 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           const dcdNts    = res ? res.nts.decidedTax : null
           const prodDiff  = prodNts != null ? prodNts - row.prodTaxAmt : null
           const dcdDiff   = dcdNts  != null ? dcdNts  - row.resIncmTax : null
+          // 중간 계 NTS(ntsMap 코드) − YTS. res 없으면(미실행) null → "—", 0=정상·≠0=이상
+          const subDiff = (code: string, yts: number | undefined) => {
+            const nts = res ? (res.ntsMap[code] ?? null) : null
+            return nts != null ? nts - (yts ?? 0) : null
+          }
           return (
             <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
               <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -992,16 +1004,13 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
                   </Button>
                 </div>
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-xs">{won(row.prodTaxAmt)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-xs">
-                <span className="flex items-center justify-end gap-1">{res ? won(prodNts) : "—"}{res && <MatchIcon yts={row.prodTaxAmt} nts={prodNts} />}</span>
-              </td>
-              {diffCell(prodDiff)}
-              <td className="px-3 py-2 text-right tabular-nums text-xs">{won(row.resIncmTax)}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-xs">
-                <span className="flex items-center justify-end gap-1">{res ? won(dcdNts) : "—"}{res && <MatchIcon yts={row.resIncmTax} nts={dcdNts} />}</span>
-              </td>
-              {diffCell(dcdDiff)}
+              {calcCell(row.spclSubSum, subDiff("8920", row.spclSubSum))}
+              {calcCell(row.otoSum,     subDiff("8921", row.otoSum))}
+              {calcCell(row.biaAmt,     subDiff("8916", row.biaAmt))}
+              {calcCell(row.prodTaxAmt, prodDiff)}
+              {calcCell(row.taxCut,     subDiff("8924", row.taxCut))}
+              {calcCell(row.rtSum,      subDiff("8923", row.rtSum))}
+              {calcCell(row.resIncmTax, dcdDiff)}
               <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
               <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
             </tr>
