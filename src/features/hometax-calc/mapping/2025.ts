@@ -52,9 +52,8 @@ export interface MappingRow {
 }
 
 export const MAPPING_2025: MappingRow[] = [
-  // ── 총급여 / 기납부 (계산 기본입력) ─────────────────────────────────────────
+  // ── 총급여 (계산 기본입력) ───────────────────────────────────────────────
   { group: "기본입력", ntsCode: "8900", label: "총급여",       ytsCol: "TOT_PAY_AMT",   valueKey: "useAmt", rule: "value",  status: "추정", send: true },
-  { group: "기본입력", ntsCode: "8991", label: "기납부세액",   ytsCol: "PAYM_INCM_TAX", valueKey: "useAmt", rule: "value",  status: "추정", send: true },
 
   // ── 인적공제 (인원, incDdcNfpCnt) ──────────────────────────────────────────
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "확정", send: true, note: "self ddcAmt=1,500,000(본인 150만). 인원(incDdcNfpCnt=1) 전송. 라이브 payload 캡처 실측(capture-io 2026-07-18, n=38)" },
@@ -125,14 +124,14 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "투자조합출자 소계 OUT(개별 8415~8423 합). 대조 Σ PEN_SAVE_SUB_AMT. 실측확정(2026-07-18)" },
   // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
   //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8432", label: "직불·선불카드",  ytsCol: "CARD_8432", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8433", label: "현금영수증",     ytsCol: "CARD_8433", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8435", label: "전통시장",       ytsCol: "CARD_8435", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8434", label: "대중교통",       ytsCol: "CARD_8434", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8432", label: "직불·선불카드",  ytsCol: "CARD_8432", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8433", label: "현금영수증",     ytsCol: "CARD_8433", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8435", label: "전통시장",       ytsCol: "CARD_8435", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8434", label: "대중교통",       ytsCol: "CARD_8434", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
   { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주출연금 소득공제",       ytsCol: "OTHER_8452", resultCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.STOCK_URDM→OTHER_8452. OUT self 전액(한도1500만) ↔ OTO_SU. 라이브 캡처 실측(2026-07-19, 1,000,000→1,000,000)" },
   { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",          ytsCol: "OTHER_8451", resultCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-100 Σ납입액→OTHER_8451. OUT self ×40%(한도240만) ↔ OTO_LONG_STOCK_SAVING. 라이브 캡처 실측(2026-07-19, 2,000,000→800,000)" },
   { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축",     ytsCol: "OTHER_8501", resultCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-140 Σ납입액→OTHER_8501. OUT self ×40%(한도240만) ↔ OTO_YM_LONG_STOCK_SAVING. 카탈로그 미등재 코드였음, 라이브 캡처 실측(2026-07-19, 3,000,000→1,200,000)" },
@@ -181,10 +180,10 @@ export const MAPPING_2025: MappingRow[] = [
   // ── 세액공제: 의료비 — CALC_PROC_MEDI(JSON) 대상자별 "지출금액"을 MEDI_{코드} 가상컬럼으로 주입 ──
   //   NTS 8726(의료비집계)에 세액공제 총액 반환 → YTS 의료비_공제금액(=RT_MEDI_AMT)과 대조. (2026-07-12 실측확정)
   //   ★지출금액 전송(공제대상금액 아님) — NTS가 3% 최저사용액 차감 자체계산.
-  { group: "의료비", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "MEDI_8720", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "의료비", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "MEDI_8721", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "의료비", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "MEDI_8720", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "MEDI_8721", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8726" },
 
   // ── 기부금 당해분 (PAY_WRK_GIFT → GIFT_{코드} 가상컬럼으로 주입) ──
   { group: "기부금", ntsCode: "8740", label: "정치자금기부금",    ytsCol: "GIFT_8740", valueKey: "useAmt", rule: "value", status: "확정", send: true,  note: "전액 8740 전송 → NTS가 10만 이하/초과 자동분리(8741 별도전송 금지). OUT self 8740=전체공제액(10만이하 100/110+초과 15%), 8741=10만이하 소계. 실측확정 2026-07-16" },
@@ -227,14 +226,13 @@ export const MAPPING_2025: MappingRow[] = [
 
 /** L03 응답 계산흐름 표시용 결과코드 (표시 순서) — 입력 아님, 파싱/추적용 */
 export const NTS_RESULT_CODES: { code: string; label: string }[] = [
+  { code: "8900", label: "총급여" },
   { code: "8901", label: "근로소득공제" },
   { code: "8902", label: "근로소득금액" },
   { code: "8903", label: "종합소득 과세표준" },
   { code: "8990", label: "산출세액" },
-  { code: "8923", label: "근로소득세액공제" },
+  { code: "8700", label: "근로소득세액공제" },
   { code: "8999", label: "결정세액" },
-  { code: "8998", label: "지방소득세" },
-  { code: "8992", label: "차감징수세액" },
 ]
 
 /** 매핑에서 값을 읽어와야 하는 YTS39 컬럼 목록 (SQL SELECT 생성용, 중복·null 제거).
@@ -270,6 +268,8 @@ export interface NtsInputRow {
   hasValue: boolean
   /** 실제 L03 body 에 넣은 값 (미전송이면 0) */
   sent:     number
+  /** 결과(OUT)를 조회할 코드. 소계형(카드8430/의료8726 등)은 본인 코드가 아닌 소계코드. 미지정=자기 코드 */
+  outCode?: string
   note?:    string
 }
 
@@ -288,6 +288,7 @@ export function computeInputs(vals: Record<string, number>): NtsInputRow[] {
       ytsValue: raw,
       hasValue: m.rule === "const1" ? true : raw > 0,
       sent:     mappingSentValue(m, vals),
+      outCode:  m.outCode,
       note:     m.note,
     }
   })

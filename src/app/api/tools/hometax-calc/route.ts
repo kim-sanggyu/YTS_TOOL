@@ -1,7 +1,5 @@
 import { NextRequest } from "next/server"
 import { auth } from "@/auth"
-import { ytsDb } from "@/lib/db/oracle"
-import { runHometaxCalc } from "@/features/hometax-calc/lib/runHometaxCalc"
 import { runCompareForCalcNo } from "@/features/hometax-calc/lib/runCompareForCalcNo"
 import { upsertBatchResults } from "@/features/hometax-calc/lib/batchResultStore"
 
@@ -17,21 +15,11 @@ export async function POST(req: NextRequest) {
   const calcNo = (body.calcNo ?? "").trim()
   if (!calcNo) return Response.json({ error: "calc_no 를 입력하세요." }, { status: 400 })
 
-  const mode    = body.mode ?? "compare"                               // "compare" | "simple"
+  const mode    = body.mode ?? "compare"
   const ntsYear = (body.ntsYear ?? ATTR_YR).trim()                    // NTS L03 귀속연도
   const year    = (body.year ?? "").trim()                            // 우리자료 귀속연도 (복원 캐시 키)
 
   try {
-    if (mode === "simple") {
-      // 기존 방식: 총급여+기납부만 전송
-      const [row] = await ytsDb.query<{ TOT_PAY_AMT: number; PAYM_INCM_TAX: number }>(
-        `SELECT TOT_PAY_AMT, PAYM_INCM_TAX FROM YTS39.PAY_WRK_CALC WHERE CALC_NO = :1`, [calcNo]
-      )
-      if (!row) return Response.json({ error: `${calcNo} 를 찾을 수 없습니다.` }, { status: 404 })
-      const result = await runHometaxCalc({ totalPay: Number(row.TOT_PAY_AMT), prepaidTax: Number(row.PAYM_INCM_TAX) })
-      return Response.json({ calcNo, mode, result })
-    }
-
     const startedAt = Date.now()
     const compare = await runCompareForCalcNo(calcNo, ntsYear)
     // 개별실행 결과도 복원 캐시에 upsert(그 한 건만) → 나갔다 와도 "마지막 실행" 유지. year 없으면 생략.

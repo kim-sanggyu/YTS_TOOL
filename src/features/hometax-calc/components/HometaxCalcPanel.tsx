@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, Fragment } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown, X } from "lucide-react"
+import { useState, useEffect, useRef, Fragment, type ReactNode } from "react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
@@ -17,15 +17,17 @@ const YEAR_OPTIONS = [String(CUR_YEAR), String(CUR_YEAR - 1)]         // ["2026"
 const NTS_YEARS    = ["2025"]                                          // NTS 지원 귀속연도 목록 (지원 추가 시 앞에 추가)
 
 const NTS_FLOW: { code: string; label: string }[] = [
+  { code: "8900", label: "총급여" },
   { code: "8901", label: "근로소득공제" },
   { code: "8902", label: "근로소득금액" },
   { code: "8903", label: "종합소득 과세표준" },
   { code: "8990", label: "산출세액" },
-  { code: "8923", label: "근로소득세액공제" },
+  { code: "8700", label: "근로소득세액공제" },
   { code: "8999", label: "결정세액" },
-  { code: "8998", label: "지방소득세" },
-  { code: "8992", label: "차감징수세액" },
 ]
+
+// 소계형 그룹(outCode) → 표시용 그룹명 ("전송한 공제 입력" 표의 소계행 라벨)
+const SUBTOTAL_GROUP_LABEL: Record<string, string> = { "8430": "카드", "8726": "의료비" }
 
 // NTS 코드 → 라벨 (실행과정 IN/OUT 전체표 항목명). 매핑 + 계산흐름코드에서 파생.
 const CODE_LABEL: Record<string, string> = {}
@@ -72,6 +74,12 @@ interface ListItem {
   totPayAmt: number; prodTaxAmt: number; resIncmTax: number; effctvTaxRate: number
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   exhausted?: boolean; exhaustLabel?: string | null
+}
+// 상세조회 드로어(DetailView)가 실제로 쓰는 최소 필드 — all탭 외 다른 탭(기부금/카드/의료비/연금/기타)
+// 리스트 아이템도 전부 이 필드는 갖고 있어서, 어느 탭에서 열든 계산과정·이름을 채울 수 있다.
+interface DetailRowLike {
+  nm: string; totPayAmt: number; calcProcTotal: string | null
+  prodTaxAmt?: number; resIncmTax?: number
 }
 interface GiftLine {
   code: string | null   // NTS amtClusCd (없으면 미매핑)
@@ -152,7 +160,7 @@ const PROC_LABEL_CODE: Record<string, string> = {
   "우리사주조합출연금": "8452", "고용유지중소기업근로자": "8453",
   "장기집합투자증권저축공제": "8451", "청년형장기집합투자증권저축": "8501",
   "소득세법": "8601", "조특법(30조제외)": "8602", "조세조약": "8606",
-  "근로소득세액": "8923", "결혼세액공제": "8790", "자녀": "8763", "출산입양": "8761",
+  "근로소득세액": "8700", "결혼세액공제": "8790", "자녀": "8763", "출산입양": "8761",
 }
 // 계산과정 한 줄의 대조 색: 매핑코드의 YTS 공제금액 ↔ NTS ntsMap[code]. 불일치=적, 일치=청, 그 외 무색.
 function procLineClass(line: string, ntsMap?: Record<string, number>): string {
@@ -185,13 +193,13 @@ function ProcTotalView({ info, ntsMap }: { info: { calcNo: string; nm: string; t
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="border-b px-4 py-3 pr-12 shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 whitespace-nowrap">
           <span className="font-mono text-sm">{info.calcNo}</span>
           <span className="text-foreground">{info.nm}</span>
           <span className="text-muted-foreground text-sm font-normal">계산과정</span>
           {ntsMap && (
-            <span className="text-[10px] text-muted-foreground/60">
-              (<span className="text-red-600">■</span>불일치 <span className="text-blue-600">■</span>일치)
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+              <span className="text-red-600">■</span>불일치 <span className="text-blue-600">■</span>일치
             </span>
           )}
         </div>
@@ -258,15 +266,15 @@ interface PersonalListItem {
   lines: PersonalLine[]
 }
 interface NtsResult {
-  prodTax: number | null; decidedTax: number | null; withheld: number | null
+  prodTax: number | null; decidedTax: number | null
   workDdc: number | null; taxBase: number | null; resultCode: string | null
 }
 interface YtsResult {
-  totPayAmt: number; paymIncmTax: number
-  prodTaxAmt: number; resIncmTax: number; subIncmTax: number
+  totPayAmt: number; workTax: number; workAmt: number; taxBase: number
+  prodTaxAmt: number; wiaCredit: number; resIncmTax: number
 }
 interface InputRow {
-  code: string; label: string; ytsCol: string | null; valueKey: string; sent: number
+  code: string; label: string; group: string; ytsCol: string | null; valueKey: string; sent: number; outCode?: string
 }
 interface MissingRow { code: string; label: string; amount: number }
 interface RowResult {
@@ -313,7 +321,7 @@ function MatchIcon({ yts, nts }: { yts: number | null; nts: number | null }) {
 function buildRowResult(json: any, duration: number, ranAt?: string): RowResult {
   return {
     yts:      json.yts     ?? null,
-    nts:      json.nts     ?? { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: json.error ? "E" : null },
+    nts:      json.nts     ?? { prodTax: null, decidedTax: null, workDdc: null, taxBase: null, resultCode: json.error ? "E" : null },
     inputs:   json.inputs  ?? [],
     ntsMap:   json.ntsMap  ?? {},
     ntsIn:    json.ntsIn   ?? [],
@@ -328,7 +336,7 @@ function buildRowResult(json: any, duration: number, ranAt?: string): RowResult 
 function errorRowResult(duration: number, ranAt?: string): RowResult {
   return {
     yts: null,
-    nts: { prodTax: null, decidedTax: null, withheld: null, workDdc: null, taxBase: null, resultCode: "E" },
+    nts: { prodTax: null, decidedTax: null, workDdc: null, taxBase: null, resultCode: "E" },
     inputs: [], ntsMap: {}, ntsIn: [], ntsOut: [], ytsDdcMap: {}, missing: [],
     ranAt: ranAt ?? formatRanAt(new Date()), duration,
   }
@@ -354,6 +362,13 @@ export function HometaxCalcPanel() {
   const [detailFor,      setDetailFor]      = useState<string | null>(null)
   const [selectedCalcNo, setSelectedCalcNo] = useState<string | null>(null)   // 클릭된 본행(파랑 표시) — 드로어(detailFor)와 분리
   const [procTotalFor,   setProcTotalFor]   = useState<{ calcNo: string; nm: string; text: string } | null>(null)
+  // 상세조회 드로어 좌우 패널 리사이즈 (계산과정 ↔ 실행과정)
+  const [detailLeftPct,  setDetailLeftPct]  = useState(50)
+  const detailDragRef    = useRef(false)
+  const detailPanelRef   = useRef<HTMLDivElement>(null)
+  // 계산과정·실행과정 드로어 전체보기(최대폭) 토글 — 드로어별로 독립
+  const [calcDrawerFull, setCalcDrawerFull] = useState(false)
+  const [execDrawerFull, setExecDrawerFull] = useState(false)
   const [sessionInfo,    setSessionInfo]    = useState<{ active: boolean; ageMinutes: number | null }>({ active: false, ageMinutes: null })
   const [sessionLoading, setSessionLoading] = useState(false)
   const [batchRunning,   setBatchRunning]   = useState(false)
@@ -371,6 +386,23 @@ export function HometaxCalcPanel() {
     check()
     const id = setInterval(check, 30000)
     return () => clearInterval(id)
+  }, [])
+
+  // 상세조회 드로어 좌우 리사이즈 드래그
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!detailDragRef.current || !detailPanelRef.current) return
+      const rect = detailPanelRef.current.getBoundingClientRect()
+      const pct = ((e.clientX - rect.left) / rect.width) * 100
+      setDetailLeftPct(Math.min(Math.max(pct, 20), 80))
+    }
+    const onMouseUp = () => { detailDragRef.current = false }
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+    }
   }, [])
 
   // 계산과정 팝업 ESC 닫기
@@ -575,7 +607,17 @@ export function HometaxCalcPanel() {
 
 
   const detailRes = detailFor ? results[detailFor] : null
-  const detailRow = detailFor ? (allItems.find(i => i.calcNo === detailFor) ?? null) : null
+  // all탭뿐 아니라 지금 켜져있지 않은 다른 탭에서 열었을 수도 있어 전 탭 리스트를 다 뒤진다.
+  const detailRow: DetailRowLike | null = detailFor ? (
+    allItems.find(i => i.calcNo === detailFor)
+    ?? giftItems.find(i => i.calcNo === detailFor)
+    ?? cardItems.find(i => i.calcNo === detailFor)
+    ?? mediItems.find(i => i.calcNo === detailFor)
+    ?? pensionItems.find(i => i.calcNo === detailFor)
+    ?? etcItems.find(i => i.calcNo === detailFor)
+    ?? groupItems.find(i => i.calcNo === detailFor)
+    ?? null
+  ) : null
 
   // 기타 탭: 드롭다운으로 고른 한 항목(etcCode)만 남긴다 — 각 사람의 lines 를 해당 code 한 줄로 축소.
   const etcByCode: EtcListItem[] = etcItems
@@ -825,42 +867,66 @@ export function HometaxCalcPanel() {
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
       </div>
 
-      {/* 상세조회 드로어 */}
+      {/* 상세조회 드로어 — 좌: 계산과정 / 우: 실행과정 (팝업과 동일하게 나란히) */}
       <Sheet open={detailFor !== null} onOpenChange={o => { if (!o) setDetailFor(null) }}>
-        <SheetContent side="right" className="w-full p-0" style={{ maxWidth: "min(92vw, 60rem)" }}>
-          {detailRes && <DetailView res={detailRes} row={detailRow} calcNo={detailFor!} />}
-        </SheetContent>
-      </Sheet>
-
-      {/* 계산과정 팝업 — 좌: 계산과정(YTS) / 우: 실행과정(NTS 대조, 결과 있으면). 각 패널 세로·가로 스크롤 */}
-      {procTotalFor && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setProcTotalFor(null)}
+        <SheetContent
+          side="right" className="w-full p-0 gap-0 flex-row"
+          style={execDrawerFull
+            ? { left: "3rem", right: 0, width: "auto", maxWidth: "none" }   // 왼쪽 사이드바(아이콘폭) 남기고 나머지 전부
+            : { maxWidth: "min(96vw, 100rem)" }}
         >
-          <div
-            className="relative flex overflow-hidden rounded-lg border bg-background shadow-xl"
-            style={{ width: "94vw", height: "90vh" }}
-            onClick={e => e.stopPropagation()}
+          <Button
+            variant="ghost" size="icon-sm" className="absolute top-3 right-12 z-10"
+            onClick={() => setExecDrawerFull(v => !v)}
+            title={execDrawerFull ? "기본 크기" : "전체보기"}
           >
-            <button
-              className="absolute right-2 top-2 z-10 rounded p-1 text-muted-foreground hover:bg-muted"
-              onClick={() => setProcTotalFor(null)}
-              aria-label="닫기"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <div className="flex min-w-0 flex-1 flex-col border-r">
-              <ProcTotalView info={procTotalFor} ntsMap={results[procTotalFor.calcNo]?.ntsMap} />
-            </div>
-            {results[procTotalFor.calcNo] && (
+            {execDrawerFull ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+          <div ref={detailPanelRef} className="flex min-w-0 flex-1">
+            {detailRow?.calcProcTotal && (
+              <div
+                className="flex min-w-0 flex-col border-r"
+                style={{ width: detailRes ? `${detailLeftPct}%` : "100%" }}
+              >
+                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow.nm, text: detailRow.calcProcTotal }} ntsMap={detailRes?.ntsMap} />
+              </div>
+            )}
+            {detailRow?.calcProcTotal && detailRes && (
+              <div
+                className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors"
+                onMouseDown={e => { e.preventDefault(); detailDragRef.current = true }}
+              />
+            )}
+            {detailRes && (
               <div className="flex min-w-0 flex-1 flex-col">
-                <DetailView res={results[procTotalFor.calcNo]} row={null} calcNo={procTotalFor.calcNo} procOrder={procCodeOrder(procTotalFor.text)} />
+                <DetailView
+                  res={detailRes} row={detailRow} calcNo={detailFor!}
+                  procOrder={detailRow?.calcProcTotal ? procCodeOrder(detailRow.calcProcTotal) : undefined}
+                />
               </div>
             )}
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
+
+      {/* 계산과정 드로어 — 실행여부와 상관없이 본인 계산과정만 표시 */}
+      <Sheet open={procTotalFor !== null} onOpenChange={o => { if (!o) setProcTotalFor(null) }}>
+        <SheetContent
+          side="right" className="w-full p-0"
+          style={calcDrawerFull
+            ? { left: "3rem", right: 0, width: "auto", maxWidth: "none" }   // 왼쪽 사이드바(아이콘폭) 남기고 나머지 전부
+            : { maxWidth: "min(92vw, 60rem)" }}
+        >
+          <Button
+            variant="ghost" size="icon-sm" className="absolute top-3 right-12 z-10"
+            onClick={() => setCalcDrawerFull(v => !v)}
+            title={calcDrawerFull ? "기본 크기" : "전체보기"}
+          >
+            {calcDrawerFull ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+          {procTotalFor && <ProcTotalView info={procTotalFor} ntsMap={results[procTotalFor.calcNo]?.ntsMap} />}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
@@ -1557,16 +1623,65 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   )
 }
 
+// 실행과정의 접이식 영역(결과비교/전송한 공제입력/IN·OUT 대조) 공용 껍데기.
+// 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
+// grow=false 면 내용 길이만큼만 차지(짧은 표에서 밑에 빈 여백 안 남게) — 나머지 flex-1 영역이 남는 공간을 가져간다.
+function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, grow = true, children }: {
+  title: string; extra?: ReactNode; collapsed: boolean; onToggle: () => void; onExpandOnly?: () => void; grow?: boolean; children: ReactNode
+}) {
+  const expand = !collapsed && grow
+  return (
+    <div className={`flex flex-col border rounded-md overflow-hidden ${expand ? "flex-1 min-h-0" : "shrink-0"}`}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onDoubleClick={onExpandOnly}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle() } }}
+        title="더블클릭: 이 영역만 펼치고 나머지는 접기"
+        className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold shrink-0 cursor-pointer select-none hover:bg-muted/80"
+      >
+        <span className="flex items-center gap-1.5">
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+          {title}
+        </span>
+        {extra && <div onClick={e => e.stopPropagation()}>{extra}</div>}
+      </div>
+      {!collapsed && <div className={expand ? "flex-1 min-h-0 overflow-auto" : "overflow-auto"}>{children}</div>}
+    </div>
+  )
+}
+
 // ── 상세조회 뷰 ──────────────────────────────────────────────────────────────
-function DetailView({ res, row, calcNo, procOrder }: { res: RowResult; row: ListItem | null; calcNo: string; procOrder?: string[] }) {
+function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: DetailRowLike | null; calcNo: string; procOrder?: string[]; nm?: string }) {
   const yts = res.yts
   const nts = res.nts
   const ok  = nts.resultCode === "S" || nts.resultCode === null
+  const displayNm = nm ?? row?.nm
 
-  const compareRows: { label: string; yts: number | null; nts: number | null }[] = [
-    { label: "산출세액", yts: yts?.prodTaxAmt ?? row?.prodTaxAmt ?? null, nts: nts.prodTax },
-    { label: "결정세액", yts: yts?.resIncmTax ?? row?.resIncmTax ?? null, nts: nts.decidedTax },
-    { label: "차감징수", yts: yts?.subIncmTax ?? null,                    nts: nts.withheld },
+  // 3개 영역(결과비교/전송한 공제입력/IN·OUT) 접기 상태 — 기본 전부 펼침
+  const [collapsed, setCollapsed] = useState({ compare: false, inputs: false, io: false })
+  // 더블클릭으로 "이 영역만 최대화" — 포커스된 영역은 grow(자기 기본값 무관) + 나머지는 접힘
+  const [focusedPanel, setFocusedPanel] = useState<keyof typeof collapsed | null>(null)
+  const toggle = (k: keyof typeof collapsed) => { setFocusedPanel(null); setCollapsed(c => ({ ...c, [k]: !c[k] })) }
+  const expandOnly = (k: keyof typeof collapsed) => setFocusedPanel(p => (p === k ? null : k))
+  const isCollapsed = (k: keyof typeof collapsed) => (focusedPanel ? k !== focusedPanel : collapsed[k])
+  const isGrow = (k: keyof typeof collapsed, defaultGrow: boolean) => (focusedPanel ? k === focusedPanel : defaultGrow)
+  // ② 전송한 공제 입력 — 전체보기(매핑 전 항목) / 값보기(그 코드로 IN·OUT 중 뭐라도 오간 항목만)
+  const [inputsShowAll, setInputsShowAll] = useState(true)
+
+  // 8900(총급여)은 국세청 "입력" 코드라 ddcAmt(공제액)가 아니라 회신에 그대로 echo 된 useAmt를 대조값으로 쓴다.
+  const totPayNts = res.ntsOut.find(r => r.code === "8900")?.useAmt ?? null
+
+  // 계산 흐름 순서(총급여→결정세액) 그대로 YTS39·NTS 값을 나란히 대조 — 어느 단계에서 갈렸는지 바로 보임
+  const compareRows: { label: string; code: string; ytsCol: string; yts: number | null; nts: number | null }[] = [
+    { label: "총급여",          code: "8900", ytsCol: "TOT_PAY_AMT", yts: yts?.totPayAmt   ?? row?.totPayAmt  ?? null, nts: totPayNts },
+    { label: "근로소득공제",     code: "8901", ytsCol: "WORK_TAX",    yts: yts?.workTax     ?? null,                    nts: res.ntsMap["8901"] ?? null },
+    { label: "근로소득금액",     code: "8902", ytsCol: "WORK_AMT",    yts: yts?.workAmt     ?? null,                    nts: res.ntsMap["8902"] ?? null },
+    { label: "종합소득 과세표준", code: "8903", ytsCol: "TOT_PTB",     yts: yts?.taxBase     ?? null,                    nts: res.ntsMap["8903"] ?? null },
+    { label: "산출세액",         code: "8990", ytsCol: "PROD_TAX_AMT",yts: yts?.prodTaxAmt  ?? row?.prodTaxAmt ?? null, nts: res.ntsMap["8990"] ?? null },
+    { label: "근로소득세액공제", code: "8700", ytsCol: "RT_WIA",      yts: yts?.wiaCredit   ?? null,                    nts: res.ntsMap["8700"] ?? null },
+    { label: "결정세액",         code: "8999", ytsCol: "RES_INCM_TAX",yts: yts?.resIncmTax  ?? row?.resIncmTax ?? null, nts: res.ntsMap["8999"] ?? null },
   ]
 
   // NTS 원본 IN/OUT 코드 union (전송 payload ∪ 회신) — 코드별 전 필드 대조
@@ -1579,186 +1694,189 @@ function DetailView({ res, row, calcNo, procOrder }: { res: RowResult; row: List
     .sort((a, b) => orderIdx(a.code) - orderIdx(b.code) || a.code.localeCompare(b.code))
   const ioNum = (n?: number) => (n ? n.toLocaleString("ko-KR") : "—")
 
+  // 그 코드의 rule이 실제로 쓰는 필드(useAmt/incDdcNfpCnt/ddcTrgtAmt) 하나만 "보낸값"으로 본다
+  const sentValOf = (inp: InputRow) => {
+    const io = ioMap.get(inp.code)
+    return inp.valueKey === "incDdcNfpCnt" ? io?.i?.incDdcNfpCnt
+         : inp.valueKey === "ddcTrgtAmt"   ? io?.i?.ddcTrgtAmt
+         : io?.i?.useAmt
+  }
+  // 값보기: 보낸값·받은값(ddcAmt) 중 하나라도 있는 항목만
+  const visibleInputs = inputsShowAll ? res.inputs : res.inputs.filter(inp => !!sentValOf(inp) || !!ioMap.get(inp.code)?.o?.ddcAmt)
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="border-b px-4 py-3 pr-12 shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 whitespace-nowrap">
           <span className="font-mono text-sm">{calcNo}</span>
-          {row && <span className="text-foreground">{row.nm}</span>}
+          {displayNm && <span className="text-foreground">{displayNm}</span>}
           <span className="text-muted-foreground text-sm font-normal">실행과정</span>
-          <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             응답 {nts.resultCode ?? "—"}
           </span>
         </div>
-        <div className="flex gap-4 text-xs text-muted-foreground mt-0.5">
-          <span>총급여 <b className="text-foreground tabular-nums">{won(yts?.totPayAmt ?? row?.totPayAmt)}</b></span>
-          <span>기납부 <b className="text-foreground tabular-nums">{won(yts?.paymIncmTax)}</b></span>
-        </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-6">
+      <div className="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden">
         {/* 1) 결과 비교 */}
-        <section>
-          <h3 className="text-xs font-semibold text-muted-foreground mb-2">① 결과 비교 (YTS39 ↔ NTS)</h3>
+        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} grow={isGrow("compare", false)}>
           <table className="w-full text-sm border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b text-[11px] text-muted-foreground">
-                <th className="py-1.5 text-left font-medium">항목</th>
-                <th className="py-1.5 text-right font-medium">YTS39</th>
-                <th className="py-1.5 text-right font-medium">NTS</th>
-                <th className="py-1.5 text-right font-medium w-14">차이</th>
-                <th className="py-1.5 text-center font-medium w-10 whitespace-nowrap">일치</th>
+                <th className="py-1.5 px-3 text-left font-medium">항목</th>
+                <th className="py-1.5 px-3 text-right font-medium">필드명</th>
+                <th className="py-1.5 px-3 text-right font-medium">YTS39</th>
+                <th className="py-1.5 px-3 text-right font-medium">NTS</th>
+                <th className="py-1.5 px-3 text-right font-medium w-14">차이</th>
               </tr>
             </thead>
             <tbody>
               {compareRows.map(r => {
                 const diff = r.yts != null && r.nts != null ? r.nts - r.yts : null
                 return (
-                  <tr key={r.label} className="border-b last:border-0">
-                    <td className="py-1.5">{r.label}</td>
-                    <td className="py-1.5 text-right tabular-nums">{won(r.yts)}</td>
-                    <td className="py-1.5 text-right tabular-nums">{won(r.nts)}</td>
-                    <td className={`py-1.5 text-right tabular-nums text-xs ${diff ? "text-red-600" : "text-muted-foreground/50"}`}>
+                  <tr key={r.code} className="border-b last:border-0">
+                    <td className="py-1.5 px-3">
+                      {r.label}
+                      <span className="ml-1 font-mono text-[10px] text-muted-foreground/50">{r.code}</span>
+                    </td>
+                    <td className="py-1.5 px-3 text-right font-mono text-[10px] text-muted-foreground/50 whitespace-nowrap">{r.ytsCol}</td>
+                    <td className="py-1.5 px-3 text-right tabular-nums">{won(r.yts)}</td>
+                    <td className="py-1.5 px-3 text-right tabular-nums">{won(r.nts)}</td>
+                    <td className={`py-1.5 px-3 text-right tabular-nums text-xs ${diff ? "text-red-600" : "text-muted-foreground/50"}`}>
                       {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
                     </td>
-                    <td className="py-1.5 text-center"><span className="inline-flex justify-center"><MatchIcon yts={r.yts} nts={r.nts} /></span></td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-        </section>
+        </DetailPanel>
 
-        {/* 2) NTS 계산 흐름 */}
-        <section>
-          <h3 className="text-xs font-semibold text-muted-foreground mb-2">② NTS 계산 흐름</h3>
-          <table className="w-full text-sm border-collapse">
+        {/* 2) 전송한 공제 입력 — 보내고(NTS IN) 받은(NTS OUT) 원본값 그대로, 가공 없음. YTS 대조는 ③에서. */}
+        <DetailPanel
+          title="② 전송한 공제 입력"
+          extra={
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-normal text-muted-foreground">총 {res.inputs.length}개 · 값 {res.inputs.filter(i => !!sentValOf(i) || !!ioMap.get(i.code)?.o?.ddcAmt).length}개</span>
+              <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
+                <button
+                  type="button"
+                  onClick={() => setInputsShowAll(true)}
+                  className={`px-2 py-0.5 ${inputsShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                >전체보기</button>
+                <button
+                  type="button"
+                  onClick={() => setInputsShowAll(false)}
+                  className={`px-2 py-0.5 border-l ${!inputsShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                >값보기</button>
+              </div>
+            </div>
+          }
+          collapsed={isCollapsed("inputs")} onToggle={() => toggle("inputs")} onExpandOnly={() => expandOnly("inputs")}
+        >
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+              <tr className="text-[10px] text-muted-foreground">
+                <th className="px-2 py-1.5 text-left font-medium">항목</th>
+                <th className="px-2 py-1.5 text-left font-medium">NTS코드</th>
+                <th className="px-2 py-1.5 text-right font-medium">보낸값</th>
+                <th className="px-2 py-1.5 text-right font-medium">받은값</th>
+              </tr>
+            </thead>
             <tbody>
-              {NTS_FLOW.map(f => {
-                const v = res.ntsMap[f.code]
+              {visibleInputs.map((inp, i) => {
+                const io       = ioMap.get(inp.code)
+                const sentVal  = sentValOf(inp)
+                const hasData  = !!sentVal || !!io?.o?.ddcAmt
+                const isSubtot = !!inp.outCode && inp.outCode !== inp.code   // 소계형(카드8430/의료8726 등) — 개별코드는 자체 결과 없음
+                const next     = visibleInputs[i + 1]
+                const groupEnd = isSubtot && next?.outCode !== inp.outCode   // 같은 소계코드 그룹의 마지막 행 뒤에 소계행 삽입
                 return (
-                  <tr key={f.code} className="border-b last:border-0">
-                    <td className="py-1.5 text-muted-foreground">{f.label}</td>
-                    <td className="py-1.5 text-right font-mono text-[10px] text-muted-foreground/50 w-14">{f.code}</td>
-                    <td className="py-1.5 text-right tabular-nums">{v == null ? "—" : won(v)}</td>
-                  </tr>
+                  <Fragment key={inp.code}>
+                    <tr className={`border-t ${hasData ? "bg-blue-50/30" : "text-muted-foreground/40"}`}>
+                      <td className="px-2 py-1">{inp.label}</td>
+                      <td className="px-2 py-1 font-mono">{inp.code}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{ioNum(sentVal)}</td>
+                      <td className="px-2 py-1 text-right tabular-nums">{ioNum(io?.o?.ddcAmt)}</td>
+                    </tr>
+                    {groupEnd && (
+                      <tr className="border-t bg-muted/50 font-medium">
+                        <td className="px-2 py-1" colSpan={2}>{SUBTOTAL_GROUP_LABEL[inp.outCode!] ?? inp.group} 소계</td>
+                        <td className="px-2 py-1 text-right tabular-nums text-muted-foreground/30">—</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{ioNum(ioMap.get(inp.outCode!)?.o?.ddcAmt)}</td>
+                      </tr>
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>
           </table>
-        </section>
+        </DetailPanel>
 
-        {/* 3) 전송한 공제 입력 */}
-        <section>
-          <div className="flex items-baseline justify-between mb-2">
-            <h3 className="text-xs font-semibold text-muted-foreground">③ 전송한 공제 입력</h3>
-            <span className="text-[10px] text-muted-foreground/60">
-              총 {res.inputs.length}개 · 전송 {res.inputs.filter(i => i.sent > 0).length}개
-            </span>
-          </div>
-          <div className="border rounded-md overflow-hidden">
-            <table className="w-full text-xs border-collapse">
-              <thead className="bg-muted/60">
+        {/* 3) NTS 원본 IN/OUT + YTS 대조 (코드별 전 필드, 불일치 적색·일치 청색) */}
+        {(res.ntsIn.length > 0 || res.ntsOut.length > 0) && (
+          <DetailPanel
+            title="③ NTS 원본 IN / OUT + YTS 대조"
+            extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치</span>}
+            collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")}
+          >
+            <table className="min-w-full text-xs border-collapse whitespace-nowrap">
+              <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
                 <tr className="text-[10px] text-muted-foreground">
                   <th className="px-2 py-1.5 text-left font-medium">코드</th>
                   <th className="px-2 py-1.5 text-left font-medium">항목</th>
-                  <th className="px-2 py-1.5 text-left font-medium">값키</th>
-                  <th className="px-2 py-1.5 text-left font-medium">YTS컬럼</th>
-                  <th className="px-2 py-1.5 text-right font-medium">전송값</th>
-                  <th className="px-2 py-1.5 text-right font-medium">NTS반영</th>
+                  <th className="px-2 py-1.5 text-right font-medium">IN 금액</th>
+                  <th className="px-2 py-1.5 text-right font-medium">IN 인원</th>
+                  <th className="px-2 py-1.5 text-right font-medium">IN 대상</th>
+                  <th className="px-2 py-1.5 text-right font-medium border-l">YTS 공제</th>
+                  <th className="px-2 py-1.5 text-right font-medium">NTS 공제</th>
+                  <th className="px-2 py-1.5 text-center font-medium w-8">판정</th>
+                  <th className="px-2 py-1.5 text-right font-medium border-l">OUT 대상</th>
+                  <th className="px-2 py-1.5 text-right font-medium">OUT 한도</th>
+                  <th className="px-2 py-1.5 text-right font-medium">OUT 인원</th>
                 </tr>
               </thead>
               <tbody>
-                {res.inputs.map(inp => {
-                  const zero   = inp.sent === 0
-                  const ntsVal = res.ntsMap[inp.code]
-                  const isMrrg = inp.code === "8790"   // 혼인공제: 특수전송(incDdcNfpCnt=1+ddcAmt 직접)
+                {ioRows.map(({ code, i, o }) => {
+                  const ytsD = res.ytsDdcMap[code]
+                  const ntsD = o?.ddcAmt
+                  const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
+                  const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
-                    <tr key={inp.code} className={`border-t ${zero ? "text-muted-foreground/40" : "bg-blue-50/30"}`}>
-                      <td className="px-2 py-1 font-mono">{inp.code}</td>
-                      <td className="px-2 py-1">{inp.label}</td>
-                      <td className="px-2 py-1 font-mono text-[10px]">{isMrrg ? "incDdcNfpCnt+ddcAmt" : inp.valueKey}</td>
-                      <td className="px-2 py-1 font-mono text-[10px]">{inp.ytsCol ?? "—"}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{zero ? "0" : inp.sent.toLocaleString("ko-KR")}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{ntsVal == null ? "—" : ntsVal.toLocaleString("ko-KR")}</td>
+                    <tr key={code} className={`border-t ${cmp === "diff" ? "bg-red-50/50" : ""}`}>
+                      <td className="px-2 py-1 font-mono">{code}</td>
+                      <td className="px-2 py-1">{CODE_LABEL[code] ?? "—"}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${i?.useAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.useAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${i?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.incDdcNfpCnt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${i?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.ddcTrgtAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums border-l ${cmpCls || (ytsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ytsD)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${cmpCls || (ntsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ntsD)}</td>
+                      <td className={`px-2 py-1 text-center ${cmpCls}`}>{cmp === "diff" ? "✗" : cmp === "match" ? "✓" : "—"}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums border-l ${o?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcTrgtAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${o?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcLmtAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${o?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.incDdcNfpCnt)}</td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-          </div>
-        </section>
-
-        {/* 4) NTS 원본 IN/OUT + YTS 대조 (코드별 전 필드, 불일치 적색·일치 청색) */}
-        {(res.ntsIn.length > 0 || res.ntsOut.length > 0) && (
-          <section>
-            <div className="flex items-baseline justify-between mb-2">
-              <h3 className="text-xs font-semibold text-muted-foreground">④ NTS 원본 IN / OUT + YTS 대조</h3>
-              <span className="text-[10px] text-muted-foreground/60">
-                <span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치
-              </span>
-            </div>
-            <div className="border rounded-md overflow-auto">
-              <table className="w-full text-xs border-collapse whitespace-nowrap">
-                <thead className="bg-muted/60">
-                  <tr className="text-[10px] text-muted-foreground">
-                    <th className="px-2 py-1.5 text-left font-medium">코드</th>
-                    <th className="px-2 py-1.5 text-left font-medium">항목</th>
-                    <th className="px-2 py-1.5 text-right font-medium">IN 금액</th>
-                    <th className="px-2 py-1.5 text-right font-medium">IN 인원</th>
-                    <th className="px-2 py-1.5 text-right font-medium">IN 대상</th>
-                    <th className="px-2 py-1.5 text-right font-medium border-l">YTS 공제</th>
-                    <th className="px-2 py-1.5 text-right font-medium">NTS 공제</th>
-                    <th className="px-2 py-1.5 text-center font-medium w-8">판정</th>
-                    <th className="px-2 py-1.5 text-right font-medium border-l">OUT 대상</th>
-                    <th className="px-2 py-1.5 text-right font-medium">OUT 한도</th>
-                    <th className="px-2 py-1.5 text-right font-medium">OUT 인원</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ioRows.map(({ code, i, o }) => {
-                    const ytsD = res.ytsDdcMap[code]
-                    const ntsD = o?.ddcAmt
-                    const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
-                    const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
-                    return (
-                      <tr key={code} className={`border-t ${cmp === "diff" ? "bg-red-50/50" : ""}`}>
-                        <td className="px-2 py-1 font-mono">{code}</td>
-                        <td className="px-2 py-1">{CODE_LABEL[code] ?? "—"}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${i?.useAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.useAmt)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${i?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.incDdcNfpCnt)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${i?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.ddcTrgtAmt)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums border-l ${cmpCls || (ytsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ytsD)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${cmpCls || (ntsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ntsD)}</td>
-                        <td className={`px-2 py-1 text-center ${cmpCls}`}>{cmp === "diff" ? "✗" : cmp === "match" ? "✓" : "—"}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums border-l ${o?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcTrgtAmt)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${o?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcLmtAmt)}</td>
-                        <td className={`px-2 py-1 text-right tabular-nums ${o?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.incDdcNfpCnt)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          </DetailPanel>
         )}
 
-        {/* 5) 미전송 항목 */}
+        {/* 4) 미전송 항목 */}
         {res.missing.length > 0 && (
-          <section>
-            <h3 className="text-xs font-semibold text-red-600 mb-2">⑤ 미전송 항목 (차이 원인 후보)</h3>
-            <div className="border border-red-200 rounded-md bg-red-50/40 p-3 space-y-1">
-              {res.missing.map(e => (
-                <div key={e.code} className="flex justify-between text-xs">
-                  <span className="text-red-700">{e.label}</span>
-                  <span className="tabular-nums text-red-700">{e.amount.toLocaleString("ko-KR")}</span>
-                </div>
-              ))}
-              <p className="text-[10px] text-red-500/80 pt-1 border-t border-red-200 mt-1">
-                이 항목들은 아직 NTS 로 전송하지 않아 결정세액 차이의 원인일 수 있습니다.
-              </p>
-            </div>
-          </section>
+          <div className="shrink-0 border border-red-200 rounded-md bg-red-50/40 p-3 space-y-1">
+            <h3 className="text-xs font-semibold text-red-600 mb-1">④ 미전송 항목 (차이 원인 후보)</h3>
+            {res.missing.map(e => (
+              <div key={e.code} className="flex justify-between text-xs">
+                <span className="text-red-700">{e.label}</span>
+                <span className="tabular-nums text-red-700">{e.amount.toLocaleString("ko-KR")}</span>
+              </div>
+            ))}
+            <p className="text-[10px] text-red-500/80 pt-1 border-t border-red-200 mt-1">
+              이 항목들은 아직 NTS 로 전송하지 않아 결정세액 차이의 원인일 수 있습니다.
+            </p>
+          </div>
         )}
       </div>
     </div>

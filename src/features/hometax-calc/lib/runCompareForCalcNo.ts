@@ -9,7 +9,7 @@ import { pensionNtsCode } from "@/features/hometax-calc/mapping/pension"
 import { investmentCode } from "@/features/hometax-calc/mapping/investment"
 
 // 결과대사·body 에 항상 필요한 기본 컬럼
-const BASE_COLS = ["TOT_PAY_AMT", "PAYM_INCM_TAX", "PROD_TAX_AMT", "RES_INCM_TAX", "SUB_INCM_TAX"]
+const BASE_COLS = ["TOT_PAY_AMT", "WORK_TAX", "WORK_AMT", "TOT_PTB", "PROD_TAX_AMT", "RT_WIA", "RES_INCM_TAX"]
 
 // PAY_WRK_CALC 실제 컬럼 캐시 — 매핑 오타/타테이블 컬럼을 SELECT 에서 제외해 쿼리 붕괴 방지
 let calcColsCache: Set<string> | null = null
@@ -177,7 +177,10 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
 
 export interface CompareRunResult {
   calcNo: string
-  yts: { totPayAmt: number; paymIncmTax: number; prodTaxAmt: number; resIncmTax: number; subIncmTax: number }
+  yts: {
+    totPayAmt: number; workTax: number; workAmt: number; taxBase: number
+    prodTaxAmt: number; wiaCredit: number; resIncmTax: number
+  }
   nts:          HometaxCompareResult["nts"]
   coveredCodes: HometaxCompareResult["coveredCodes"]
   inputs:       HometaxCompareResult["inputs"]
@@ -268,20 +271,23 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
   const { calcNo, vals, unknownCols, inputHash } = input
   const compare = await runHometaxCompare(vals, ntsYear)
 
-  // 코드별 YTS 자체 공제액(resultCol) — 상세뷰에서 NTS OUT(ddcAmt)과 대조
+  // 코드별 YTS 자체 공제액(resultCol) — 상세뷰에서 NTS OUT(ddcAmt)과 대조.
+  // outCode 로 키를 잡아야 소계형(카드8430/의료8726 등)이 자기 코드가 아니라 소계코드에서 대조된다.
   const ytsDdcMap: Record<string, number> = {}
   for (const m of MAPPING_2025) {
-    if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.ntsCode] = Number(vals[m.resultCol] ?? 0)
+    if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
   }
 
   return {
     calcNo,
     yts: {
-      totPayAmt:   vals.TOT_PAY_AMT,
-      paymIncmTax: vals.PAYM_INCM_TAX,
-      prodTaxAmt:  vals.PROD_TAX_AMT,
-      resIncmTax:  vals.RES_INCM_TAX,
-      subIncmTax:  vals.SUB_INCM_TAX,
+      totPayAmt:  vals.TOT_PAY_AMT,
+      workTax:    vals.WORK_TAX,
+      workAmt:    vals.WORK_AMT,
+      taxBase:    vals.TOT_PTB,
+      prodTaxAmt: vals.PROD_TAX_AMT,
+      wiaCredit:  vals.RT_WIA,
+      resIncmTax: vals.RES_INCM_TAX,
     },
     nts:          compare.nts,
     coveredCodes: compare.coveredCodes,

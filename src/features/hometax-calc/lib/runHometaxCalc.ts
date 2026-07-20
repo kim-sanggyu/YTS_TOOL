@@ -112,7 +112,6 @@ function pickDdcAmt(list: Array<Record<string, unknown>>, code: string): number 
 export interface NtsCompareResult {
   prodTax:    number | null
   decidedTax: number | null
-  withheld:   number | null
   workDdc:    number | null
   taxBase:    number | null
   resultCode: string | null
@@ -162,7 +161,7 @@ const _hasOut = (r: NtsIoRow) => r.useAmt || r.incDdcNfpCnt || r.ddcTrgtAmt || r
 
 // 전체 amtClusCd 목록 — 모두 0 초기화 후 우리 값 주입
 const ALL_CODES = [
-  "8900","8991",
+  "8900",
   "8001","8002","8003","8101","8102","8103","8104",
   "8201","8205","8208","8211","8215",
   "8301","8305","8311","8312",
@@ -211,8 +210,7 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
   const mrrg = Number(vals.RT_MRRG ?? 0)
   if (mrrg > 0) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", mrrg) }
 
-  const totPay  = Number(vals.TOT_PAY_AMT ?? 0)
-  const prepaid = Number(vals.PAYM_INCM_TAX ?? 0)
+  const totPay = Number(vals.TOT_PAY_AMT ?? 0)
 
   const coveredCodes = detail
     .filter(it => Number(it.useAmt) > 0 || Number(it.incDdcNfpCnt) > 0 || Number(it.ddcTrgtAmt) > 0)
@@ -225,7 +223,7 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
     gnrlDdcAmt: "0", ddcExclAmt: "0",
     totaSnwAmt: String(totPay), ddcLmtAmt: "0",
     yrsTaxClcBscList: [{
-      ppmTxamt: String(prepaid), attrYr: attrYr,
+      ppmTxamt: "0", attrYr: attrYr,   // 기납부세액 비교 범위 밖(결정세액까지만 비교) → 항상 0 고정
       ddcRtnId: "", erinAmt: "0", totaSnwAmt: String(totPay), statusValue: "R",
     }],
     yrsTaxClcDetailDVOList: detail,
@@ -276,7 +274,6 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       nts: {
         prodTax:    pickDdcAmt(list, "8990"),
         decidedTax: pickDdcAmt(list, "8999"),
-        withheld:   pickDdcAmt(list, "8992"),
         workDdc:    pickDdcAmt(list, "8901"),
         taxBase:    pickDdcAmt(list, "8903"),
         resultCode: parsed.resultMsg?.result ?? null,
@@ -293,201 +290,6 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
     await globalThis.__ntsSession?.browser.close().catch(() => {})
     globalThis.__ntsSession = undefined
     throw e
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ▶ 기존 함수 (총급여+기납부만 전송, 화면 팝업 방식) — 하위 호환 유지
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface HometaxCalcInput {
-  /** 총급여 (원) */
-  totalPay: number
-  /** 기납부세액 (원) */
-  prepaidTax: number
-}
-
-export interface HometaxCalcResult {
-  /** 산출세액 (amtClusCd 8990) */
-  computedTax: number | null
-  /** 결정세액 (amtClusCd 8999) */
-  decidedTax: number | null
-  /** 차감징수세액 = 결정세액 - 기납부 (amtClusCd 8992) */
-  withheldTax: number | null
-  /** 국세청 응답 result 코드 (S=정상) */
-  resultCode: string | null
-}
-
-
-export async function runHometaxCalc(input: HometaxCalcInput): Promise<HometaxCalcResult> {
-  let browser: Browser | null = null
-  const l03Responses: string[] = []
-
-  try {
-    browser = await chromium.launch({ headless: false, args: ["--window-position=-10000,0"] })
-    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
-    const page = await ctx.newPage()
-
-    const attachL03 = (p: Page) => {
-      p.on("response", async (res) => {
-        if (res.url().includes("ATEYSEAA001L03")) {
-          try {
-            l03Responses.push(await res.text())
-          } catch {
-            /* 응답 본문 읽기 실패 무시 */
-          }
-        }
-      })
-    }
-    attachL03(page)
-    const pages: Page[] = [page]
-    ctx.on("page", (p) => {
-      pages.push(p)
-      p.on("dialog", (d) => d.accept().catch(() => {}))
-      attachL03(p)
-    })
-    page.on("dialog", (d) => d.accept().catch(() => {}))
-
-    // 1) 메인 진입
-    await page.goto(START_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {})
-    await page.waitForTimeout(7000)
-
-    // 2) 오른쪽 플로팅 '모의계산' 클릭 → 모의계산 가이드맵
-    await clickByExactText(page, "모의계산", { preferRight: true })
-    await page.waitForTimeout(6000)
-
-    // 3) '연말정산 자동계산하기' 클릭 → 연도 드롭다운 열기 (종교인 제외는 exact 텍스트로 자연 구분)
-    try {
-      await page.getByText("연말정산 자동계산하기", { exact: true }).first().click({ timeout: 8000 })
-    } catch {
-      /* 드롭다운 열기 실패 시 아래 클릭에서 실패로 이어짐 */
-    }
-    await page.waitForTimeout(2000)
-
-    // 4) 드롭다운의 '2025년 자동계산'(a_1905120000 → UTEYSEJF01) 중 보이는 인스턴스 클릭
-    await page.evaluate(() => {
-      const els = Array.from(document.querySelectorAll('[id="a_1905120000"]')) as HTMLElement[]
-      const visible = els.filter((e) => e.offsetParent !== null)
-      ;(visible[0] || els[0])?.click()
-    })
-    await page.waitForTimeout(9000)
-
-    // 계산기 페이지 결정 (팝업이면 그쪽, 아니면 현재)
-    const calc = page
-
-    // 5) '총급여·기납부세액 수정' 버튼 클릭 → 입력 팝업창 열림
-    const beforePopup = pages.length
-    for (const f of calc.frames()) {
-      try {
-        const ok = await f.evaluate(() => {
-          const el = Array.from(document.querySelectorAll("a,button,input")).find(
-            (e) =>
-              ((e as HTMLElement).offsetWidth || (e as HTMLElement).offsetHeight) &&
-              /총급여.*수정|기납부.*수정/.test(
-                (e.textContent || (e as HTMLInputElement).value || "").trim()
-              )
-          ) as HTMLElement | undefined
-          if (el) {
-            el.click()
-            return true
-          }
-          return false
-        })
-        if (ok) break
-      } catch {
-        /* 프레임 접근 실패 무시 */
-      }
-    }
-    await page.waitForTimeout(3000)
-
-    // 총급여 입력 팝업창 찾기 (UTEYSEJF03)
-    const popup =
-      pages.find((p) => /UTEYSEJF03|taxPlnPopup/.test(p.url())) ??
-      (pages.length > beforePopup ? pages[pages.length - 1] : null)
-
-    if (!popup) throw new Error("총급여 입력 팝업창을 찾지 못했습니다.")
-
-    await popup.bringToFront().catch(() => {})
-    await popup.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {})
-    await page.waitForTimeout(2000)
-
-    // 팝업 입력필드(총급여/기납부) & 버튼(계산하기/적용하기) 탐색 — id는 자동생성이라 title/text 기준
-    const pinfo = await popup.evaluate(() => {
-      const inp = (Array.from(document.querySelectorAll("input")) as HTMLInputElement[])
-        .map((e) => ({
-          id: e.id,
-          title: e.getAttribute("title") || "",
-          disabled: e.disabled || e.readOnly,
-          vis: !!(e.offsetWidth || e.offsetHeight),
-          type: e.type,
-        }))
-        .filter((x) => x.vis && x.type !== "button")
-      const btn = (Array.from(
-        document.querySelectorAll("input[type=button],button,a")
-      ) as HTMLElement[])
-        .map((e) => ({
-          id: e.id,
-          text: (e.textContent || (e as HTMLInputElement).value || "").trim(),
-          vis: !!(e.offsetWidth || e.offsetHeight),
-        }))
-        .filter((x) => x.vis && /계산|적용/.test(x.text))
-      return { inp, btn }
-    })
-
-    const payId = pinfo.inp.find((x) => /총급여|급여/.test(x.title) && !x.disabled)?.id
-    const preId = pinfo.inp.find((x) => /기납부|납부/.test(x.title) && !x.disabled)?.id
-    if (!payId) throw new Error("팝업에서 총급여 입력필드를 찾지 못했습니다.")
-
-    await popup.locator(`[id="${payId}"]`).fill(String(input.totalPay))
-    if (preId) await popup.locator(`[id="${preId}"]`).fill(String(input.prepaidTax))
-    await popup.locator(`[id="${preId ?? payId}"]`).press("Tab").catch(() => {})
-    await page.waitForTimeout(500)
-
-    // 팝업: 계산하기 → 적용하기 순서 (적용해야 본 화면에 반영)
-    const calcBtnId = pinfo.btn.find((x) => /계산/.test(x.text))?.id
-    const applyBtnId = pinfo.btn.find((x) => /적용/.test(x.text))?.id
-    if (calcBtnId) {
-      await popup.locator(`[id="${calcBtnId}"]`).click().catch(() => {})
-      await page.waitForTimeout(2500)
-    }
-    if (applyBtnId) {
-      await popup.locator(`[id="${applyBtnId}"]`).click().catch(() => {})
-      await page.waitForTimeout(3000)
-    }
-
-    // 6) 메인 '계산하기'(btnClcExct) 클릭 → L03 발생
-    await calc.bringToFront().catch(() => {})
-    for (const f of calc.frames()) {
-      try {
-        if (await f.$('#mf_txppWframe_btnClcExct').catch(() => null)) {
-          await f.click('#mf_txppWframe_btnClcExct').catch(() => {})
-          break
-        }
-      } catch {
-        /* 무시 */
-      }
-    }
-    await page.waitForTimeout(6000)
-
-    // 7) L03 응답 파싱
-    if (l03Responses.length === 0) {
-      throw new Error("계산 응답(L03)을 받지 못했습니다.")
-    }
-    const raw = l03Responses[l03Responses.length - 1]
-    const parsed = JSON.parse(raw) as {
-      yrsTaxClcDetailDVOList?: Array<Record<string, unknown>>
-      resultMsg?: { result?: string }
-    }
-    const list = parsed.yrsTaxClcDetailDVOList ?? []
-
-    return {
-      computedTax: pickDdcAmt(list, "8990"),
-      decidedTax: pickDdcAmt(list, "8999"),
-      withheldTax: pickDdcAmt(list, "8992"),
-      resultCode: parsed.resultMsg?.result ?? null,
-    }
-  } finally {
-    await browser?.close().catch(() => {})
   }
 }
 
