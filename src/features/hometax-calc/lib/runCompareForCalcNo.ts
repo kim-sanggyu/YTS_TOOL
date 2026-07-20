@@ -91,6 +91,14 @@ function injectOtherSavingsVals(
   }
 }
 
+// ── 세대원(HOUSE_HLDR_YN='2') 주택마련저축 0 처리 ──
+// 세대원은 주택마련저축(청약8403/근로자8404/주택청약종합8405) 소득공제 대상이 아니다.
+// 국세청은 세대 구분값이 없어 납입액을 보내면 ×40% 공제를 자체계산하므로, 세대원이면 납입액 0을 주입해 YTS(미공제)와 일치시킨다.
+function applyHouseMemberSavingsRule(houseHldrYn: unknown, vals: Record<string, number>) {
+  if (String(houseHldrYn ?? "") !== "2") return
+  for (const code of ["8403", "8404", "8405"]) vals[`OTHER_${code}`] = 0
+}
+
 // ── 투자조합출자(그밖의소득공제 8415~8423) → OTHER_{코드} 주입 ──
 // PAY_WRK_PEN_SAVE_SPEC INVST_CLS(2벤처/1조합1/3조합2)×INVST_YY 로 연도/종류별 납입액 합 전송.
 // code = investmentCode(INVST_CLS, INVST_YY-ntsYear). NTS self ddcAmt(벤처100/70/30%·조합10%) ↔ SUM(PEN_SAVE_SUB_AMT). (2026-07-18 실측)
@@ -252,7 +260,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
             HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
             LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
-            SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT
+            SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT, HOUSE_HLDR_YN
      FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )
@@ -260,6 +268,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   injectEtcCreditVals(mainRow, vals)
   injectHousingVals(mainRow, vals)
   injectOtherMainVals(mainRow, vals)
+  applyHouseMemberSavingsRule(mainRow?.HOUSE_HLDR_YN, vals)
 
   await injectFamilyVals(calcNo, vals)
 
