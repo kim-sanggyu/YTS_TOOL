@@ -1610,8 +1610,8 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
 // 실행과정의 접이식 영역(결과비교/전송한 공제입력/IN·OUT 대조) 공용 껍데기.
 // 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
 // grow=false 면 내용 길이만큼만 차지(짧은 표에서 밑에 빈 여백 안 남게) — 나머지 flex-1 영역이 남는 공간을 가져간다.
-function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, grow = true, children }: {
-  title: string; extra?: ReactNode; collapsed: boolean; onToggle: () => void; onExpandOnly?: () => void; grow?: boolean; children: ReactNode
+function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, children }: {
+  title: string; extra?: ReactNode; collapsed: boolean; onToggle: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
 }) {
   const expand = !collapsed && grow
   return (
@@ -1626,10 +1626,29 @@ function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, grow = t
         className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold shrink-0 cursor-pointer select-none hover:bg-muted/80"
       >
         <span className="flex items-center gap-1.5">
-          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`} />
           {title}
         </span>
-        {extra && <div onClick={e => e.stopPropagation()}>{extra}</div>}
+        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+          {extra}
+          <button
+            type="button"
+            onClick={onToggle}
+            title={collapsed ? "펼치기" : "접기"}
+            className="p-0.5 rounded text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+          </button>
+          {onExpandOnly && (
+            <button
+              type="button"
+              onClick={onExpandOnly}
+              title={maximized ? "원래대로" : "최대로 (이 영역만)"}
+              className="p-0.5 rounded text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
+            >
+              {maximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            </button>
+          )}
+        </div>
       </div>
       {!collapsed && <div className={expand ? "flex-1 min-h-0 overflow-auto" : "overflow-auto"}>{children}</div>}
     </div>
@@ -1710,7 +1729,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
 
       <div className="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden">
         {/* 1) 결과 비교 */}
-        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} grow={isGrow("compare", false)}>
+        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} maximized={focusedPanel === "compare"} grow={isGrow("compare", false)}>
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b text-[11px] text-muted-foreground">
@@ -1763,7 +1782,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
               </div>
             </div>
           }
-          collapsed={isCollapsed("inputs")} onToggle={() => toggle("inputs")} onExpandOnly={() => expandOnly("inputs")}
+          collapsed={isCollapsed("inputs")} onToggle={() => toggle("inputs")} onExpandOnly={() => expandOnly("inputs")} maximized={focusedPanel === "inputs"}
         >
           <table className="w-full text-xs border-collapse">
             <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1809,7 +1828,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
           <DetailPanel
             title="③ NTS 원본 IN / OUT + YTS 대조"
             extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치</span>}
-            collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")}
+            collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")} maximized={focusedPanel === "io"}
           >
             <table className="min-w-full text-xs border-collapse whitespace-nowrap">
               <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1898,6 +1917,7 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   [MEDI_SUBTOTAL_CODE, { label: "의료비 세액공제 소계", ytsOut: "RT_MEDI_AMT" }],
   ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
+  ["8410",             { label: "투자조합출자 소계", ytsOut: "OTO_IU_ETC" }],               // self-subtotal(매핑행 8410 자체가 소계). 개별 8415~8423은 self OUT도 반환(하이브리드) → 멤버 아닌 결과전용행으로 렌더(2026-07-21 프로브)
 ])
 
 // 소계 멤버코드 → 소계코드 역참조. ③표 그룹블록 정렬용: 계산과정엔 소계 한 줄만 나오므로
@@ -1980,6 +2000,9 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
   rows.forEach((m, i) => {
     const oc    = outCodeOf(m)
     const isSub = SUBTOTAL_CODES.has(oc)
+    // self-subtotal: 매핑행 자체가 소계코드(예 투자조합 8410) — 결과전용(nts IN=— / nts OUT=ddcAmt / yts OUT=resultCol).
+    //   멤버가 별도 outCode 로 몰지 않고 자기 코드로 소계를 받으므로 합성 소계행 대신 이 행이 소계 역할.
+    const selfSub = SUBTOTAL_CODES.get(m.ntsCode)
     // 혼인공제(8790): 특수전송(incDdcNfpCnt=1+ddcAmt 직접, 국세청 미검산) — 결정세액만 반영, 항목대조 안 함
     const isMrrg = m.ntsCode === "8790"
     // 연도별 코드(투자조합출자 등): 입력연도(ntsYear)+offset 로 "○○○○년" 을 라벨 앞에 렌더
@@ -1989,12 +2012,12 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
       label,
       // 실제 국세청 입력코드가 표시코드와 다르면 병기(sendCode 지정 행. 현재 없음 — 인프라만 유지)
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
-      ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : m.valueKey,
-      ntsOut: isMrrg ? "—" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
-      ytsIn:  ytsInOf(m),
-      ytsOut: isMrrg ? "—" : (isSub ? "—" : ytsOutOf(m)),               // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,
+      ntsOut: isMrrg ? "—" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
+      ytsIn:  selfSub ? "—" : ytsInOf(m),
+      ytsOut: isMrrg ? "—" : selfSub ? selfSub.ytsOut : (isSub ? "—" : ytsOutOf(m)),         // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
-      isSubtotal: false,
+      isSubtotal: !!selfSub,
     })
     // 소계행은 해당 소계의 "마지막 멤버" 바로 뒤에 삽입 → 개별행 옆에 붙음(카드·의료는 그룹말미라 위치 동일, 출산입양은 세액공제 그룹 중간이라 8766 뒤로 이동)
     if (isSub && !emitted.has(oc) && !rows.slice(i + 1).some(r => outCodeOf(r) === oc)) {

@@ -122,7 +122,7 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8420", label: "벤처등", ytsCol: "OTHER_8420", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0 },
   { group: "그밖의소득공제", ntsCode: "8419", label: "조합1", ytsCol: "OTHER_8419", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0 },
   { group: "그밖의소득공제", ntsCode: "8423", label: "조합2", ytsCol: "OTHER_8423", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0 },
-  { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "투자조합출자 소계 OUT(개별 8415~8423 합). 대조 Σ PEN_SAVE_SUB_AMT. 실측확정(2026-07-18)" },
+  { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: null, resultCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "소계 결과전용(send:false). NTS OUT 8410=Σ개별(8415~8423) ddcAmt·과표 1회 반영 — 개별도 self ddcAmt 반환(하이브리드). 프로브 hometax-investment-probe(2026-07-21): 8420 1천만+8418 8백만→8410 1,800만, 벤처당해100%·조합1 10% 실측. 대조 OTO_IU_ETC(YTS 투자조합 공제 합). runHometaxCalc ALL_CODES에 8410 포함해 소계 결과 수신." },
   // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
   //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)
   { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8430" },
