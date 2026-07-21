@@ -9,7 +9,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 const CUR_YEAR     = new Date().getFullYear()                          // 2026
@@ -150,44 +151,18 @@ function PersonMainCells({ item, onShowProc }: {
 }
 
 // ── 계산과정(CALC_PROC_TOTAL) 전체 텍스트 드로어 ─────────────────────────────
-// 계산과정 항목행 파싱: "(잔액) [잔액] - [공제금액] ([항목명])" → 공제금액·항목명
-const PROC_ROW_RE = /\(잔액\)\s+[\d,]+\s+-\s+([\d,]+)\s+\(([^)]+?)\s*\)/
-// 계산과정 라벨 → NTS 코드 (self형·매핑 확실한 것만. 소계형=카드·의료·교육·기부·투자조합은 라벨 1:N이라 제외)
-const PROC_LABEL_CODE: Record<string, string> = {
-  "본인": "8001", "배우자": "8002", "부양가족": "8003",
-  "경로우대": "8101", "장애인": "8102", "부녀자": "8103", "한부모가족": "8104",
-  "국민연금": "8201",
-  "개인연금저축": "8401", "소기업·소상공인공제부금": "8402",
-  "청약저축": "8403", "주택청약종합저축": "8405", "근로자주택마련저축": "8404",
-  "우리사주조합출연금": "8452", "고용유지중소기업근로자": "8453",
-  "장기집합투자증권저축공제": "8451", "청년형장기집합투자증권저축": "8501",
-  "소득세법": "8601", "조특법(30조제외)": "8602", "조세조약": "8606",
-  "근로소득세액": "8700", "결혼세액공제": "8790", "자녀": "8763", "출산입양": "8761",
-}
+// 파싱·순서 도출은 lib/procOrder(테스트 잠금 대상). 라벨→코드 단일 원천은 mapping/2025.
 // 계산과정 한 줄의 대조 색: 매핑코드의 YTS 공제금액 ↔ NTS ntsMap[code]. 불일치=적, 일치=청, 그 외 무색.
 function procLineClass(line: string, ntsMap?: Record<string, number>): string {
   if (!ntsMap) return ""
   const m = PROC_ROW_RE.exec(line)
   if (!m) return ""
-  const code = PROC_LABEL_CODE[m[2].trim()]
+  const code = PROC_LABEL_CODE_2025[m[2].trim()]
   if (!code || ntsMap[code] == null) return ""
   const ytsAmt = Number(m[1].replace(/,/g, ""))
   const ntsAmt = ntsMap[code]
   if (!ytsAmt && !ntsAmt) return ""
   return ytsAmt === ntsAmt ? "text-blue-600" : "text-red-600 font-semibold"
-}
-
-// 계산과정에 등장하는 코드 순서(위→아래, 매핑된 것만) — 실행과정 표를 계산 순서로 정렬하는 데 씀
-function procCodeOrder(text: string): string[] {
-  const order: string[] = []
-  const seen = new Set<string>()
-  for (const line of text.split("\n")) {
-    const m = PROC_ROW_RE.exec(line)
-    if (!m) continue
-    const code = PROC_LABEL_CODE[m[2].trim()]
-    if (code && !seen.has(code)) { seen.add(code); order.push(code) }
-  }
-  return order
 }
 
 function ProcTotalView({ info, ntsMap }: { info: { calcNo: string; nm: string; text: string }; ntsMap?: Record<string, number> }) {
@@ -1697,10 +1672,17 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   const ioMap = new Map<string, { i?: NtsIoRow; o?: NtsIoRow }>()
   res.ntsIn.forEach(r => ioMap.set(r.code, { ...ioMap.get(r.code), i: r }))
   res.ntsOut.forEach(r => ioMap.set(r.code, { ...ioMap.get(r.code), o: r }))
-  // 정렬: 계산과정 등장 순서(procOrder) 우선 → 계산과정에 없는 코드는 코드 오름차순으로 뒤에
-  const orderIdx = (c: string) => { const i = procOrder ? procOrder.indexOf(c) : -1; return i >= 0 ? i : Number.MAX_SAFE_INTEGER }
+  // 정렬: 계산과정 등장 순서(procOrder) 우선. 소계 멤버는 소계코드 위치 바로 뒤 블록으로 묶음.
+  //   앵커 = [계산과정위치, 계층(0=소계/직접 · 1=소계멤버), 코드]. 계산과정에 없으면 맨 뒤 코드순.
+  const anchorOf = (c: string): [number, number, string] => {
+    const di = procOrder ? procOrder.indexOf(c) : -1
+    if (di >= 0) return [di, 0, c]
+    const sub = SUBTOTAL_OF.get(c)
+    if (sub) { const si = procOrder ? procOrder.indexOf(sub) : -1; if (si >= 0) return [si, 1, c] }
+    return [Number.MAX_SAFE_INTEGER, 0, c]
+  }
   const ioRows = [...ioMap.entries()].map(([code, v]) => ({ code, ...v }))
-    .sort((a, b) => orderIdx(a.code) - orderIdx(b.code) || a.code.localeCompare(b.code))
+    .sort((a, b) => { const x = anchorOf(a.code), y = anchorOf(b.code); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) })
   const ioNum = (n?: number) => (n ? n.toLocaleString("ko-KR") : "—")
 
   // 그 코드의 rule이 실제로 쓰는 필드(useAmt/incDdcNfpCnt/ddcTrgtAmt) 하나만 "보낸값"으로 본다
@@ -1918,6 +1900,17 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
 ])
 
+// 소계 멤버코드 → 소계코드 역참조. ③표 그룹블록 정렬용: 계산과정엔 소계 한 줄만 나오므로
+//   개별 멤버(8431~/8720~/8730/8764~)를 소계코드(8430/8726/8735/8761) 위치 바로 뒤에 붙인다.
+const SUBTOTAL_OF: Map<string, string> = (() => {
+  const m = new Map<string, string>()
+  for (const row of MAPPING_2025) {
+    const oc = outCodeOf(row)
+    if (SUBTOTAL_CODES.has(oc) && oc !== row.ntsCode) m.set(row.ntsCode, oc)
+  }
+  return m
+})()
+
 // 기타세액공제 ETX_ 가상컬럼 → PAY_WRK_MAIN 실제 원천 컬럼
 const ETX_SRC: Record<string, string> = {
   ETX_8751: "FRGN_PAY_TAX", ETX_8754: "FRGN_TOT_PAY_AMT", ETX_8752: "HOUSE_ALR", ETX_8753: "ASSO_SUB_TAX_AMT",
@@ -2032,6 +2025,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const yy = Number(ntsYear)
+  const [rosterOpen, setRosterOpen] = useState(false)
   const groups: { name: string; rows: MappingRow[] }[] = []
   for (const m of MAPPING_2025) {
     let g = groups.find(x => x.name === m.group)
@@ -2042,10 +2036,59 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const totConf = MAPPING_2025.filter(m => m.status === "확정").length
   const totSend = MAPPING_2025.filter(m => m.send).length
 
+  // 계산과정 순서 로스터 — PROC_LABEL_CODE_2025(계산과정 등장순) × MAPPING 매칭. ③표 정렬의 단일 원천 조회.
+  //   미등록(code 가 MAPPING 의 ntsCode/outCode 어디에도 없음) = 세법개정으로 새 라벨 생김 신호(자동 감지).
+  const knownCodes = new Set<string>()
+  for (const m of MAPPING_2025) { knownCodes.add(m.ntsCode); if (m.outCode) knownCodes.add(m.outCode) }
+  const rosterRows = Object.entries(PROC_LABEL_CODE_2025).map(([label, code], i) => {
+    const hit = MAPPING_2025.find(m => m.ntsCode === code)
+    const sub = !hit && knownCodes.has(code)   // 소계/OUT 코드(개별행의 outCode) — 계산과정은 소계 한 줄
+    return { i: i + 1, label, code, group: hit?.group, sub, known: !!hit || sub }
+  })
+  const rosterUnknown = rosterRows.filter(r => !r.known).length
+
   return (
     <div className="flex flex-col h-full">
       <div className="text-xs text-muted-foreground px-3 pt-3 pb-2 shrink-0">
         전체 {totCnt}항목 · 확정 {totConf} · 전송 {totSend} — 국세청 in-out 정리 진도 (MAPPING_2025 자동 렌더)
+      </div>
+      {/* 계산과정 순서 로스터 (접이식) — 실행과정 ③표가 이 순서로 정렬됨 */}
+      <div className="px-3 pb-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => setRosterOpen(o => !o)}
+          className="flex items-center gap-1.5 text-xs font-medium hover:text-primary"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${rosterOpen ? "" : "-rotate-90"}`} />
+          계산과정 순서 로스터 ({rosterRows.length}) — 실행과정 ③표 정렬 기준
+          {rosterUnknown > 0 && <span className="text-red-600 font-semibold">· 미등록 {rosterUnknown}</span>}
+        </button>
+        {rosterOpen && (
+          <div className="mt-1.5 max-h-72 overflow-auto border rounded">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr className="text-[10px] text-muted-foreground text-left">
+                  <th className="px-2 py-1 border-b border-r font-medium w-8 text-right">#</th>
+                  <th className="px-2 py-1 border-b border-r font-medium">계산과정 라벨</th>
+                  <th className="px-2 py-1 border-b border-r font-medium w-14">코드</th>
+                  <th className="px-2 py-1 border-b font-medium">매핑 위치</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rosterRows.map(r => (
+                  <tr key={r.i} className={`border-t ${!r.known ? "bg-red-50/60" : ""}`}>
+                    <td className="px-2 py-0.5 border-r text-right tabular-nums text-muted-foreground/60">{r.i}</td>
+                    <td className="px-2 py-0.5 border-r">{r.label}</td>
+                    <td className="px-2 py-0.5 border-r font-mono text-[11px] font-semibold">{r.code}</td>
+                    <td className={`px-2 py-0.5 ${!r.known ? "text-red-600 font-semibold" : r.sub ? "text-muted-foreground" : ""}`}>
+                      {r.group ?? (r.sub ? "소계 OUT (개별행 outCode)" : "미등록 — 세법개정 확인")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       {/* 전체 하나의 그리드 — table-fixed + colgroup 으로 그룹이 바뀌어도 열이 같은 위치에서 시작 */}
       <div className="overflow-auto flex-1 px-3 pb-3">
