@@ -72,20 +72,22 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=500,000(50만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=56, 배우자없음+직계비속0+부녀자로 격리 — 한부모(8104)와 배타관계)" },
   { group: "인적공제", ntsCode: "8104", label: "추가공제-한부모",   ytsCol: "ADD_SUB_SNGL_PRNT_AMT",valueKey: "incDdcNfpCnt", rule: "flag",  status: "확정", send: true, note: "self ddcAmt=1,000,000(100만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=46/47, 배우자없음+직계비속 → 한부모 자동 적용)" },
 
-  // ── 연금보험료공제 (소득공제, useAmt) — 전액공제(OUT ddcAmt=useAmt), 소계 OUT=8919 ──
-  //   대상금액(_AMT) 전송 → NTS self ddcAmt 전액 회신. *_OBJ_AMT(공제대상)=*_AMT 동일값.
-  //   코드·필드·OUT 라이브 캡처 실측확정(capture-io 2026-07-18, n=2). ytsCol DB코멘트 대조 일치.
-  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_AMT",valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  // ── 연금보험료공제 (소득공제, useAmt) — 소계 OUT=8919 ──
+  //   ★보낼 값=대상금액(_OBJ_AMT, 캡 전) / 대조=공제금액(_AMT, 잔액캡 후). NTS가 근로소득금액 잔액 소진을 스스로
+  //   재현하게 해야 검증됨. 잔액 부족 시 공제=min(대상,잔액)<대상 — 국민연금 X2026 6명 OBJ≠AMT 실측
+  //   (X202600049 대상329,220→공제0). 구: _AMT(공제금액,캡후)를 전송해 잔액로직이 검증 사각이던 것 교정(2026-07-21).
+  //   OBJ/AMT 모두 PAY_WRK_CALC 컬럼(NP_INSU_OBJ_AMT=FN_PAY_GET_WRK_SOC_INSU_AMT 값과 동일 실측).
+  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_OBJ_AMT",        resultCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_OBJ_AMT",   resultCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_OBJ_AMT", resultCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_OBJ_AMT", resultCol: "ETC_PEN_SCHL_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_OBJ_AMT",   resultCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
-  // ── 특별소득공제 (useAmt) ──────────────────────────────────────────────────
-  //   보험료공제(건강·고용)는 전액공제(OUT ddcAmt=useAmt), 소계 OUT=8920. *_OBJ_AMT(대상)=*_AMT 동일값.
-  //   코드·필드·OUT 라이브 캡처 실측확정(capture-io 2026-07-18). ytsCol DB코멘트 대조 일치.
-  { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
-  { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  // ── 특별소득공제 (useAmt) — 소계 OUT=8920 ──────────────────────────────────
+  //   보험료공제(건강·고용)도 연금보험료와 동일 원칙: 대상금액(_OBJ_AMT, 캡 전) 전송 → NTS 잔액 재현 →
+  //   공제금액(_AMT, 캡 후) 대조. 구 _AMT 전송(잔액로직 사각)을 _OBJ_AMT로 교정(2026-07-21). 둘 다 PAY_WRK_CALC.
+  { group: "특별소득공제", ntsCode: "8301", label: "건강보험료",   ytsCol: "SPCL_IF_HLTH_INSU_OBJ_AMT", resultCol: "SPCL_IF_HLTH_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
+  { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_OBJ_AMT",  resultCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
   // ── 주택자금(특별소득공제) — 한도 있어 원본 상환액(PAY_WRK_MAIN) LOAN_{코드} 주입 전송, NTS 한도로직 검증. ──
   //   대조 공제액 = SP_*_AMT(한도후). 코드↔YTS컬럼 순서 실측·상규님 확정(capture-io 2026-07-18, 8321~8329 = LRSF1/2/3/10/20/30/40/50/60).
   //   소계 OUT: 8310(원리금 소계)·8320(장기주택저당 소계). 전용 탭 없음(전체 결정세액 비교에 기여).
