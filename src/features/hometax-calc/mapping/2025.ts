@@ -44,7 +44,7 @@ export interface MappingRow {
    *  미지정 = 세액공제성 그룹이면 self(ntsCode), 소득공제·입력이면 없음(—). */
   outCode?:  string
   /** 실제 국세청 "입력" 코드가 표시코드(ntsCode)와 다를 때만 지정. L03 전송은 sendCode 로.
-   *  예: 주택청약종합저축은 화면·대조는 8405 이나 계산입력은 8407(숨은 입력코드, 실측확정). */
+   *  현재 사용 행 없음(주택청약종합저축은 2026-07-21 8407 단일화로 sendCode 제거). 숨은 입력코드 재발견 시 대비한 인프라. */
   sendCode?: string
   /** 상대 귀속연도(투자조합출자 등 연도별 코드). 현황탭이 입력연도(ntsYear)+offset 로 "○○○○년" 렌더. 0=당해,-1=직전,-2=2년전 */
   yearOffset?: number
@@ -105,9 +105,10 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",              ytsCol: "OTHER_8401", resultCol: "OTO_PPF", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_PEN_SAVE_SPEC PEN_SAVE_CLS='562-030' ΣPEN_SAVE_PMT_AMT(납입액 원본) → OTHER_8401 주입. OUT self ddcAmt=납입액×40%(한도72만) ↔ OTO_PPF. 라이브 캡처 실측(2026-07-18, 1,000,000→400,000). ★한도캡(납입>180만) 시 ddcLmtAmt 없이 NTS 자체캡 여부 미검증" },
   { group: "그밖의소득공제", ntsCode: "8402", label: "소기업소상공인", ytsCol: "OTHER_8402", resultCol: "OTO_SM_ETPR_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.SM_ETPR_AMT(납입액 원본) → OTHER_8402 주입. OUT self ddcAmt=min(납입액, 소득금액별한도 600/500/400/200만) ↔ OTO_SM_ETPR_AMT. 라이브 캡처 실측(2026-07-18, 1,000,000→1,000,000). ★한도캡 시 ddcLmtAmt 없이 NTS 자체캡 여부 미검증" },
   // 주택마련저축 = PAY_WRK_PEN_SAVE_SPEC 납입액(CLS별) → OTHER_ 주입. OUT self ddcAmt=납입액×40%(한도). 라이브 캡처 실측(2026-07-18).
-  //   ★8407은 국세청 UI가 주택청약종합저축을 8405와 함께 미러로 써넣지만 과세표준엔 8405만 계상(검산확정) → 우리는 8405만 전송.
+  //   ★주택청약종합저축은 카탈로그 입력코드 8407(2015이후)로 통일(2026-07-21). 구 표시코드 8405는 카탈로그에 없고
+  //     8405로 보내면 OUT=0. 8407로 보내면 NTS가 8405·8407 둘 다 동일 ddcAmt 회신·과표 1회 → 8407 단일로 전송·대조.
   { group: "그밖의소득공제", ntsCode: "8403", label: "청약저축",                ytsCol: "OTHER_8403", resultCol: "OTO_HOUSE_LOAN_SBSC_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=PEN_SAVE_SPEC CLS 562-050 Σ납입액→OTHER_8403. OUT ×40% ↔ OTO_HOUSE_LOAN_SBSC_AMT. 실측(2026-07-18, 1,000,000→400,000)" },
-  { group: "그밖의소득공제", ntsCode: "8405", label: "주택청약종합저축",          ytsCol: "OTHER_8405", resultCol: "OTO_HOUSE_LOAN_ALL_AMT", sendCode: "8407", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=PEN_SAVE_SPEC CLS 562-060 Σ납입액→OTHER_8405. ★국세청 실제 입력코드는 8407(화면·대조는 8405, 8405로 보내면 OUT=0). sendCode=8407 로 전송→NTS가 8405·8407 둘 다 결과회신(과표 1회). OUT ×40% ↔ OTO_HOUSE_LOAN_ALL_AMT. 프로브 판별(hometax-housingsavings-probe, 2026-07-18)" },
+  { group: "그밖의소득공제", ntsCode: "8407", label: "주택청약종합저축",          ytsCol: "OTHER_8407", resultCol: "OTO_HOUSE_LOAN_ALL_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=PEN_SAVE_SPEC CLS 562-060 Σ납입액→OTHER_8407. 국세청 입력코드=8407(카탈로그 2015이후 주택청약종합저축). 구 ntsCode 8405+sendCode 8407 → 8407 단일화(2026-07-21). 8405로 보내면 OUT=0, 8407로 보내면 NTS가 8405·8407 둘 다 동일 ddcAmt 회신(과표 1회) — 한도미달(X202600086)·한도초과(X202600493) 2건 8405=8407 실측(hometax-housingsavings-probe). OUT ×40% ↔ OTO_HOUSE_LOAN_ALL_AMT" },
   { group: "그밖의소득공제", ntsCode: "8404", label: "근로자주택마련저축",         ytsCol: "OTHER_8404", resultCol: "OTO_HOUSE_LOAN_WRK_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=PEN_SAVE_SPEC CLS 562-080 Σ납입액→OTHER_8404. OUT ×40% ↔ OTO_HOUSE_LOAN_WRK_AMT. 실측(2026-07-18, 500,000→200,000)" },
   // 투자조합출자 = 3연도(입력연도-2~입력연도) × 3종류(벤처등/조합1/조합2). PAY_WRK_PEN_SAVE_SPEC INVST_CLS×INVST_YY 로 분리(단일컬럼 아님).
   //   IN = SUM(PEN_SAVE_PMT_AMT) → OTHER_{코드}(route.injectInvestmentVals, code=investmentCode(CLS,연차)). OUT self=벤처100/70/30%·조합10%, 소계 8410.
@@ -260,7 +261,7 @@ export const PROC_LABEL_CODE_2025: Record<string, string> = {
   "2012년이후(15년이상):그밖의대출": "8328", "2012년이후(10년∼15년):고정or비거치": "8329",
   // 소득공제 — 그밖의소득공제
   "개인연금저축": "8401", "소기업·소상공인공제부금": "8402",
-  "청약저축": "8403", "주택청약종합저축": "8405", "근로자주택마련저축": "8404",
+  "청약저축": "8403", "주택청약종합저축": "8407", "근로자주택마련저축": "8404",
   "투자조합출자등": "8410",   // 소계형(개별 8415~8423 → 소계 8410)
   "신용카드등": "8430",       // 소계형(개별 8431~8463 → 소계 8430)
   "우리사주조합출연금": "8452", "고용유지중소기업근로자": "8453",

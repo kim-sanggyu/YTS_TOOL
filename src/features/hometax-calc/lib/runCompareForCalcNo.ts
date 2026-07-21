@@ -76,7 +76,7 @@ function injectPensionVals(
 const OTHER_PEN_CLS: Record<string, string> = {
   "562-030": "8401",   // 개인연금저축 (OUT ×40% 한도72만 ↔ OTO_PPF)
   "562-050": "8403",   // 청약저축 (↔ OTO_HOUSE_LOAN_SBSC_AMT)
-  "562-060": "8405",   // 주택청약종합저축 (↔ OTO_HOUSE_LOAN_ALL_AMT)
+  "562-060": "8407",   // 주택청약종합저축 (카탈로그 입력코드 8407, ↔ OTO_HOUSE_LOAN_ALL_AMT)
   "562-080": "8404",   // 근로자주택마련저축 (↔ OTO_HOUSE_LOAN_WRK_AMT)
   "562-100": "8451",   // 장기집합투자증권저축 (OUT ×40% 한도240만 ↔ OTO_LONG_STOCK_SAVING)
   "562-140": "8501",   // 청년형 장기집합투자증권저축 (OUT ×40% 한도240만 ↔ OTO_YM_LONG_STOCK_SAVING)
@@ -92,11 +92,11 @@ function injectOtherSavingsVals(
 }
 
 // ── 세대원(HOUSE_HLDR_YN='2') 주택마련저축 0 처리 ──
-// 세대원은 주택마련저축(청약8403/근로자8404/주택청약종합8405) 소득공제 대상이 아니다.
+// 세대원은 주택마련저축(청약8403/근로자8404/주택청약종합8407) 소득공제 대상이 아니다.
 // 국세청은 세대 구분값이 없어 납입액을 보내면 ×40% 공제를 자체계산하므로, 세대원이면 납입액 0을 주입해 YTS(미공제)와 일치시킨다.
 function applyHouseMemberSavingsRule(houseHldrYn: unknown, vals: Record<string, number>) {
   if (String(houseHldrYn ?? "") !== "2") return
-  for (const code of ["8403", "8404", "8405"]) vals[`OTHER_${code}`] = 0
+  for (const code of ["8403", "8404", "8407"]) vals[`OTHER_${code}`] = 0
 }
 
 // ── 투자조합출자(그밖의소득공제 8415~8423) → OTHER_{코드} 주입 ──

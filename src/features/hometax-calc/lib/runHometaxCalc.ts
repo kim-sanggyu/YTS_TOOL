@@ -202,7 +202,7 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
   for (const m of MAPPING_2025) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
-    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때(예 주택청약종합저축 표시8405/입력8407)
+    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용(현재 지정 행 없음 — 인프라 유지)
     setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals))
   }
 

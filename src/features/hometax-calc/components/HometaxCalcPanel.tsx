@@ -1928,7 +1928,7 @@ const OTHER_SRC: Record<string, string> = {
   OTHER_8402: "SM_ETPR_AMT",              // 소기업소상공인
   OTHER_8403: "PEN_SAVE_SPEC(562-050)",   // 청약저축
   OTHER_8404: "PEN_SAVE_SPEC(562-080)",   // 근로자주택마련저축
-  OTHER_8405: "PEN_SAVE_SPEC(562-060)",   // 주택청약종합저축
+  OTHER_8407: "PEN_SAVE_SPEC(562-060)",   // 주택청약종합저축
   OTHER_8452: "STOCK_URDM",               // 우리사주출연금 (PAY_WRK_MAIN)
   OTHER_8451: "PEN_SAVE_SPEC(562-100)",   // 장기집합투자증권저축
   OTHER_8501: "PEN_SAVE_SPEC(562-140)",   // 청년형 장기집합투자증권저축
@@ -1987,7 +1987,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
     out.push({
       key:   m.ntsCode + m.label,
       label,
-      // 실제 국세청 입력코드가 표시코드와 다르면 병기(예 주택청약종합저축 표시8405/입력8407)
+      // 실제 국세청 입력코드가 표시코드와 다르면 병기(sendCode 지정 행. 현재 없음 — 인프라만 유지)
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
       ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : m.valueKey,
       ntsOut: isMrrg ? "—" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
@@ -2037,15 +2037,20 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const totSend = MAPPING_2025.filter(m => m.send).length
 
   // 계산과정 순서 로스터 — PROC_LABEL_CODE_2025(계산과정 등장순) × MAPPING 매칭. ③표 정렬의 단일 원천 조회.
-  //   미등록(code 가 MAPPING 의 ntsCode/outCode 어디에도 없음) = 세법개정으로 새 라벨 생김 신호(자동 감지).
-  const knownCodes = new Set<string>()
-  for (const m of MAPPING_2025) { knownCodes.add(m.ntsCode); if (m.outCode) knownCodes.add(m.outCode) }
+  //   판정 3분류로 오탐 차단: 입력(MAPPING ntsCode) / 소계·결과·내부 OUT / 미등록(진짜 신규=세법개정 신호).
+  //   흐름코드(8700 등 국세청 자체계산)·의도적 미사용 내부코드(8741=정치 10만이하, 8740만 대조)는 미등록 아님.
+  const outCodes = new Set<string>()
+  for (const m of MAPPING_2025) if (m.outCode) outCodes.add(m.outCode)
+  const flowCodes = new Set(NTS_FLOW.map(f => f.code))   // 국세청이 산출세액서 자체계산하는 결과·흐름 코드
+  const internalUnused = new Set(["8741"])               // NTS 내부 중간값이라 의도적 미사용(8740만 self 대조)
   const rosterRows = Object.entries(PROC_LABEL_CODE_2025).map(([label, code], i) => {
     const hit = MAPPING_2025.find(m => m.ntsCode === code)
-    const sub = !hit && knownCodes.has(code)   // 소계/OUT 코드(개별행의 outCode) — 계산과정은 소계 한 줄
-    return { i: i + 1, label, code, group: hit?.group, sub, known: !!hit || sub }
+    const kind: "input" | "sub" | "flow" | "internal" | "unknown" =
+        hit ? "input" : outCodes.has(code) ? "sub" : flowCodes.has(code) ? "flow"
+      : internalUnused.has(code) ? "internal" : "unknown"
+    return { i: i + 1, label, code, group: hit?.group, kind }
   })
-  const rosterUnknown = rosterRows.filter(r => !r.known).length
+  const rosterUnknown = rosterRows.filter(r => r.kind === "unknown").length
 
   return (
     <div className="flex flex-col h-full">
@@ -2076,12 +2081,16 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
               </thead>
               <tbody>
                 {rosterRows.map(r => (
-                  <tr key={r.i} className={`border-t ${!r.known ? "bg-red-50/60" : ""}`}>
+                  <tr key={r.i} className={`border-t ${r.kind === "unknown" ? "bg-red-50/60" : ""}`}>
                     <td className="px-2 py-0.5 border-r text-right tabular-nums text-muted-foreground/60">{r.i}</td>
                     <td className="px-2 py-0.5 border-r">{r.label}</td>
                     <td className="px-2 py-0.5 border-r font-mono text-[11px] font-semibold">{r.code}</td>
-                    <td className={`px-2 py-0.5 ${!r.known ? "text-red-600 font-semibold" : r.sub ? "text-muted-foreground" : ""}`}>
-                      {r.group ?? (r.sub ? "소계 OUT (개별행 outCode)" : "미등록 — 세법개정 확인")}
+                    <td className={`px-2 py-0.5 ${r.kind === "unknown" ? "text-red-600 font-semibold" : r.kind === "input" ? "" : "text-muted-foreground"}`}>
+                      {r.kind === "input" ? r.group
+                        : r.kind === "sub" ? "소계 OUT (개별행 outCode)"
+                        : r.kind === "flow" ? "결과·흐름 (국세청 자체계산)"
+                        : r.kind === "internal" ? "NTS 내부코드 (의도적 미사용)"
+                        : "미등록 — 신규항목 확인"}
                     </td>
                   </tr>
                 ))}

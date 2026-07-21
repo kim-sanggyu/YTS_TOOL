@@ -73,10 +73,10 @@ export const getHousingItems = (year: string) => getGroupItems(year, HOUSING_ROW
   return col ? `NVL(m.${col}, 0)` : null
 })
 
-// 주택마련저축(그밖의소득공제) = 청약저축(8403)·주택청약종합저축(8405)·근로자주택마련저축(8404).
+// 주택마련저축(그밖의소득공제) = 청약저축(8403)·주택청약종합저축(8407)·근로자주택마련저축(8404).
 // 전송 사용액(납입액) = PAY_WRK_PEN_SAVE_SPEC CLS별 합(562-050/060/080).
-const HOUSING_SAVINGS_ROWS = MAPPING_2025.filter(m => ["8403", "8404", "8405"].includes(m.ntsCode) && m.resultCol)
-const HS_PEN_CLS: Record<string, string> = { "8403": "562-050", "8404": "562-080", "8405": "562-060" }
+const HOUSING_SAVINGS_ROWS = MAPPING_2025.filter(m => ["8403", "8404", "8407"].includes(m.ntsCode) && m.resultCol)
+const HS_PEN_CLS: Record<string, string> = { "8403": "562-050", "8404": "562-080", "8407": "562-060" }
 export const getHousingSavingsItems = (year: string) => getGroupItems(year, HOUSING_SAVINGS_ROWS, m => {
   const cls = HS_PEN_CLS[m.ntsCode]
   return cls
