@@ -65,6 +65,15 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "ETC_CREDIT",    label: ETC_GROUPS.ETC_CREDIT.label },            // 혼인자녀출산 아래: 기타세액공제(그룹)
   ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
 ]
+// 기타 탭 그룹(ETC_GROUPS)의 구성 항목 — 검색키(listQs)에 실제 연결된 코드만.
+//   그밖의소득공제 group 은 국세청 대분류라 광범(개인연금·주택마련·투자조합 포함) → OTHER_INCOME 은 OTHER_INCOME_CODES 로 좁힌다.
+//   기타세액공제는 group="기타세액공제" 가 정확히 3개(8751/8752/8753)라 group 파생.
+function etcGroupMembers(etcCode: string): { code: string; label: string }[] {
+  const codes = etcCode === "OTHER_INCOME" ? OTHER_INCOME_CODES
+              : etcCode === "ETC_CREDIT"   ? MAPPING_2025.filter(m => m.group === "기타세액공제").map(m => m.ntsCode)
+              : []
+  return codes.map(c => { const m = MAPPING_2025.find(x => x.ntsCode === c); return { code: c, label: m?.label ?? c } })
+}
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
 interface ListItem {
@@ -752,11 +761,17 @@ export function HometaxCalcPanel() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc"); setEtcMenuOpen(false) }}>
-                {ETC_TAB_ITEMS.map(it => (
-                  <DropdownMenuRadioItem key={it.code} value={it.code} disabled={it.disabled} className="text-xs">
-                    {it.label}
-                  </DropdownMenuRadioItem>
-                ))}
+                {ETC_TAB_ITEMS.map(it => {
+                  const members = etcGroupMembers(it.code)
+                  return (
+                    <DropdownMenuRadioItem key={it.code} value={it.code} disabled={it.disabled} className="text-xs flex flex-col items-start gap-0">
+                      <span>{it.label}</span>
+                      {members.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground/70 max-w-[16rem] truncate">{members.map(m => m.label).join(" · ")}</span>
+                      )}
+                    </DropdownMenuRadioItem>
+                  )
+                })}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -852,6 +867,12 @@ export function HometaxCalcPanel() {
         </div>
       </div>
 
+      {/* 기타 그룹 선택 시 구성 항목 캡션 (MAPPING group 파생) */}
+      {tab === "etc" && isGroup && etcGroupMembers(etcCode).length > 0 && (
+        <div className="shrink-0 px-4 py-2 text-xs text-muted-foreground border-b bg-muted/30">
+          <span className="font-medium text-foreground">{etcLabel}</span> 포함: {etcGroupMembers(etcCode).map(m => `${m.label}(${m.code})`).join(" · ")}
+        </div>
+      )}
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
         {!ntsAvailable && tab !== "status" ? (
@@ -1108,7 +1129,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const last = i === row.lines.length - 1
                 return (
                   <tr key={`${line.giftCls}-${line.giftYy}`} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">{line.label}</td>
                     <td className="px-3 py-1 text-center tabular-nums text-muted-foreground">{line.giftYy}</td>
                     <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.ableSub)}</td>
@@ -1212,7 +1233,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const last = i === row.lines.length - 1
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
@@ -1312,7 +1333,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const last = i === row.lines.length - 1
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
@@ -1414,7 +1435,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
@@ -1523,7 +1544,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
@@ -1629,11 +1650,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
-                    <td colSpan={8} />
+                    <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
-                      <span className="ml-1.5 text-[10px] text-muted-foreground/40">{line.kind}</span>
                     </td>
                     {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.ytsInput != null ? won(line.ytsInput) : "—"}</td>}
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
