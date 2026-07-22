@@ -13,9 +13,8 @@ import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
-const CUR_YEAR     = new Date().getFullYear()                          // 2026
-const YEAR_OPTIONS = [String(CUR_YEAR), String(CUR_YEAR - 1)]         // ["2026", "2025"]
-const NTS_YEARS    = ["2025"]                                          // NTS 지원 귀속연도 목록 (지원 추가 시 앞에 추가)
+const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
+const NTS_AVAILABLE  = ["2025"]           // 실제 제공되는 연도. 그 외(2026 등)는 국세청 미개시 → "아직 없음" 안내(개시되면 여기에 추가하면 풀린다).
 
 const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8900", label: "총급여" },
@@ -321,8 +320,9 @@ function errorRowResult(duration: number, ranAt?: string): RowResult {
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 export function HometaxCalcPanel() {
-  const [year,           setYear]           = useState(String(CUR_YEAR))       // 우리자료 귀속연도
-  const [ntsYear,        setNtsYear]        = useState(NTS_YEARS[0])            // 국세청 모의계산 귀속연도
+  const [ntsYear,        setNtsYear]        = useState(NTS_SELECTABLE[0])       // 국세청 모의계산 귀속연도 (중심축)
+  const [year,           setYear]           = useState(NTS_SELECTABLE[0])       // YTS 데이터 연도 = 국세청 연도에 자동 연동(항상 동일, 수정 불가)
+  const ntsAvailable = NTS_AVAILABLE.includes(ntsYear)                          // 국세청 모의계산 제공 연도 여부
   const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc" | "status">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
@@ -427,6 +427,7 @@ export function HometaxCalcPanel() {
     const load = async () => {
       setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({}); setLoading(true); setDiffOnly(false)
       if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
+      if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
         : `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=${tab}`
@@ -669,31 +670,25 @@ export function HometaxCalcPanel() {
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
       <div className="shrink-0 flex items-center gap-2 p-4 border-b">
-        {/* 우리자료 연도 */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap">YTS 데이터</span>
-        <Select value={year} onValueChange={v => { if (v) setYear(v) }}>
+        {/* 국세청 모의계산 연도 (중심축) — 선택하면 YTS 데이터 연도가 자동 연동 */}
+        <span className="text-xs text-muted-foreground whitespace-nowrap">국세청 모의계산</span>
+        <Select value={ntsYear} onValueChange={v => { if (v) { setNtsYear(v); setYear(v) } }}>
           <SelectTrigger className="w-24 h-7 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {YEAR_OPTIONS.map(y => (
+            {NTS_SELECTABLE.map(y => (
               <SelectItem key={y} value={y}>{y}년</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {/* 국세청 모의계산 연도 */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap">국세청 모의계산</span>
-        <Select value={ntsYear} onValueChange={v => { if (v) setNtsYear(v) }}>
-          <SelectTrigger className="w-24 h-7 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {NTS_YEARS.map(y => (
-              <SelectItem key={y} value={y}>{y}년</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* YTS 데이터 연도 = 국세청 연도에 자동 연동(수정 불가) */}
+        <span className="text-xs text-muted-foreground whitespace-nowrap">YTS 데이터</span>
+        <div
+          className="w-24 h-7 flex items-center justify-center rounded-md border bg-muted text-sm text-muted-foreground cursor-not-allowed"
+          title="국세청 모의계산 연도에 자동 연동됩니다"
+        >{year}년</div>
 
         <div className="w-px h-5 bg-border mx-1" />
         <div className="flex rounded-md border overflow-hidden text-xs font-medium">
@@ -833,6 +828,12 @@ export function HometaxCalcPanel() {
 
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
+        {!ntsAvailable && tab !== "status" ? (
+          <div className="flex flex-col items-center justify-center h-full gap-1 p-8 text-center text-sm text-muted-foreground">
+            <span className="font-medium">{ntsYear}년 국세청 모의계산은 아직 제공되지 않습니다.</span>
+            <span>국세청 서비스가 개시되면 지원 예정입니다.</span>
+          </div>
+        ) : (<>
         {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
         {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
         {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
@@ -842,6 +843,7 @@ export function HometaxCalcPanel() {
           ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />
           : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
+        </>)}
       </div>
 
       {/* 상세조회 드로어 — 좌: 계산과정 / 우: 실행과정 (팝업과 동일하게 나란히) */}
