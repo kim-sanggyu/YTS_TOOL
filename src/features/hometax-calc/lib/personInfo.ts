@@ -6,7 +6,7 @@ export function calcMethodLabel(method: string | null): string {
 
 // PAY_WRK_MAIN.KEEP_PS: '1'=계속근무, '2'=중도퇴사
 export function workStatusLabel(keepPs: string | null): string {
-  if (keepPs === "1") return "계속"
-  if (keepPs === "2") return "퇴사"
+  if (keepPs === "1") return "계속근로"
+  if (keepPs === "2") return "중도퇴사"
   return "-"
 }

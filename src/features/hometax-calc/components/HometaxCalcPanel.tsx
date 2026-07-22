@@ -273,6 +273,36 @@ const isErrorRow = (res: RowResult | undefined) => !!res && res.nts.resultCode !
 const rowBg = (res: RowResult | undefined, selected: boolean) =>
   selected ? "bg-blue-100 hover:bg-blue-200" : isErrorRow(res) ? "bg-amber-200/70 hover:bg-amber-300" : "hover:bg-gray-200"
 
+// ── 목록 열 정렬 (공통) — 헤더 클릭으로 오름/내림 토글. 숫자·문자 자동 판별, null 은 뒤로. ──
+type SortState = { key: string; dir: "asc" | "desc" }
+function useSortedList<T>(items: T[]): { sorted: T[]; sort: SortState | null; onSort: (k: string) => void } {
+  const [sort, setSort] = useState<SortState | null>(null)
+  const sorted = sort
+    ? [...items].sort((a, b) => {
+        const av = (a as Record<string, unknown>)[sort.key] as string | number | null | undefined
+        const bv = (b as Record<string, unknown>)[sort.key] as string | number | null | undefined
+        const mul = sort.dir === "asc" ? 1 : -1
+        if (av == null && bv == null) return 0
+        if (av == null) return 1
+        if (bv == null) return -1
+        return (typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv))) * mul
+      })
+    : items
+  const onSort = (k: string) => setSort(s => (s?.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "asc" }))
+  return { sorted, sort, onSort }
+}
+// 정렬 가능한 헤더 셀 — 활성 열에 ▲/▼ 표시.
+function SortableTh({ label, k, sort, onSort, className = "" }: {
+  label: string; k: string; sort: SortState | null; onSort: (k: string) => void; className?: string
+}) {
+  const active = sort?.key === k
+  return (
+    <th className={`px-3 py-2 font-medium whitespace-nowrap cursor-pointer select-none hover:text-foreground ${className}`} onClick={() => onSort(k)}>
+      <span className="inline-flex items-center gap-0.5">{label}<span className="text-[9px] w-2 text-primary">{active ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span></span>
+    </th>
+  )
+}
+
 // 비교일시 표기: YY.MM.DD HH:MM
 function formatRanAt(d: Date): string {
   const yy = String(d.getFullYear()).slice(2)
@@ -717,7 +747,6 @@ export function HometaxCalcPanel() {
           <DropdownMenu open={etcMenuOpen} onOpenChange={setEtcMenuOpen}>
             <DropdownMenuTrigger
               className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-              onClick={() => setTab("etc")}
             >
               기타{etcLabel ? `: ${etcLabel}` : ""}
               <ChevronDown className="h-3 w-3 opacity-60" />
@@ -915,6 +944,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   // 한 항목을 "YTS값 (차이)" 1컬럼으로. 차이=NTS−YTS: null(미실행)="(—)", 0=정상(회색), ≠0=이상(빨강)
   const calcCell = (yts: number | undefined, diff: number | null) => (
     <td className="px-3 py-2 text-right tabular-nums text-xs whitespace-nowrap">
@@ -928,21 +958,21 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">특별소득공제(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">그밖의소득공제(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">차감소득금액(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">산출세액(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">세액감면(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">세액공제(차이)</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">결정세액(차이)</th>
+          <SortableTh label="특별소득공제(차이)" k="spclSubSum" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="그밖의소득공제(차이)" k="otoSum" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="차감소득금액(차이)" k="biaAmt" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="산출세액(차이)" k="prodTaxAmt" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="세액감면(차이)" k="taxCut" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="세액공제(차이)" k="rtSum" sort={sort} onSort={onSort} className="text-right" />
+          <SortableTh label="결정세액(차이)" k="resIncmTax" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">비교일시</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">소요</th>
         </tr>
@@ -951,7 +981,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
         {items.length === 0 && !loading && (
           <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const prodNts   = res ? res.nts.prodTax : null
@@ -1003,17 +1033,18 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">연도</th>
@@ -1030,7 +1061,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
         {items.length === 0 && !loading && (
           <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">기부금 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const ntsTotal  = res ? row.lines.reduce((s, l) => s + (l.code ? (res.ntsMap[l.code] ?? 0) : 0), 0) : null
@@ -1107,17 +1138,18 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
@@ -1133,7 +1165,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
         {items.length === 0 && !loading && (
           <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">신용카드 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const ntsDdc    = res ? (res.ntsMap[CARD_SUBTOTAL_CODE] ?? 0) : null
@@ -1204,17 +1236,18 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
@@ -1230,7 +1263,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
         {items.length === 0 && !loading && (
           <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const ntsDdc    = res ? (res.ntsMap[MEDI_SUBTOTAL_CODE] ?? 0) : null
@@ -1301,17 +1334,18 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
@@ -1327,7 +1361,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
         {items.length === 0 && !loading && (
           <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">기타 세액공제 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
@@ -1407,17 +1441,18 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
@@ -1433,7 +1468,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
         {items.length === 0 && !loading && (
           <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">연금계좌 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
@@ -1512,17 +1547,18 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
 }) {
   const showInput = items.some(it => it.lines.some(l => l.ytsInput != null))   // 전송 사용액(납입액) 있는 그룹만 컬럼 표시
+  const { sorted, sort, onSort } = useSortedList(items)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">CALC_NO</th>
-          <th className="px-3 py-2 text-left font-medium">이름</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">사번</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">표준/특별</th>
-          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">계속/퇴사</th>
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
+          <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
-          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">총급여</th>
+          <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           {showInput && <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>}
@@ -1538,7 +1574,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
         {items.length === 0 && !loading && (
           <tr><td colSpan={showInput ? 16 : 15} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
         )}
-        {items.map(row => {
+        {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
           const mismatch  = res ? row.lines.filter(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc).length : null
