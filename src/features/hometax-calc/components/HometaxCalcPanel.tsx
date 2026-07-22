@@ -110,7 +110,7 @@ function ExhaustBadge({ item }: { item: Exhaustable }) {
   if (!item.exhausted) return null
   return (
     <span
-      className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 align-middle whitespace-nowrap"
+      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 align-middle whitespace-nowrap"
       title="산출세액이 앞 항목에서 소진되어 이 항목 공제가 0으로 처리됨 — YTS·NTS 차이의 원인일 수 있음"
     >
       {item.exhaustLabel ?? "세액소진"}
@@ -132,7 +132,7 @@ function PersonMainCells({ item, onShowProc }: {
       <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{item.empNo}</td>
       <td className="px-3 py-2 text-center text-muted-foreground">{item.calcType}</td>
       <td className="px-3 py-2 text-center text-muted-foreground">{item.workStatus}</td>
-      <td className="px-3 py-2 text-left whitespace-nowrap">
+      <td className="pl-1 pr-0 py-2 text-right">
         <Button
           size="sm" variant="ghost" className="h-6 w-6 p-0"
           disabled={!item.calcProcTotal}
@@ -141,8 +141,8 @@ function PersonMainCells({ item, onShowProc }: {
         >
           <FileText className="h-4 w-4" />
         </Button>
-        <ExhaustBadge item={item} />
       </td>
+      <td className="pl-0.5 pr-1 py-2 text-left"><ExhaustBadge item={item} /></td>
     </>
   )
 }
@@ -963,9 +963,10 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <SortableTh label="특별소득공제(차이)" k="spclSubSum" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="그밖의소득공제(차이)" k="otoSum" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="차감소득금액(차이)" k="biaAmt" sort={sort} onSort={onSort} className="text-right" />
@@ -979,7 +980,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
+          <tr><td colSpan={18} className="px-3 py-8 text-center text-sm text-muted-foreground">데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1001,10 +1002,10 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
               <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
               <td className="px-3 py-2 text-center whitespace-nowrap">
                 <div className="flex items-center justify-center gap-1">
-                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                     {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                     <FileSearch className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -1043,9 +1044,10 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-center font-medium whitespace-nowrap">연도</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
@@ -1059,7 +1061,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">기부금 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={18} className="px-3 py-8 text-center text-sm text-muted-foreground">기부금 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1077,10 +1079,10 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1148,9 +1150,10 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
@@ -1163,7 +1166,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">신용카드 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">신용카드 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1181,10 +1184,10 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1246,9 +1249,10 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
@@ -1261,7 +1265,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1279,10 +1283,10 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1344,9 +1348,10 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
@@ -1359,7 +1364,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">기타 세액공제 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">기타 세액공제 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1377,10 +1382,10 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1451,9 +1456,10 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
@@ -1466,7 +1472,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={16} className="px-3 py-8 text-center text-sm text-muted-foreground">연금계좌 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">연금계좌 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1484,10 +1490,10 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -1557,9 +1563,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">계산과정</th>
+          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
-          <th className="px-3 py-2 text-center font-medium">실행</th>
+          <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
           {showInput && <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>}
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
@@ -1572,7 +1579,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={showInput ? 16 : 15} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={showInput ? 17 : 16} className="px-3 py-8 text-center text-sm text-muted-foreground">{title} 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1588,10 +1595,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} onClick={() => onRun(row.calcNo)}>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
                       {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} onClick={() => onDetail(row.calcNo)}>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
                       <FileSearch className="h-3.5 w-3.5" />
                     </Button>
                   </div>
