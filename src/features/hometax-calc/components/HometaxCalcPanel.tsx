@@ -129,9 +129,8 @@ function PersonMainCells({ item, onShowProc }: {
 }) {
   return (
     <>
-      <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{item.empNo}</td>
-      <td className="px-3 py-2 text-center text-muted-foreground">{item.calcType}</td>
-      <td className="px-3 py-2 text-center text-muted-foreground">{item.workStatus}</td>
+      <td className={`px-3 py-2 text-center ${item.calcType === "표준" ? "text-red-400" : "text-muted-foreground"}`}>{item.calcType}</td>
+      <td className={`px-3 py-2 text-center ${item.workStatus === "중도퇴사" ? "text-red-400" : "text-muted-foreground"}`}>{item.workStatus}</td>
       <td className="pl-1 pr-0 py-2 text-right">
         <Button
           size="sm" variant="ghost" className="h-6 w-6 p-0"
@@ -276,7 +275,7 @@ const rowBg = (res: RowResult | undefined, selected: boolean) =>
 // ── 목록 열 정렬 (공통) — 헤더 클릭으로 오름/내림 토글. 숫자·문자 자동 판별, null 은 뒤로. ──
 type SortState = { key: string; dir: "asc" | "desc" }
 function useSortedList<T>(items: T[]): { sorted: T[]; sort: SortState | null; onSort: (k: string) => void } {
-  const [sort, setSort] = useState<SortState | null>(null)
+  const [sort, setSort] = useState<SortState | null>({ key: "nm", dir: "asc" })   // 기본 = 이름 오름차순
   const sorted = sort
     ? [...items].sort((a, b) => {
         const av = (a as Record<string, unknown>)[sort.key] as string | number | null | undefined
@@ -958,9 +957,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -996,8 +995,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           }
           return (
             <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-              <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
               <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+              <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+              <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
               <PersonMainCells item={row} onShowProc={onShowProc} />
               <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
               <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1039,9 +1039,9 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1073,8 +1073,9 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1145,9 +1146,9 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1178,8 +1179,9 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+                <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
-                <td className="px-3 py-2">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1244,9 +1246,9 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1277,8 +1279,9 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1343,9 +1346,9 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1376,8 +1379,9 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
             <Fragment key={row.calcNo}>
               {/* 본행 = 기타 세액공제 합 */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1451,9 +1455,9 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1484,8 +1488,9 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
             <Fragment key={row.calcNo}>
               {/* 본행 = 연금계좌 세액공제 합 */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -1558,9 +1563,9 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
         <tr className="border-b text-xs text-muted-foreground">
-          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center" />
+          <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
           <th className="px-1 py-2 text-center font-medium w-8">계산</th>
@@ -1589,8 +1594,9 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
             <Fragment key={row.calcNo}>
               {/* 본행 = 인적공제 요약(항목수·불일치 건수). 소득/세액 혼재라 공제액 합산은 표시 안 함. */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
-                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
+                <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
+                <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
                 <td className="px-3 py-2 text-right tabular-nums">{won(row.totPayAmt)}</td>
                 <td className="px-3 py-2 text-center whitespace-nowrap">
