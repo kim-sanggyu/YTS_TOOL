@@ -57,8 +57,8 @@ export const MAPPING_2025: MappingRow[] = [
 
   // ── 인적공제 (인원, incDdcNfpCnt) ──────────────────────────────────────────
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "확정", send: true, note: "self ddcAmt=1,500,000(본인 150만). 인원(incDdcNfpCnt=1) 전송. 라이브 payload 캡처 실측(capture-io 2026-07-18, n=38)" },
-  { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=1,500,000(150만). 인원(flag→1) 전송. 라이브 payload 캡처 실측(2026-07-18, n=38)" },
-  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "국세청은 8004~8009 유형별로 받음 → 미전송(2026-07-16 실측)" },
+  { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   resultCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=1,500,000(150만). 인원(flag→1) 전송, 결과대조=BASC_SUB_MATE_AMT. 라이브 payload 캡처 실측(2026-07-18, n=38)" },
+  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", resultCol: "BASC_SUB_FAMILY_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "IN은 8004~8009 유형별로 전송(8003 미전송)하나, ★국세청 OUT은 8003(통합)에 회신 → 부양가족은 8003 소계형 대조. YTS BASC_SUB_FAMILY_AMT(인원×150만) ↔ NTS 8003 OUT. 라이브 실측(2026-07-22 X202600219: 5명 7,500,000 일치)" },
   // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼) = 부양가족 인적공제.
   //   ※자녀공제(8763)는 유형별만으론 산출 안 됨(별도 총인원 필요). 출산입양(8761)은 순번별 8764~66이 산출. (2026-07-17 실측)
   { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
@@ -69,8 +69,8 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "인적공제", ntsCode: "8009", label: "부양가족-위탁아동",              ytsCol: "FAM_8009", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-080" },
   { group: "인적공제", ntsCode: "8101", label: "추가공제-경로우대", ytsCol: "ADD_SUB_OAT_CNT",     resultCol: "ADD_SUB_OAT_AMT",      valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: true, note: "self ddcAmt=인원×100만. 인원(ADD_SUB_OAT_CNT) 전송, 결과대조=ADD_SUB_OAT_AMT. 라이브 캡처 실측(2026-07-18, n=38, 1명→1,000,000)" },
   { group: "인적공제", ntsCode: "8102", label: "추가공제-장애인",   ytsCol: "ADD_SUB_HDC_PERS_CNT",resultCol: "ADD_SUB_HDC_PERS_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: true, note: "self ddcAmt=인원×200만. 인원(ADD_SUB_HDC_PERS_CNT) 전송, 결과대조=ADD_SUB_HDC_PERS_AMT. 라이브 캡처 실측(2026-07-18, n=38, 2명→4,000,000)" },
-  { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=500,000(50만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=56, 배우자없음+직계비속0+부녀자로 격리 — 한부모(8104)와 배타관계)" },
-  { group: "인적공제", ntsCode: "8104", label: "추가공제-한부모",   ytsCol: "ADD_SUB_SNGL_PRNT_AMT",valueKey: "incDdcNfpCnt", rule: "flag",  status: "확정", send: true, note: "self ddcAmt=1,000,000(100만). 인원(flag→1) 전송. 라이브 캡처 실측(2026-07-18, n=46/47, 배우자없음+직계비속 → 한부모 자동 적용)" },
+  { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    resultCol: "ADD_SUB_LADY_AMT",      valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=500,000(50만). 인원(flag→1) 전송, 결과대조=ADD_SUB_LADY_AMT. 라이브 캡처 실측(2026-07-18, n=56, 배우자없음+직계비속0+부녀자로 격리 — 한부모(8104)와 배타관계)" },
+  { group: "인적공제", ntsCode: "8104", label: "추가공제-한부모",   ytsCol: "ADD_SUB_SNGL_PRNT_AMT",resultCol: "ADD_SUB_SNGL_PRNT_AMT", valueKey: "incDdcNfpCnt", rule: "flag",  status: "확정", send: true, note: "self ddcAmt=1,000,000(100만). 인원(flag→1) 전송, 결과대조=ADD_SUB_SNGL_PRNT_AMT. 라이브 캡처 실측(2026-07-18, n=46/47, 배우자없음+직계비속 → 한부모 자동 적용)" },
 
   // ── 연금보험료공제 (소득공제, useAmt) — 소계 OUT=8919 ──
   //   ★보낼 값=대상금액(_OBJ_AMT, 캡 전) / 대조=공제금액(_AMT, 잔액캡 후). NTS가 근로소득금액 잔액 소진을 스스로
