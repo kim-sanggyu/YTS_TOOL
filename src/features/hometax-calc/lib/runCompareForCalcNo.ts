@@ -183,6 +183,35 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   }
 }
 
+// ── 세액감면 감면대상급여 → CUT_{코드} 주입 ──
+// 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"(감면세액=산출세액×(대상급여/총급여)×율). 율은 국세청 코드가 결정.
+// 원천 = FN_PAY_GET_WRK_NTAX(CALC_NO,'MAIN'/'SUB',NULL,'Txx') 합(비과세·감면소득 명세 함수) + 소득세법은 MAIN.TAX_GOVM_AGREE.
+//   ▸조특법30조(중소기업취업): T12=70%(8603)/T13=90%(8608) — 2026-07-22 실측확정(9명 원단위 일치)
+//   ▸소득세법: TAX_GOVM_AGREE(정부간협약)→8601 / 조세조약: T20→8606
+//   ▸조특법30조제외: 외국인기술자 T01=50%(8602)/T02=70%(8612), 성과공유 T30(8609), 우수인력복귀 T50(8611),
+//     성과보상기금 중소 T42=90%(8617)/T40=50%(8610)·중견 T43=50%(8616)/T41=30%(8614) — 코드-화면 1:1 확정, X2026 대상자 0이라 원단위 미검증
+const TXX_TO_CODE: Record<string, string> = {
+  T12: "8603", T13: "8608", T01: "8602", T02: "8612", T30: "8609", T50: "8611", T20: "8606",
+  T42: "8617", T40: "8610", T43: "8616", T41: "8614",   // 성과보상기금(율 2026-07-22 상규님 확정)
+}
+async function injectTaxCutVals(calcNo: string, mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
+  // 소득세법(정부간협약) = MAIN.TAX_GOVM_AGREE 직접
+  const gov = Number(mainRow?.TAX_GOVM_AGREE ?? 0)
+  if (gov > 0) vals["CUT_8601"] = gov
+  // FN_PAY_GET_WRK_NTAX 감면대상급여(MAIN+SUB 합)
+  const txx = Object.keys(TXX_TO_CODE)
+  const sel = txx.map((t, i) =>
+    `FN_PAY_GET_WRK_NTAX(:${i * 2 + 1},'MAIN',NULL,'${t}') + FN_PAY_GET_WRK_NTAX(:${i * 2 + 2},'SUB',NULL,'${t}') AS ${t}`
+  ).join(", ")
+  const [r] = await ytsDb.query<Record<string, number>>(
+    `SELECT ${sel} FROM DUAL`, Array.from({ length: txx.length * 2 }, () => calcNo))
+  if (!r) return
+  for (const t of txx) {
+    const n = Number(r[t] ?? 0)
+    if (n > 0) vals[`CUT_${TXX_TO_CODE[t]}`] = n
+  }
+}
+
 export interface CompareRunResult {
   calcNo: string
   yts: {
@@ -222,7 +251,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -260,7 +289,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
             HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
             LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
-            SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT, HOUSE_HLDR_YN
+            SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT, HOUSE_HLDR_YN, TAX_GOVM_AGREE
      FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
     [calcNo]
   )
@@ -271,6 +300,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   applyHouseMemberSavingsRule(mainRow?.HOUSE_HLDR_YN, vals)
 
   await injectFamilyVals(calcNo, vals)
+  await injectTaxCutVals(calcNo, mainRow, vals)
 
   return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
 }

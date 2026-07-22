@@ -141,14 +141,24 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8453", label: "고용유지중소기업근로자소득공제",  ytsCol: "OTHER_8453", resultCol: "OTO_EMPL_MTN_WAGE_CUT",  valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.EMPL_MTN_WAGE_CUT(임금삭감액)→OTHER_8453. OUT self ×50%(한도1000만) ↔ OTO_EMPL_MTN_WAGE_CUT. 라이브 캡처 실측(2026-07-19, 4,000,000→2,000,000)" },
 
   // ── 세액감면 (useAmt) ──────────────────────────────────────────────────────
-  { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법",       ytsCol: "RT_IT_LAW",         valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "세액감면", ntsCode: "8602", label: "세액감면-조특법(30조제외)", ytsCol: "RT_R_LAW",         valueKey: "useAmt", rule: "value", status: "추정", send: false },
-  { group: "세액감면", ntsCode: "8604", label: "조특법30조-100%",         ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율(100/90/70/50)별 4코드 분할 — 단일컬럼, 재확인" },
-  { group: "세액감면", ntsCode: "8605", label: "조특법30조-50%",          ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율별 4코드 분할" },
-  { group: "세액감면", ntsCode: "8608", label: "조특법30조-90%",          ytsCol: "RT_R_LAW_CLAUS30",  valueKey: "useAmt", rule: "value", status: "추정", send: false, note: "감면율별 4코드 분할" },
-  // ★ 8916(조특법30조-70% 추정)은 NTS 중간계산코드(차감소득금액류)로 실측 판명(2026-07-15) → 제거.
-  //    조특법30조 4분할(8604/8605/8608) 전체 status:추정 — send:true 전 프로브로 실입력코드 재확정 필수.
-  { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약",       ytsCol: "RT_TAX_TREATY",     valueKey: "useAmt", rule: "value", status: "추정", send: false },
+  { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법(정부간협약)", ytsCol: "CUT_8601", resultCol: "RT_IT_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=감면대상급여 MAIN.TAX_GOVM_AGREE→CUT_8601. OUT self ↔ RT_IT_LAW. X2026 대상자 0이라 원단위 미검증. 2026-07-22 원천확정(상규님 지정)" },
+  // ── 조특법30조제외(외국인기술자·성과공유·성과보상기금·우수인력) = 국세청 개별코드로 세분. 감면세액 합계는 RT_R_LAW 하나(개별 self 대조는 단일항목일 때만 정확). ──
+  //    코드-화면 1:1은 라이브캡처 #2 useAmt 실측 확정. X2026 대상자 0이라 원단위 미검증. IN=FN_PAY_GET_WRK_NTAX Txx 합.
+  { group: "세액감면", ntsCode: "8602", label: "조특법30조제외-외국인기술자 50%", ytsCol: "CUT_8602", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN Txx T01 합→CUT_8602. OUT self ↔ RT_R_LAW(조특법30조제외 감면세액 합). 대상 0 미검증. 2026-07-22 원천확정" },
+  { group: "세액감면", ntsCode: "8612", label: "조특법30조제외-외국인기술자 70%", ytsCol: "CUT_8612", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T02 합→CUT_8612. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
+  { group: "세액감면", ntsCode: "8609", label: "조특법30조제외-성과공유 경영성과급", ytsCol: "CUT_8609", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T30 합→CUT_8609. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
+  { group: "세액감면", ntsCode: "8611", label: "조특법30조제외-내국인 우수인력 국내복귀", ytsCol: "CUT_8611", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T50 합→CUT_8611. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
+  { group: "세액감면", ntsCode: "8617", label: "조특법30조제외-중소기업 성과보상기금 90%", ytsCol: "CUT_8617", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T42 합→CUT_8617. OUT self ↔ RT_R_LAW. 대상 0 미검증. 2026-07-22 율확정(상규님: T42=90%)" },
+  { group: "세액감면", ntsCode: "8610", label: "조특법30조제외-중소기업 성과보상기금 50%", ytsCol: "CUT_8610", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T40 합→CUT_8610. 대상 0 미검증. T40=50%" },
+  { group: "세액감면", ntsCode: "8616", label: "조특법30조제외-중견기업 성과보상기금 50%", ytsCol: "CUT_8616", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T43 합→CUT_8616. 대상 0 미검증. T43=50%" },
+  { group: "세액감면", ntsCode: "8614", label: "조특법30조제외-중견기업 성과보상기금 30%", ytsCol: "CUT_8614", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN T41 합→CUT_8614. 대상 0 미검증. T41=30%" },
+  // ★ 조특법30조(중소기업 취업자 소득세 감면) = 율 70%(8603)·90%(8608) 두 가지뿐. 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"
+  //    (감면세액 = 산출세액 × (감면대상급여/총급여) × 율). IN=감면대상급여 useAmt = FN_PAY_GET_WRK_NTAX(MAIN)+FN_PAY_GET_WRK_NTAX(SUB) T12/T13 → CUT_8603/CUT_8608 주입.
+  //    OUT self ddcAmt ↔ RT_R_LAW_CLAUS30. 근로소득세액공제(8700) 연쇄축소도 국세청이 재현. (2026-07-22 라이브캡처 실측 #3/#4 + 9명 원단위 검증)
+  //    ※구 8604(100%)·8605(50%)·8916(70%)은 전부 오류(조특법30조엔 100/50% 없음, 8916은 차감소득금액 중간계산코드)로 제거.
+  { group: "세액감면", ntsCode: "8603", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8603", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8603. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정" },
+  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치)" },
+  { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약(교직자)", ytsCol: "CUT_8606", resultCol: "RT_TAX_TREATY", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN Txx T20 합(조세조약 교직자 감면대상급여)→CUT_8606. OUT self ↔ RT_TAX_TREATY. X2026 대상 0 미검증. 2026-07-22 원천확정" },
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: true, note: "혼인공제는 국세청 미검산(입력 ddcAmt 그대로 인정). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=RT_MRRG) → 결정세액에만 반영. tab 미부여=항목대조 제외(고정 50만·대조실익 없음). 2026-07-16 실측" },
@@ -269,7 +279,7 @@ export const PROC_LABEL_CODE_2025: Record<string, string> = {
   "우리사주조합출연금": "8452", "고용유지중소기업근로자": "8453",
   "장기집합투자증권저축공제": "8451", "청년형장기집합투자증권저축": "8501",
   // 세액감면
-  "소득세법": "8601", "조특법(30조)": "8604", "조특법(30조제외)": "8602", "조세조약": "8606",  // ※조특법30조: 율별(8604/8605/8608) 대표코드 추정
+  "소득세법": "8601", "조특법(30조)": "8608", "조특법(30조제외)": "8602", "조세조약": "8606",  // 조특법30조 대표=8608(90%, 흔함), 70%=8603. 계산과정 "조특법(30조)"=RT_R_LAW_CLAUS30 합
   // 세액공제
   "근로소득세액": "8700", "혼인세액공제": "8790", "자녀": "8763", "출산입양": "8761",
   "보장성보험료": "8710", "장애인전용보험료": "8711",
