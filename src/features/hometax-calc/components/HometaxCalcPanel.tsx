@@ -26,8 +26,6 @@ const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8999", label: "결정세액" },
 ]
 
-// 소계형 그룹(outCode) → 표시용 그룹명 ("전송한 공제 입력" 표의 소계행 라벨)
-const SUBTOTAL_GROUP_LABEL: Record<string, string> = { "8430": "카드", "8726": "의료비" }
 
 // NTS 코드 → 라벨 (실행과정 IN/OUT 전체표 항목명). 매핑 + 계산흐름코드에서 파생.
 const CODE_LABEL: Record<string, string> = {}
@@ -273,7 +271,7 @@ const isErrorRow = (res: RowResult | undefined) => !!res && res.nts.resultCode !
 // 비교 본행 배경색(모든 비교탭 공통 — 색은 여기 한 곳에서만 바꾼다):
 //   선택(클릭)=파랑 최우선 > 오류=주황 > 그 외(일치·불일치·미실행) 무색. 일치·불일치는 ✓/✗ 아이콘·차이 컬럼으로 구분.
 const rowBg = (res: RowResult | undefined, selected: boolean) =>
-  selected ? "bg-blue-100/70" : isErrorRow(res) ? "bg-amber-200/70" : ""
+  selected ? "bg-blue-100 hover:bg-blue-200" : isErrorRow(res) ? "bg-amber-200/70 hover:bg-amber-300" : "hover:bg-gray-200"
 
 // 비교일시 표기: YY.MM.DD HH:MM
 function formatRanAt(d: Date): string {
@@ -966,7 +964,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
             return nts != null ? nts - (yts ?? 0) : null
           }
           return (
-            <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+            <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
               <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
               <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
               <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1041,7 +1039,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 합계 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1144,7 +1142,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1241,7 +1239,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1338,7 +1336,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 기타 세액공제 합 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1444,7 +1442,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 연금계좌 세액공제 합 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1547,7 +1545,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 인적공제 요약(항목수·불일치 건수). 소득/세액 혼재라 공제액 합산은 표시 안 함. */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 hover:bg-muted/20 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <PersonMainCells item={row} onShowProc={onShowProc} />
@@ -1613,33 +1611,31 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
 // 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
 // grow=false 면 내용 길이만큼만 차지(짧은 표에서 밑에 빈 여백 안 남게) — 나머지 flex-1 영역이 남는 공간을 가져간다.
 function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, children }: {
-  title: string; extra?: ReactNode; collapsed: boolean; onToggle: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
+  title: string; extra?: ReactNode; collapsed: boolean; onToggle?: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
 }) {
   const expand = !collapsed && grow
   return (
     <div className={`flex flex-col border rounded-md overflow-hidden ${expand ? "flex-1 min-h-0" : "shrink-0"}`}>
       <div
-        role="button"
-        tabIndex={0}
-        onClick={onToggle}
         onDoubleClick={onExpandOnly}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle() } }}
-        title="더블클릭: 이 영역만 펼치고 나머지는 접기"
-        className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold shrink-0 cursor-pointer select-none hover:bg-muted/80"
+        title="더블클릭: 이 영역만 전체보기(최대화)"
+        className={`flex items-center justify-between gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold shrink-0 select-none ${onExpandOnly ? "cursor-pointer" : ""}`}
       >
         <span className="flex items-center gap-1.5">
           {title}
         </span>
-        <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5">
           {extra}
-          <button
-            type="button"
-            onClick={onToggle}
-            title={collapsed ? "펼치기" : "접기"}
-            className="p-0.5 rounded text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
-          >
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
-          </button>
+          {onToggle && (
+            <button
+              type="button"
+              onClick={onToggle}
+              title={collapsed ? "펼치기" : "접기"}
+              className="p-0.5 rounded text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+            </button>
+          )}
           {onExpandOnly && (
             <button
               type="button"
@@ -1672,8 +1668,15 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   const expandOnly = (k: keyof typeof collapsed) => setFocusedPanel(p => (p === k ? null : k))
   const isCollapsed = (k: keyof typeof collapsed) => (focusedPanel ? k !== focusedPanel : collapsed[k])
   const isGrow = (k: keyof typeof collapsed, defaultGrow: boolean) => (focusedPanel ? k === focusedPanel : defaultGrow)
-  // ② 전송한 공제 입력 — 전체보기(매핑 전 항목) / 값보기(그 코드로 IN·OUT 중 뭐라도 오간 항목만)
-  const [inputsShowAll, setInputsShowAll] = useState(true)
+  // ③ 소계형(카드8430/의료8726/교육8735/출산8761/투자조합8410) 개별 멤버 접기 — 기본 펼침, chevron 으로 접기
+  const [openSubs, setOpenSubs] = useState<Set<string>>(() => new Set(SUBTOTAL_CODES.keys()))
+  const toggleSub = (c: string) => setOpenSubs(s => { const n = new Set(s); if (n.has(c)) n.delete(c); else n.add(c); return n })
+  // ③ 전체보기(로스터+매핑 전 항목, 값 없으면 —) / 값보기(실제 값이 오간 코드만)
+  const [ioShowAll, setIoShowAll] = useState(true)
+  // ①②③ 리스트 행 클릭 선택 — 선택행 청색(hover 진청색) / 비선택행 hover 회색. key = "패널:코드"
+  const [selRow, setSelRow] = useState<string | null>(null)
+  const rowCls = (key: string, base = "") =>
+    `cursor-pointer ${selRow === key ? "bg-blue-100 hover:bg-blue-200" : `${base} hover:bg-gray-200`}`
 
   // 8900(총급여)은 국세청 "입력" 코드라 ddcAmt(공제액)가 아니라 회신에 그대로 echo 된 useAmt를 대조값으로 쓴다.
   const totPayNts = res.ntsOut.find(r => r.code === "8900")?.useAmt ?? null
@@ -1688,6 +1691,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
     { label: "근로소득세액공제", code: "8700", ytsCol: "RT_WIA",      yts: yts?.wiaCredit   ?? null,                    nts: res.ntsMap["8700"] ?? null },
     { label: "결정세액",         code: "8999", ytsCol: "RES_INCM_TAX",yts: yts?.resIncmTax  ?? row?.resIncmTax ?? null, nts: res.ntsMap["8999"] ?? null },
   ]
+  const compareCodes = new Set(compareRows.map(r => r.code))   // ①결과비교에 나오는 계산흐름 코드(8900~8999) — ③표에서 중복 제거
 
   // NTS 원본 IN/OUT 코드 union (전송 payload ∪ 회신) — 코드별 전 필드 대조
   const ioMap = new Map<string, { i?: NtsIoRow; o?: NtsIoRow }>()
@@ -1695,26 +1699,50 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   res.ntsOut.forEach(r => ioMap.set(r.code, { ...ioMap.get(r.code), o: r }))
   // 정렬: 계산과정 등장 순서(procOrder) 우선. 소계 멤버는 소계코드 위치 바로 뒤 블록으로 묶음.
   //   앵커 = [계산과정위치, 계층(0=소계/직접 · 1=소계멤버), 코드]. 계산과정에 없으면 맨 뒤 코드순.
+  // ③표 항목 = MAPPING_2025 정의 항목만(국세청 내부 코드 제외). mapOrder 는 항목 필터 + tie-break 용.
+  const mapOrder = new Map<string, number>()
+  MAPPING_2025.forEach((m, i) => { if (!mapOrder.has(m.ntsCode)) mapOrder.set(m.ntsCode, i) })
+  // ③표 순서 = 현황 '계산과정 순서 로스터'와 동일(PROC_LABEL_CODE_2025 등장순). 소계 멤버는 소계코드 위치 바로 뒤.
+  const rosterOrder = new Map<string, number>()
+  Object.values(PROC_LABEL_CODE_2025).forEach((code, i) => { if (!rosterOrder.has(code)) rosterOrder.set(code, i) })
   const anchorOf = (c: string): [number, number, string] => {
-    const di = procOrder ? procOrder.indexOf(c) : -1
-    if (di >= 0) return [di, 0, c]
+    const di = rosterOrder.get(c)
+    if (di != null) return [di, 0, c]                                             // 로스터(계산과정) 순서
     const sub = SUBTOTAL_OF.get(c)
-    if (sub) { const si = procOrder ? procOrder.indexOf(sub) : -1; if (si >= 0) return [si, 1, c] }
-    return [Number.MAX_SAFE_INTEGER, 0, c]
+    if (sub) { const si = rosterOrder.get(sub); if (si != null) return [si, 1, c] }   // 소계 멤버는 소계코드 뒤
+    return [Number.MAX_SAFE_INTEGER, mapOrder.get(c) ?? 0, c]                     // 로스터에 없는 매핑항목은 맨 뒤(매핑순)
   }
-  const ioRows = [...ioMap.entries()].map(([code, v]) => ({ code, ...v }))
+  // 전체보기: 매핑+소계 전 항목(값 없으면 —). 값보기: 실제 IN/OUT 이 오간 코드만. 둘 다 매핑 밖(국세청 내부) 제외.
+  const ioBaseCodes = ioShowAll
+    ? new Set<string>([...mapOrder.keys(), ...SUBTOTAL_CODES.keys()])
+    : new Set<string>(ioMap.keys())
+  const ioRows = [...ioBaseCodes]
+    .filter(code => mapOrder.has(code) || SUBTOTAL_CODES.has(code))
+    .map(code => ({ code, i: ioMap.get(code)?.i, o: ioMap.get(code)?.o }))
     .sort((a, b) => { const x = anchorOf(a.code), y = anchorOf(b.code); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) })
   const ioNum = (n?: number) => (n ? n.toLocaleString("ko-KR") : "—")
-
-  // 그 코드의 rule이 실제로 쓰는 필드(useAmt/incDdcNfpCnt/ddcTrgtAmt) 하나만 "보낸값"으로 본다
-  const sentValOf = (inp: InputRow) => {
-    const io = ioMap.get(inp.code)
-    return inp.valueKey === "incDdcNfpCnt" ? io?.i?.incDdcNfpCnt
-         : inp.valueKey === "ddcTrgtAmt"   ? io?.i?.ddcTrgtAmt
-         : io?.i?.useAmt
+  // 로스터(계산과정)에 있는 항목은 위, 없는 매핑항목은 "기타" 구분행 아래로. 소계 멤버는 소계코드로 판정.
+  const isRosterItem = (c: string): boolean => {
+    if (rosterOrder.has(c)) return true
+    const sub = SUBTOTAL_OF.get(c)
+    return sub != null && rosterOrder.has(sub)
   }
-  // 값보기: 보낸값·받은값(ddcAmt) 중 하나라도 있는 항목만
-  const visibleInputs = inputsShowAll ? res.inputs : res.inputs.filter(inp => !!sentValOf(inp) || !!ioMap.get(inp.code)?.o?.ddcAmt)
+  const firstEtcCode = ioRows.find(r => {
+    const sp = SUBTOTAL_OF.get(r.code)
+    if (sp && !openSubs.has(sp)) return false                                     // 접힌 소계 멤버는 표시 안 됨
+    if (compareCodes.has(r.code)) return false                                    // ①중복 제외분
+    if (!mapOrder.has(r.code) && !SUBTOTAL_CODES.has(r.code)) return false        // 매핑 밖 제외분
+    return !isRosterItem(r.code)
+  })?.code
+  // ② YTS 원천 표시용: code → 물리 원천컬럼(전송값 ytsInOf) / 물리 공제컬럼(ytsOutOf). 가상변수(CARD_/CUT_ 등)는 실제 테이블 컬럼으로 환원.
+  const ytsColOf = new Map<string, string>()
+  const resultColOf = new Map<string, string>()
+  MAPPING_2025.forEach(m => {
+    if (m.ytsCol && !ytsColOf.has(m.ntsCode)) ytsColOf.set(m.ntsCode, ytsInOf(m))
+    const oc = m.outCode ?? m.ntsCode
+    if (m.resultCol && !resultColOf.has(oc)) resultColOf.set(oc, ytsOutOf(m))
+  })
+  SUBTOTAL_CODES.forEach((v, code) => { if (!resultColOf.has(code)) resultColOf.set(code, v.ytsOut) })
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -1746,7 +1774,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
               {compareRows.map(r => {
                 const diff = r.yts != null && r.nts != null ? r.nts - r.yts : null
                 return (
-                  <tr key={r.code} className="border-b last:border-0">
+                  <tr key={r.code} onClick={() => setSelRow(`c:${r.code}`)} className={`border-b last:border-0 ${rowCls(`c:${r.code}`)}`}>
                     <td className="py-1.5 px-3">
                       {r.label}
                       <span className="ml-1 font-mono text-[10px] text-muted-foreground/50">{r.code}</span>
@@ -1764,60 +1792,62 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
           </table>
         </DetailPanel>
 
-        {/* 2) 전송한 공제 입력 — 보내고(NTS IN) 받은(NTS OUT) 원본값 그대로, 가공 없음. YTS 대조는 ③에서. */}
+        {/* 2) YTS 원천 — 보낸값·공제값을 YTS 어느 컬럼에서 찾아왔나(제대로 된 값인지 확인). ③과 동일 항목·순서(로스터). */}
         <DetailPanel
-          title="② 전송한 공제 입력"
+          title="② YTS 원천 (보낸값·공제값 출처)"
           extra={
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-normal text-muted-foreground">총 {res.inputs.length}개 · 값 {res.inputs.filter(i => !!sentValOf(i) || !!ioMap.get(i.code)?.o?.ddcAmt).length}개</span>
-              <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
-                <button
-                  type="button"
-                  onClick={() => setInputsShowAll(true)}
-                  className={`px-2 py-0.5 ${inputsShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                >전체보기</button>
-                <button
-                  type="button"
-                  onClick={() => setInputsShowAll(false)}
-                  className={`px-2 py-0.5 border-l ${!inputsShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-                >값보기</button>
-              </div>
+            <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
+              <button type="button" onClick={() => setIoShowAll(true)} className={`px-2 py-0.5 ${ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>전체보기</button>
+              <button type="button" onClick={() => setIoShowAll(false)} className={`px-2 py-0.5 border-l ${!ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>값보기</button>
             </div>
           }
           collapsed={isCollapsed("inputs")} onToggle={() => toggle("inputs")} onExpandOnly={() => expandOnly("inputs")} maximized={focusedPanel === "inputs"}
         >
-          <table className="w-full text-xs border-collapse">
+          <table className="min-w-full text-xs border-collapse whitespace-nowrap">
             <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
               <tr className="text-[10px] text-muted-foreground">
+                <th className="px-2 py-1.5 text-left font-medium">코드</th>
                 <th className="px-2 py-1.5 text-left font-medium">항목</th>
-                <th className="px-2 py-1.5 text-left font-medium">NTS코드</th>
+                <th className="px-2 py-1.5 text-left font-medium border-l">YTS 원천컬럼(보낸값)</th>
                 <th className="px-2 py-1.5 text-right font-medium">보낸값</th>
-                <th className="px-2 py-1.5 text-right font-medium">받은값</th>
+                <th className="px-2 py-1.5 text-left font-medium border-l">YTS 공제컬럼</th>
+                <th className="px-2 py-1.5 text-right font-medium">YTS 공제값</th>
               </tr>
             </thead>
             <tbody>
-              {visibleInputs.map((inp, i) => {
-                const io       = ioMap.get(inp.code)
-                const sentVal  = sentValOf(inp)
-                const hasData  = !!sentVal || !!io?.o?.ddcAmt
-                const isSubtot = !!inp.outCode && inp.outCode !== inp.code   // 소계형(카드8430/의료8726 등) — 개별코드는 자체 결과 없음
-                const next     = visibleInputs[i + 1]
-                const groupEnd = isSubtot && next?.outCode !== inp.outCode   // 같은 소계코드 그룹의 마지막 행 뒤에 소계행 삽입
+              {ioRows.map(({ code, i }) => {
+                if (compareCodes.has(code)) return null
+                if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return null
+                const subParent  = SUBTOTAL_OF.get(code)
+                if (subParent && !openSubs.has(subParent)) return null
+                const isSubtotal = SUBTOTAL_CODES.has(code)
+                const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
+                const sent   = i?.useAmt || i?.incDdcNfpCnt || i?.ddcTrgtAmt
+                const ytsCol = ytsColOf.get(code)
+                const resCol = resultColOf.get(code)
+                const ytsD   = res.ytsDdcMap[code]
                 return (
-                  <Fragment key={inp.code}>
-                    <tr className={`border-t ${hasData ? "bg-blue-50/30" : "text-muted-foreground/40"}`}>
-                      <td className="px-2 py-1">{inp.label}</td>
-                      <td className="px-2 py-1 font-mono">{inp.code}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{ioNum(sentVal)}</td>
-                      <td className="px-2 py-1 text-right tabular-nums">{ioNum(io?.o?.ddcAmt)}</td>
-                    </tr>
-                    {groupEnd && (
-                      <tr className="border-t bg-muted/50 font-medium">
-                        <td className="px-2 py-1" colSpan={2}>{SUBTOTAL_GROUP_LABEL[inp.outCode!] ?? inp.group} 소계</td>
-                        <td className="px-2 py-1 text-right tabular-nums text-muted-foreground/30">—</td>
-                        <td className="px-2 py-1 text-right tabular-nums">{ioNum(ioMap.get(inp.outCode!)?.o?.ddcAmt)}</td>
+                  <Fragment key={code}>
+                    {code === firstEtcCode && (
+                      <tr className="border-t-2 border-muted-foreground/20 bg-muted/60">
+                        <td colSpan={6} className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">기타 (계산과정 로스터 밖)</td>
                       </tr>
                     )}
+                    <tr onClick={() => setSelRow(`i:${code}`)} className={`border-t ${rowCls(`i:${code}`)}`}>
+                      <td className="px-2 py-1 font-mono">{code}</td>
+                      <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
+                        {isSubtotal ? (
+                          <button type="button" onClick={e => { e.stopPropagation(); toggleSub(code) }} className="inline-flex items-center gap-1 hover:text-foreground">
+                            <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
+                            {label}
+                          </button>
+                        ) : label}
+                      </td>
+                      <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l">{ytsCol ?? "—"}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${sent ? "" : "text-muted-foreground/30"}`}>{ioNum(sent)}</td>
+                      <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l">{resCol ?? "—"}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${ytsD ? "" : "text-muted-foreground/30"}`}>{ioNum(ytsD)}</td>
+                    </tr>
                   </Fragment>
                 )
               })}
@@ -1829,7 +1859,15 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
         {(res.ntsIn.length > 0 || res.ntsOut.length > 0) && (
           <DetailPanel
             title="③ NTS 원본 IN / OUT + YTS 대조"
-            extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치</span>}
+            extra={
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-normal text-muted-foreground"><span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치</span>
+                <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
+                  <button type="button" onClick={() => setIoShowAll(true)} className={`px-2 py-0.5 ${ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>전체보기</button>
+                  <button type="button" onClick={() => setIoShowAll(false)} className={`px-2 py-0.5 border-l ${!ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>값보기</button>
+                </div>
+              </div>
+            }
             collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")} maximized={focusedPanel === "io"}
           >
             <table className="min-w-full text-xs border-collapse whitespace-nowrap">
@@ -1850,14 +1888,33 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
               </thead>
               <tbody>
                 {ioRows.map(({ code, i, o }) => {
+                  if (compareCodes.has(code)) return null                      // ①결과비교에 나오는 계산흐름 코드는 ③에서 제외(중복)
+                  if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return null   // 매핑 밖(국세청 내부 코드 8464~8467 등) 제외 — 항목도 YTS 기준
+                  const subParent  = SUBTOTAL_OF.get(code)                     // 소계형 개별 멤버면 그 소계코드(카드8430 등)
+                  if (subParent && !openSubs.has(subParent)) return null       // 소계가 접혀 있으면 멤버 숨김(기본은 펼침)
+                  const isSubtotal = SUBTOTAL_CODES.has(code)                  // 소계코드 행(카드8430/의료8726 등)
+                  const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                   const ytsD = res.ytsDdcMap[code]
                   const ntsD = o?.ddcAmt
                   const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
-                    <tr key={code} className={`border-t ${cmp === "diff" ? "bg-red-50/50" : ""}`}>
+                    <Fragment key={code}>
+                      {code === firstEtcCode && (
+                        <tr className="border-t-2 border-muted-foreground/20 bg-muted/60">
+                          <td colSpan={11} className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">기타 (계산과정 로스터 밖)</td>
+                        </tr>
+                      )}
+                      <tr onClick={() => setSelRow(`o:${code}`)} className={`border-t ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
                       <td className="px-2 py-1 font-mono">{code}</td>
-                      <td className="px-2 py-1">{CODE_LABEL[code] ?? "—"}</td>
+                      <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
+                        {isSubtotal ? (
+                          <button type="button" onClick={e => { e.stopPropagation(); toggleSub(code) }} className="inline-flex items-center gap-1 hover:text-foreground">
+                            <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
+                            {label}
+                          </button>
+                        ) : label}
+                      </td>
                       <td className={`px-2 py-1 text-right tabular-nums ${i?.useAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.useAmt)}</td>
                       <td className={`px-2 py-1 text-right tabular-nums ${i?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.incDdcNfpCnt)}</td>
                       <td className={`px-2 py-1 text-right tabular-nums ${i?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(i?.ddcTrgtAmt)}</td>
@@ -1868,6 +1925,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                       <td className={`px-2 py-1 text-right tabular-nums ${o?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcLmtAmt)}</td>
                       <td className={`px-2 py-1 text-right tabular-nums ${o?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.incDdcNfpCnt)}</td>
                     </tr>
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -1972,6 +2030,8 @@ function ytsInOf(m: MappingRow): string {
   if (c.startsWith("ETX_"))  return ETX_SRC[c] ?? c        // 기타세액공제 PAY_WRK_MAIN 원천
   if (c.startsWith("LOAN_"))  return LOAN_SRC[c] ?? c      // 주택자금 PAY_WRK_MAIN 원본 상환액
   if (c.startsWith("OTHER_")) return OTHER_SRC[c] ?? c     // 그밖의소득공제 원본 원천
+  if (c === "CUT_8601")      return "TAX_GOVM_AGREE"       // 세액감면 소득세법(정부간협약, PAY_WRK_MAIN)
+  if (c.startsWith("CUT_"))  return "FN_PAY_GET_WRK_NTAX(Txx)"   // 세액감면 대상급여(비과세·감면 명세 함수, MAIN+SUB 합)
   return c
 }
 // yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).
