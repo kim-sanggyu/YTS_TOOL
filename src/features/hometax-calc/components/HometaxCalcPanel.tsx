@@ -983,7 +983,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1065,7 +1065,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1172,7 +1172,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1272,7 +1272,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1372,7 +1372,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1481,7 +1481,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1589,7 +1589,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           <SortableTh label="CALC_NO" k="calcNo" sort={sort} onSort={onSort} className="text-left" />
           <SortableTh label="표준/특별" k="calcType" sort={sort} onSort={onSort} className="text-center" />
           <SortableTh label="계속/퇴사" k="workStatus" sort={sort} onSort={onSort} className="text-center" />
-          <th className="px-1 py-2 text-center font-medium w-8">계산</th>
+          <th className="px-1 py-2 text-center font-medium whitespace-nowrap">계산</th>
           <th className="px-1 py-2 text-center font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right" />
           <th className="px-3 py-2 text-center font-medium">실행 / 분석</th>
@@ -1688,7 +1688,7 @@ function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, maximize
       <div
         onDoubleClick={onExpandOnly}
         title="더블클릭: 이 영역만 전체보기(최대화)"
-        className={`flex items-center justify-between gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold shrink-0 select-none ${onExpandOnly ? "cursor-pointer" : ""}`}
+        className={`flex items-center justify-between gap-2 px-3 py-2 bg-background border-b text-xs font-semibold shrink-0 select-none ${onExpandOnly ? "cursor-pointer" : ""}`}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">{title}</span>
@@ -2258,7 +2258,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             {/* 확정 */}
             <col className="w-12" />
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-muted">
+          <thead className="sticky top-0 z-10 bg-muted/50">
             <tr className="text-[10px] text-muted-foreground text-left">
               <th className="px-2 py-1.5 border-b border-r font-medium">항목</th>
               <th className="px-2 py-1.5 border-b border-r font-medium">nts코드</th>
@@ -2301,7 +2301,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         collapsed={isCollP("roster")} onToggle={() => toggleP("roster")} onExpandOnly={() => expandOnlyP("roster")} maximized={focused === "roster"}
       >
         <table className="w-full text-xs border-collapse">
-          <thead className="sticky top-0 z-10 bg-muted">
+          <thead className="sticky top-0 z-10 bg-muted/50">
             <tr className="text-[10px] text-muted-foreground text-left">
               <th className="px-2 py-1 border-b border-r font-medium w-8 text-right">#</th>
               <th className="px-2 py-1 border-b border-r font-medium">계산과정 라벨</th>
