@@ -124,3 +124,45 @@ export const getTaxCutItems = (year: string) => getGroupItems(year, TAX_CUT_ROWS
   const t = TC_TXX[m.ntsCode]
   return t ? `FN_PAY_GET_WRK_NTAX(c.CALC_NO,'MAIN',NULL,'${t}') + FN_PAY_GET_WRK_NTAX(c.CALC_NO,'SUB',NULL,'${t}')` : null
 }, "세액감면", true)   // resultCol 공유(RT_R_LAW/RT_R_LAW_CLAUS30) → 전송사용액>0 항목만 표시
+
+// 보험료 세액공제 = 보장성(8710, 12%)·장애인전용 보장성(8711, 15%). self 대조(YTS RT_IF_* ↔ NTS 각 코드).
+// 전송 사용액(공제대상금액, 100만 capped) = PAY_WRK_CALC.SPCL_IF_* — resultCol 고유(공유 아님).
+const INSURANCE_ROWS = MAPPING_2025.filter(m => ["8710", "8711"].includes(m.ntsCode) && m.resultCol)
+const INS_CALC_COL: Record<string, string> = { "8710": "SPCL_IF_GRT_INSU_AMT", "8711": "SPCL_IF_HDC_PERS_INSU_AMT" }
+export const getInsuranceItems = (year: string) => getGroupItems(year, INSURANCE_ROWS, m => {
+  const col = INS_CALC_COL[m.ntsCode]
+  return col ? `NVL(c.${col}, 0)` : null
+}, "세액공제")
+
+// 교육비 = 소계형(8735). 8730에 공제대상 총액(SPCL_EDU_AMT, 한도후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT.
+// 구분(8731~34)은 서버 무시라 1항목(8735)만 대조. getGroupItems(resultCol 기반)를 못 쓰고 전용 조회.
+export async function getEducationItems(year: string): Promise<HousingListItem[]> {
+  const dbRows = await ytsDb.query<Record<string, unknown>>(`
+    SELECT c.CALC_NO,
+           SUBSTR(f.NM, 1, 4) AS NM,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           m.EMP_NO, m.KEEP_PS,
+           NVL(c.RT_EDU_AMT, 0) AS DDC, NVL(c.SPCL_EDU_AMT, 0) AS INAMT
+    FROM YTS39.PAY_WRK_CALC c
+    JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
+    JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
+    WHERE m.YY = :1
+      AND NVL(c.RT_EDU_AMT, 0) > 0
+    ORDER BY c.CALC_NO
+  `, [year])
+
+  return dbRows.map(r => {
+    const ex = exhaustInfo(r.EXHAUSTED_POINT as string | null)
+    return {
+      calcNo:     String(r.CALC_NO),
+      nm:         String(r.NM ?? ""),
+      totPayAmt:  Number(r.TOT_PAY_AMT ?? 0),
+      exhausted:  ex.exhausted, exhaustLabel: ex.exhaustLabel,
+      empNo:      (r.EMP_NO as string) ?? "-",
+      calcType:   calcMethodLabel(r.CALC_METHOD as string | null),
+      workStatus: workStatusLabel(r.KEEP_PS as string | null),
+      calcProcTotal: (r.CALC_PROC_TOTAL as string) ?? null,
+      lines: [{ code: "8735", label: "교육비 세액공제", kind: "세액공제", ytsDdc: Number(r.DDC ?? 0), ytsInput: Number(r.INAMT ?? 0) }],
+    }
+  })
+}

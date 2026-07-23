@@ -46,6 +46,8 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   OTHER_INCOME:    { label: "그밖의소득공제", listQs: "type=otherincome",          batchEndpoint: "otherincome-batch" },           // 우리사주(8452)·장기집합(8451)·청년형(8501)·고용유지(8453)
   ETC_CREDIT:      { label: "기타세액공제",   listQs: "type=etccredit",             batchEndpoint: "etccredit-batch" },             // 외국납부(8751)·주택차입금이자(8752)·납세조합(8753)
   TAX_CUT:         { label: "세액감면",       listQs: "type=taxcut",                batchEndpoint: "cut-batch" },                   // 소득세법(8601)·조특법30조(8603/8608)·조특법30조제외·조세조약(8606)
+  INSURANCE:       { label: "보장성보험료",   listQs: "type=insurance",             batchEndpoint: "insurance-batch" },             // 보장성(8710, 12%)·장애인전용 보장성(8711, 15%)
+  EDUCATION:       { label: "교육비",         listQs: "type=education",             batchEndpoint: "education-batch" },             // 소계형(8735, ×15%) — SPCL_EDU_AMT 총액↔RT_EDU_AMT
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
@@ -65,6 +67,8 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "OTHER_INCOME",    label: ETC_GROUPS.OTHER_INCOME.label },          // 투자조합출자 아래: 그밖의소득공제(그룹)
   { code: "TAX_CUT",         label: ETC_GROUPS.TAX_CUT.label },               // 그밖의소득공제 아래: 세액감면(그룹)
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
+  { code: "INSURANCE",     label: ETC_GROUPS.INSURANCE.label },             // 혼인자녀출산 아래: 보장성보험료(그룹)
+  { code: "EDUCATION",     label: ETC_GROUPS.EDUCATION.label },             // 보장성보험료 아래: 교육비(그룹)
   { code: "ETC_CREDIT",    label: ETC_GROUPS.ETC_CREDIT.label },            // 혼인자녀출산 아래: 기타세액공제(그룹)
   ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
 ]

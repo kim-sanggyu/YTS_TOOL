@@ -181,7 +181,7 @@ export const MAPPING_2025: MappingRow[] = [
   //   한도(초중고300만/대학900만)는 국세청 화면이 적용해 ddcTrgtAmt(공제대상)를 만들고, 서버는 그대로 신뢰(재한도 없음).
   //   YTS는 구분별 한도후 값이 없고 한도후 총액(SPCL_EDU_AMT)만 있어, 대표코드 8730 한 칸에 총액을 ddcTrgtAmt로 몰아 전송.
   //   8735 는 결과전용(직접입력 무시) → SUBTOTAL_CODES 로만 표현. useAmt·ddcLmtAmt·인원은 서버 무시(2026-07-17 실측확정).
-  { group: "세액공제", ntsCode: "8730", label: "교육비(공제대상 총액)", ytsCol: "SPCL_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "확정", send: true, outCode: "8735", note: "국세청 8730(본인칸)에 교육비 공제대상 총액(SPCL_EDU_AMT, 한도적용후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT 대조. 8731~34(구분별)는 한도후 데이터 없어 미사용(서버 계산 구분 무관)" },
+  { group: "세액공제", ntsCode: "8730", label: "교육비(공제대상 총액)", ytsCol: "SPCL_EDU_AMT", resultCol: "RT_EDU_AMT", valueKey: "ddcTrgtAmt", rule: "value", status: "확정", send: true, outCode: "8735", note: "국세청 8730(본인칸)에 교육비 공제대상 총액(SPCL_EDU_AMT, 한도적용후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT 대조. 8731~34(구분별)는 한도후 데이터 없어 미사용(서버 계산 구분 무관). resultCol=RT_EDU_AMT 는 소계(outCode 8735)의 YTS 공제액 연결용(카드 8431→8430 대칭) — 없으면 ytsDdcMap[8735] 미채움으로 소계 YTS공제 빈칸" },
   
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   // ── 기타세액공제(납세조합·주택차입금이자·외국납부) = self형(결과 ddcAmt). 원천=PAY_WRK_MAIN, useAmt 대상금액 전송 ──
