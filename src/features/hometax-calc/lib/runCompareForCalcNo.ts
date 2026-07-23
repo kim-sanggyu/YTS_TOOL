@@ -151,12 +151,12 @@ function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Re
   put("8321", mainRow?.LH_LRSF1)            // 장기주택저당 2011이전 15년미만
   put("8322", mainRow?.LH_LRSF2)            // 2011이전 15~29년
   put("8323", mainRow?.LH_LRSF3)            // 2011이전 30년이상
-  put("8324", mainRow?.LH_LRSF10)           // 2012이후 15년이상 고정&비거치
-  put("8325", mainRow?.LH_LRSF20)           // 2012이후 15년이상 그밖
-  put("8326", mainRow?.LH_LRSF30)           // 2015이후 15년이상 고정&비거치
-  put("8327", mainRow?.LH_LRSF40)           // 2015이후 15년이상 고정or비거치
-  put("8328", mainRow?.LH_LRSF50)           // 2015이후 15년이상 그밖
-  put("8329", mainRow?.LH_LRSF60)           // 2015이후 10~15년
+  put("8324", mainRow?.LH_LRSF10)           // 2011이전 15년이상 고정&비거치
+  put("8325", mainRow?.LH_LRSF20)           // 2011이전 15년이상 고정or비거치
+  put("8326", mainRow?.LH_LRSF30)           // 2012이후 15년이상 고정&비거치
+  put("8327", mainRow?.LH_LRSF40)           // 2012이후 15년이상 고정or비거치
+  put("8328", mainRow?.LH_LRSF50)           // 2012이후 15년이상 그밖
+  put("8329", mainRow?.LH_LRSF60)           // 2012이후 10~15년  ※매핑(코드↔컬럼)은 정답, 라벨은 국세청 화면 2011이전5/2012이후4 기준(2025.ts). 카탈로그 3구분(2015이후)은 수기오류라 되돌리지 말 것
 }
 
 // ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
