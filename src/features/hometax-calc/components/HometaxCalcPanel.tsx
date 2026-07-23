@@ -2090,25 +2090,8 @@ const OTHER_SRC: Record<string, string> = {
   // 투자조합출자(8415~8423) = PEN_SAVE_SPEC 562-110, INVST_CLS/INVST_YY 로 연도/종류 분리
   ...Object.fromEntries(["8415","8416","8417","8418","8419","8420","8421","8422","8423"].map(c => [`OTHER_${c}`, "PEN_SAVE_SPEC(562-110)"])),
 }
-// yts IN 물리 원천: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_)을 실제 원천 테이블·컬럼으로 환원.
-//   상규님 소통 기준 = "물리 원천". 그 외 ytsCol 은 이미 물리컬럼(NP_INSU_AMT 등)이라 그대로.
-function ytsInOf(m: MappingRow): string {
-  const c = m.ytsCol
-  if (!c) return "—"
-  if (c.startsWith("CARD_")) return "CALC_PROC_CARD"       // JSON 가~아 사용액
-  if (c.startsWith("MEDI_")) return "CALC_PROC_MEDI"       // JSON 대상자별 지출금액
-  if (c.startsWith("PEN_"))  return "PEN_SAVE_PMT_AMT"     // PAY_WRK_PEN_SAVE_SPEC 납입액
-  if (c.startsWith("GIFT_")) return "GIFT_ABLE_SUB_AMT"    // PAY_WRK_GIFT_ADJ 공제대상금액(전송값)
-  if (c.startsWith("RENT_")) return "HOUSE_RENT"           // PAY_WRK_MAIN 월세 지급총액(원본)
-  if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"         // 부양가족 유형별·출산 순번별 인원 집계
-  if (c.startsWith("ETX_"))  return ETX_SRC[c] ?? c        // 기타세액공제 PAY_WRK_MAIN 원천
-  if (c.startsWith("LOAN_"))  return LOAN_SRC[c] ?? c      // 주택자금 PAY_WRK_MAIN 원본 상환액
-  if (c.startsWith("OTHER_")) return OTHER_SRC[c] ?? c     // 그밖의소득공제 원본 원천
-  if (c === "CUT_8601")      return "TAX_GOVM_AGREE"       // 세액감면 소득세법(정부간협약, PAY_WRK_MAIN)
-  if (c.startsWith("CUT_"))  return "FN_PAY_GET_WRK_NTAX(Txx)"   // 세액감면 대상급여(비과세·감면 명세 함수, MAIN+SUB 합)
-  return c
-}
-// ② 표용: yts 원천컬럼이 PAY_WRK_MAIN/PAY_WRK_CALC 소속이면 앞에 MAIN./CALC. 을 붙인다(다른 테이블·함수는 그대로).
+// yts 원천컬럼에 소속 테이블 접두: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_ 등)은 실제 원천으로 환원하고,
+//   PAY_WRK_MAIN/PAY_WRK_CALC 소속이면 앞에 MAIN./CALC. 을 붙인다(다른 테이블·함수는 그대로). ②표·현황표 공용.
 function ytsSrcWithTable(m: MappingRow): string {
   const c = m.ytsCol
   if (!c) return "—"
@@ -2129,6 +2112,11 @@ function ytsSrcWithTable(m: MappingRow): string {
 function ytsOutOf(m: MappingRow): string {
   if (m.group === "기부금") return "GIFT_SUB_AMT"          // GiftTable 대조 기준
   return m.resultCol ?? "—"
+}
+// 현황표용: yts OUT 공제컬럼에 소속 테이블 접두. resultCol 은 전부 PAY_WRK_CALC(RT_*·BASC_*·ADD_*·OTO_*), 기부금만 별도 테이블.
+function ytsOutWithTable(m: MappingRow): string {
+  if (m.group === "기부금") return "GIFT_SUB_AMT"          // PAY_WRK_GIFT_ADJ (IN 표기와 일관)
+  return m.resultCol ? "CALC." + m.resultCol : "—"
 }
 
 // 현황탭 렌더 단위: self형/입력전용은 매핑행 1:1, 소계형은 개별행 + 합성 소계행.
@@ -2167,8 +2155,8 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
       ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,
       ntsOut: isMrrg ? "—" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
-      ytsIn:  selfSub ? "—" : ytsInOf(m),
-      ytsOut: isMrrg ? "—" : selfSub ? selfSub.ytsOut : (isSub ? "—" : ytsOutOf(m)),         // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      ytsIn:  selfSub ? "—" : ytsSrcWithTable(m),
+      ytsOut: isMrrg ? "—" : selfSub ? "CALC." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       isSubtotal: !!selfSub,
     })
@@ -2183,7 +2171,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
         ntsIn: "—",
         ntsOut: "ddcAmt",
         ytsIn:  "—",
-        ytsOut: meta.ytsOut,
+        ytsOut: "CALC." + meta.ytsOut,
         status: "확정",   // 소계 대조 = 실측확정된 부분
         isSubtotal: true,
       })
@@ -2258,15 +2246,15 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             {/* 확정 */}
             <col className="w-12" />
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-muted/50">
+          <thead className="sticky top-0 z-10 bg-muted">
             <tr className="text-[10px] text-muted-foreground text-left">
-              <th className="px-2 py-1.5 border-b border-r font-medium">항목</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium">nts코드</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium">nts IN</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium">nts OUT</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium">yts IN</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium">yts OUT</th>
-              <th className="px-2 py-1.5 border-b font-medium text-center">확정</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">항목</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts코드</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts IN</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts OUT</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts IN</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts OUT</th>
+              <th className="px-2 py-1.5 border-b font-medium text-center bg-muted">확정</th>
             </tr>
           </thead>
           <tbody>
@@ -2281,9 +2269,9 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                   <tr key={r.key} className={`border-t ${r.isSubtotal ? "bg-muted/40" : ""}`}>
                     <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
-                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>{r.ntsIn}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`}>{r.ntsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] ${r.ntsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{r.ntsOut}</td>
-                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-muted-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`} title={r.ytsOut}>{r.ytsOut}</td>
                     <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} /></td>
                   </tr>
@@ -2301,12 +2289,12 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         collapsed={isCollP("roster")} onToggle={() => toggleP("roster")} onExpandOnly={() => expandOnlyP("roster")} maximized={focused === "roster"}
       >
         <table className="w-full text-xs border-collapse">
-          <thead className="sticky top-0 z-10 bg-muted/50">
+          <thead className="sticky top-0 z-10 bg-muted">
             <tr className="text-[10px] text-muted-foreground text-left">
-              <th className="px-2 py-1 border-b border-r font-medium w-8 text-right">#</th>
-              <th className="px-2 py-1 border-b border-r font-medium">계산과정 라벨</th>
-              <th className="px-2 py-1 border-b border-r font-medium w-14">코드</th>
-              <th className="px-2 py-1 border-b font-medium">매핑 위치</th>
+              <th className="px-2 py-1 border-b border-r font-medium w-8 text-right bg-muted">#</th>
+              <th className="px-2 py-1 border-b border-r font-medium bg-muted">계산과정 라벨</th>
+              <th className="px-2 py-1 border-b border-r font-medium w-14 bg-muted">코드</th>
+              <th className="px-2 py-1 border-b font-medium bg-muted">매핑 위치</th>
             </tr>
           </thead>
           <tbody>

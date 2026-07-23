@@ -162,6 +162,9 @@ function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Re
 // ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
 // 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
 // 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
+// ★이 FMLY 집계를 CALC 통합인원(BASC_SUB_FAMILY_CNT)으로 대체하지 말 것: 기본공제는 유형 무관이나 자녀공제(8763)가
+//   직계비속(8005)에 의존 → 통합하면 8763=0. FMLY를 쓰는 이유는 기본공제가 아니라 자녀공제 재현이다.
+//   (2026-07-23 실측 3명 전원: 전원을 8005 아닌 유형에 몰면 자녀공제 250,000→0. docs/hometax-family-lump-probe.mjs)
 async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   const [r] = await ytsDb.query<Record<string, number>>(`
     SELECT

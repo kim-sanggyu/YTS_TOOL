@@ -60,7 +60,10 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   resultCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=1,500,000(150만). 인원(flag→1) 전송, 결과대조=BASC_SUB_MATE_AMT. 라이브 payload 캡처 실측(2026-07-18, n=38)" },
   { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", resultCol: "BASC_SUB_FAMILY_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "IN은 8004~8009 유형별로 전송(8003 미전송)하나, ★국세청 OUT은 8003(통합)에 회신 → 부양가족은 8003 소계형 대조. YTS BASC_SUB_FAMILY_AMT(인원×150만) ↔ NTS 8003 OUT. 라이브 실측(2026-07-22 X202600219: 5명 7,500,000 일치)" },
   // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼) = 부양가족 인적공제.
-  //   ※자녀공제(8763)는 유형별만으론 산출 안 됨(별도 총인원 필요). 출산입양(8761)은 순번별 8764~66이 산출. (2026-07-17 실측)
+  //   ★유형별을 통합(CALC BASC_SUB_FAMILY_CNT 등)으로 단순화하지 말 것 — "과한 코드"로 보이나 자녀공제와 엮여 필수.
+  //     기본공제만 보면 유형 무관(전원 한 유형에 몰아도 과세표준 동일)이지만, 자녀공제(8763)가 직계비속(8005)
+  //     인원에 의존 → 8005=0으로 통합하면 8763도 0으로 떨어짐. (2026-07-23 실측 3명 전원, docs/hometax-family-lump-probe.mjs)
+  //   ※자녀공제(8763)는 유형별만으론도 산출 안 됨(별도 총인원 필요). 출산입양(8761)은 순번별 8764~66이 산출. (2026-07-17 실측)
   { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
   { group: "인적공제", ntsCode: "8005", label: "부양가족-직계비속(자녀·손자녀·입양)", ytsCol: "FAM_8005", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-050" },
   { group: "인적공제", ntsCode: "8006", label: "부양가족-직계비속 그외",          ytsCol: "FAM_8006", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-055" },
