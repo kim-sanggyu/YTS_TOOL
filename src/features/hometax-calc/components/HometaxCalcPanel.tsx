@@ -2071,7 +2071,7 @@ const ETX_SRC: Record<string, string> = {
 }
 // 주택자금 LOAN_ 가상컬럼 → PAY_WRK_MAIN 원본 상환액 컬럼(원리금·장기주택저당)
 const LOAN_SRC: Record<string, string> = {
-  LOAN_8311: "HOUSE_RALR_LENDER", LOAN_8312: "HOUSE_RALR_HABT",
+  LOAN_8311: "HOUSE_RALR_LENDER", LOAN_8312: "PAY_WRK_RENT_HABT_SPEC.PNINT_SUM",   // 8312 거주자=SPEC B0 합(MAIN 아님, 2026-07-23 실측정정)
   LOAN_8321: "LH_LRSF1", LOAN_8322: "LH_LRSF2", LOAN_8323: "LH_LRSF3",
   LOAN_8324: "LH_LRSF10", LOAN_8325: "LH_LRSF20", LOAN_8326: "LH_LRSF30",
   LOAN_8327: "LH_LRSF40", LOAN_8328: "LH_LRSF50", LOAN_8329: "LH_LRSF60",
@@ -2102,7 +2102,7 @@ function ytsSrcWithTable(m: MappingRow): string {
   if (c.startsWith("RENT_")) return "MAIN.HOUSE_RENT"
   if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"             // 인원 집계
   if (c.startsWith("ETX_"))  return "MAIN." + (ETX_SRC[c] ?? c)
-  if (c.startsWith("LOAN_")) return "MAIN." + (LOAN_SRC[c] ?? c)
+  if (c.startsWith("LOAN_")) { const s = LOAN_SRC[c] ?? c; return s.includes(".") ? s : "MAIN." + s }   // 테이블명 이미 포함(8312 SPEC)이면 MAIN. 접두 제외
   if (c.startsWith("OTHER_")) { const s = OTHER_SRC[c] ?? c; return s.startsWith("PEN_SAVE_SPEC") ? s : "MAIN." + s }
   if (c === "CUT_8601")      return "MAIN.TAX_GOVM_AGREE"
   if (c.startsWith("CUT_"))  return "FN_PAY_GET_WRK_NTAX(Txx)"

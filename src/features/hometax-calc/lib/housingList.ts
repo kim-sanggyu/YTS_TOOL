@@ -62,13 +62,16 @@ async function getGroupItems(
 // 주택자금(특별소득공제) = 원본전송(LOAN_) 배선 행(원리금·장기주택저당).
 const HOUSING_ROWS = MAPPING_2025.filter(m => m.ytsCol?.startsWith("LOAN_") && m.resultCol)
 // 전송 사용액(원본 상환액) 원천 PAY_WRK_MAIN 컬럼 — runCompareForCalcNo.injectHousingVals 와 동일 매핑.
+// ※8312(거주자)만 예외: 원천=PAY_WRK_RENT_HABT_SPEC B0 SUM(PNINT_SUM) (아래 getHousingItems 분기, 2026-07-23 실측정정).
 const HOUSING_INPUT_COL: Record<string, string> = {
-  "8311": "HOUSE_RALR_LENDER", "8312": "HOUSE_RALR_HABT",
+  "8311": "HOUSE_RALR_LENDER",
   "8321": "LH_LRSF1",  "8322": "LH_LRSF2",  "8323": "LH_LRSF3",
   "8324": "LH_LRSF10", "8325": "LH_LRSF20", "8326": "LH_LRSF30",
   "8327": "LH_LRSF40", "8328": "LH_LRSF50", "8329": "LH_LRSF60",
 }
 export const getHousingItems = (year: string) => getGroupItems(year, HOUSING_ROWS, m => {
+  if (m.ntsCode === "8312")   // 주택임차 원리금 거주자 = PAY_WRK_RENT_HABT_SPEC B0 PNINT_SUM 합 (PAY_WRK_MAIN 아님)
+    return `SELECT NVL(SUM(r.PNINT_SUM), 0) FROM YTS39.PAY_WRK_RENT_HABT_SPEC r WHERE r.CALC_NO = c.CALC_NO AND r.RENT_HABT_CLS = 'B0'`
   const col = HOUSING_INPUT_COL[m.ntsCode]
   return col ? `NVL(m.${col}, 0)` : null
 })

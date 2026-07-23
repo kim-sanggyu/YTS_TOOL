@@ -146,8 +146,8 @@ function injectEtcCreditVals(mainRow: Record<string, number> | undefined, vals: 
 // (한도후 공제액 SP_LH_LRSF*_AMT 를 보내면 이중캡) 대조는 화면단에서 SP_*_AMT. 코드 순서 실측확정(capture-io 2026-07-18).
 function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
   const put = (code: string, v: unknown) => { const n = Number(v ?? 0); if (n > 0) vals[`LOAN_${code}`] = n }
-  put("8311", mainRow?.HOUSE_RALR_LENDER)   // 주택임차 원리금 대출기관
-  put("8312", mainRow?.HOUSE_RALR_HABT)     // 주택임차 원리금 거주자
+  put("8311", mainRow?.HOUSE_RALR_LENDER)   // 주택임차 원리금 대출기관 (원천=PAY_WRK_MAIN.HOUSE_RALR_LENDER 확정 — 8312와 달리 SPEC 아님, 2026-07-23)
+  put("8312", mainRow?.HOUSE_RALR_HABT)     // 주택임차 원리금 거주자 (원천=PAY_WRK_RENT_HABT_SPEC B0 SUM(PNINT_SUM), 위 mainRow SELECT 서브쿼리로 조회. 2026-07-23 실측정정)
   put("8321", mainRow?.LH_LRSF1)            // 장기주택저당 2011이전 15년미만
   put("8322", mainRow?.LH_LRSF2)            // 2011이전 15~29년
   put("8323", mainRow?.LH_LRSF3)            // 2011이전 30년이상
@@ -290,10 +290,12 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
-            HOUSE_RALR_LENDER, HOUSE_RALR_HABT,
+            HOUSE_RALR_LENDER,
+            (SELECT NVL(SUM(PNINT_SUM), 0) FROM YTS39.PAY_WRK_RENT_HABT_SPEC
+              WHERE CALC_NO = m.CALC_NO AND RENT_HABT_CLS = 'B0') AS HOUSE_RALR_HABT,
             LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
             SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT, HOUSE_HLDR_YN, TAX_GOVM_AGREE
-     FROM YTS39.PAY_WRK_MAIN WHERE CALC_NO = :1`,
+     FROM YTS39.PAY_WRK_MAIN m WHERE m.CALC_NO = :1`,
     [calcNo]
   )
   injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
