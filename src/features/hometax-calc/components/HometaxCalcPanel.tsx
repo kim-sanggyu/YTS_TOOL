@@ -45,6 +45,7 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   INVESTMENT:      { label: "투자조합출자", listQs: "type=investment",            batchEndpoint: "investment-batch" },            // 3연도×3종류(벤처100/70/30%·조합10%)
   OTHER_INCOME:    { label: "그밖의소득공제", listQs: "type=otherincome",          batchEndpoint: "otherincome-batch" },           // 우리사주(8452)·장기집합(8451)·청년형(8501)·고용유지(8453)
   ETC_CREDIT:      { label: "기타세액공제",   listQs: "type=etccredit",             batchEndpoint: "etccredit-batch" },             // 외국납부(8751)·주택차입금이자(8752)·납세조합(8753)
+  TAX_CUT:         { label: "세액감면",       listQs: "type=taxcut",                batchEndpoint: "cut-batch" },                   // 소득세법(8601)·조특법30조(8603/8608)·조특법30조제외·조세조약(8606)
 }
 // disabled = 표시만 하고 선택 불가(비교할 게 없는 항목). 연금보험료는 전액공제라 OUT=IN 이라 대조 무의미 → 안내용.
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
@@ -62,6 +63,7 @@ const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
   { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
   { code: "INVESTMENT",      label: ETC_GROUPS.INVESTMENT.label },            // 주택마련저축 아래: 투자조합출자(그룹)
   { code: "OTHER_INCOME",    label: ETC_GROUPS.OTHER_INCOME.label },          // 투자조합출자 아래: 그밖의소득공제(그룹)
+  { code: "TAX_CUT",         label: ETC_GROUPS.TAX_CUT.label },               // 그밖의소득공제 아래: 세액감면(그룹)
   { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
   { code: "ETC_CREDIT",    label: ETC_GROUPS.ETC_CREDIT.label },            // 혼인자녀출산 아래: 기타세액공제(그룹)
   ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
