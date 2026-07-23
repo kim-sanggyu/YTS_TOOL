@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
 
   const year    = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
+  const sortKey = req.nextUrl.searchParams.get("sortKey")
+  const sort = sortKey ? { key: sortKey, dir: (req.nextUrl.searchParams.get("sortDir") === "desc" ? "desc" : "asc") as "asc" | "desc" } : null
 
   const stream = streamCompareBatch(
     () => getAllItems(year),
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
       upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)
       return filePath
     },
-    loadBatchResults(year, ntsYear)?.rows,   // 지문 같은 사람은 국세청 호출 스킵 (전직원이라 캐시 스킵이 핵심)
+    loadBatchResults(year, ntsYear)?.rows, sort,   // 지문 같은 사람은 국세청 호출 스킵 (전직원이라 캐시 스킵이 핵심)
   )
 
   return new Response(stream, {

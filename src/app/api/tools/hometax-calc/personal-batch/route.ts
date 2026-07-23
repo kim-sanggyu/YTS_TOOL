@@ -68,6 +68,8 @@ export async function GET(req: NextRequest) {
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
   const group   = req.nextUrl.searchParams.get("group")
   const kind    = group === "credit" ? "세액공제" : group === "income" ? "소득공제" : undefined
+  const sortKey = req.nextUrl.searchParams.get("sortKey")
+  const sort = sortKey ? { key: sortKey, dir: (req.nextUrl.searchParams.get("sortDir") === "desc" ? "desc" : "asc") as "asc" | "desc" } : null
 
   const stream = streamCompareBatch(
     () => getPersonalItems(year, kind),
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest) {
       upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)   // 복원용 JSON 캐시(엑셀 경로 포함)
       return filePath
     },
-    loadBatchResults(year, ntsYear)?.rows,   // 지문 같은 사람은 국세청 호출 스킵
+    loadBatchResults(year, ntsYear)?.rows, sort,   // 지문 같은 사람은 국세청 호출 스킵
   )
 
   return new Response(stream, {

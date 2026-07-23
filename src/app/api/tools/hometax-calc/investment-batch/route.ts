@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
 
   const year    = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
+  const sortKey = req.nextUrl.searchParams.get("sortKey")
+  const sort = sortKey ? { key: sortKey, dir: (req.nextUrl.searchParams.get("sortDir") === "desc" ? "desc" : "asc") as "asc" | "desc" } : null
 
   const stream = streamCompareBatch(
     () => getInvestmentItems(year, ntsYear),
@@ -63,7 +65,7 @@ export async function GET(req: NextRequest) {
       upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)
       return filePath
     },
-    loadBatchResults(year, ntsYear)?.rows,
+    loadBatchResults(year, ntsYear)?.rows, sort,
   )
 
   return new Response(stream, {

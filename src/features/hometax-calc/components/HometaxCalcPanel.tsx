@@ -11,6 +11,7 @@ import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
+import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
@@ -281,22 +282,11 @@ const isErrorRow = (res: RowResult | undefined) => !!res && res.nts.resultCode !
 const rowBg = (res: RowResult | undefined, selected: boolean) =>
   selected ? "bg-blue-100 hover:bg-blue-200" : isErrorRow(res) ? "bg-amber-200/70 hover:bg-amber-300" : "hover:bg-gray-200"
 
-// ── 목록 열 정렬 (공통) — 헤더 클릭으로 오름/내림 토글. 숫자·문자 자동 판별, null 은 뒤로. ──
-type SortState = { key: string; dir: "asc" | "desc" }
-function useSortedList<T>(items: T[]): { sorted: T[]; sort: SortState | null; onSort: (k: string) => void } {
-  const [sort, setSort] = useState<SortState | null>({ key: "nm", dir: "asc" })   // 기본 = 이름 오름차순
-  const sorted = sort
-    ? [...items].sort((a, b) => {
-        const av = (a as Record<string, unknown>)[sort.key] as string | number | null | undefined
-        const bv = (b as Record<string, unknown>)[sort.key] as string | number | null | undefined
-        const mul = sort.dir === "asc" ? 1 : -1
-        if (av == null && bv == null) return 0
-        if (av == null) return 1
-        if (bv == null) return -1
-        return (typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv))) * mul
-      })
-    : items
-  const onSort = (k: string) => setSort(s => (s?.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "asc" }))
+// ── 목록 열 정렬 (공통) — 헤더 클릭으로 오름/내림 토글. 정렬 로직은 sortItems(클라/서버 공통 원천, 화면↔배치 순서 일치).
+//    정렬 상태는 상위(HometaxCalcPanel)가 관리(controlled) — 전체실행이 현재 화면 정렬순을 배치에 전달하기 위함.
+function useSortedList<T>(items: T[], sort: SortState | null, setSort: (s: SortState | null) => void): { sorted: T[]; sort: SortState | null; onSort: (k: string) => void } {
+  const sorted = sortItems(items, sort)
+  const onSort = (k: string) => setSort(sort?.key === k ? { key: k, dir: sort.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "asc" })
   return { sorted, sort, onSort }
 }
 // 정렬 가능한 헤더 셀 — 활성 열에 ▲/▼ 표시.
@@ -374,6 +364,7 @@ export function HometaxCalcPanel() {
   const [results,        setResults]        = useState<Record<string, RowResult>>({})
   const [detailFor,      setDetailFor]      = useState<string | null>(null)
   const [selectedCalcNo, setSelectedCalcNo] = useState<string | null>(null)   // 클릭된 본행(파랑 표시) — 드로어(detailFor)와 분리
+  const [listSort, setListSort] = useState<SortState | null>({ key: "nm", dir: "asc" })   // 목록 정렬(전 탭 공유, 기본 이름순) — 전체실행 처리순서를 화면 정렬순과 일치시킴
   const [procTotalFor,   setProcTotalFor]   = useState<{ calcNo: string; nm: string; text: string } | null>(null)
   // 상세조회 드로어 좌우 패널 리사이즈 (계산과정 ↔ 실행과정)
   const [detailLeftPct,  setDetailLeftPct]  = useState(50)
@@ -567,7 +558,7 @@ export function HometaxCalcPanel() {
     setBatchError(null)
 
     const sep = endpoint.includes("?") ? "&" : "?"
-    const es = new EventSource(`/api/tools/hometax-calc/${endpoint}${sep}year=${year}&ntsYear=${ntsYear}`)
+    const es = new EventSource(`/api/tools/hometax-calc/${endpoint}${sep}year=${year}&ntsYear=${ntsYear}&sortKey=${encodeURIComponent(listSort?.key ?? "")}&sortDir=${listSort?.dir ?? "asc"}`)
     batchEsRef.current = es
 
     es.addEventListener("start", (e) => {
@@ -881,14 +872,14 @@ export function HometaxCalcPanel() {
             <span>국세청 서비스가 개시되면 지원 예정입니다.</span>
           </div>
         ) : (<>
-        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
-        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
-        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
-        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
-        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />}
+        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
         {tab === "etc" && (isGroup
-          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />
-          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} />)}
+          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
+          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
         </>)}
       </div>
@@ -958,13 +949,14 @@ export function HometaxCalcPanel() {
 }
 
 // ── 전체 비교 테이블 ─────────────────────────────────────────────────────────
-function AllTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function AllTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: ListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   // 한 항목을 "YTS값 (차이)" 1컬럼으로. 차이=NTS−YTS: null(미실행)="(—)", 0=정상(회색), ≠0=이상(빨강)
   const calcCell = (yts: number | undefined, diff: number | null) => (
     <td className="px-3 py-2 text-right tabular-nums text-xs whitespace-nowrap">
@@ -1049,13 +1041,14 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
 }
 
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
-function GiftTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function GiftTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: GiftListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1156,13 +1149,14 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 신용카드 비교 테이블 (본행 = 카드소득공제 소계 / 세부행 = 가~아 전송 사용액) ──
 //   비교 기준: YTS 카드소득공제(=OTO_CARD_ETC) ↔ NTS 8430(카드소계).
 //   세부행은 "우리가 보낸 사용액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
-function CardTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function CardTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: CardListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1256,13 +1250,14 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 의료비 비교 테이블 (본행 = 의료비 세액공제 소계 / 세부행 = 대상자별 지출금액) ──
 //   비교 기준: YTS 의료비 세액공제(=RT_MEDI_AMT) ↔ NTS 8726(의료비집계).
 //   세부행은 "우리가 보낸 지출금액"(입력)이며 항목별 공제는 NTS가 소계로만 반환하므로 대조 없음.
-function MediTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function MediTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: MediListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1356,13 +1351,14 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
 // ── 기타 비교 테이블 (본행 = 기타 세액공제 합 / 세부행 = 항목별 대조) ──
 //   이질 항목(월세 등)이라 소계코드가 없어 lines 의 각 code 합으로 본행 대조.
 //   세부행은 항목별로 YTS공제(resultCol) ↔ NTS(ntsCode)를 직접 대조(medi 와 달리 세부행도 비교).
-function EtcTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function EtcTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: EtcListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1465,13 +1461,14 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
 //   ★국세청이 항목별 self ddcAmt(8701~8708) 반환 → 세부행마다 YTS공제(계좌별 SUB 합) ↔ NTS(각 code) 직접대조.
 //   YTS 항목별 세액공제액 = PAY_WRK_PEN_SAVE_SPEC.PEN_SAVE_SUB_AMT 코드별 합(RT_ISA_PEN_AMT 단일컬럼 우회).
 //   ISA 8707/8708 도 계좌별로 분리 저장돼 각각 1:1 대조 가능(2026-07-15 실측확정).
-function PensionTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function PensionTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: PensionListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
@@ -1572,14 +1569,15 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
 
 // 인적공제 그룹 = 본인 제외, 배우자·부양가족·추가공제(소득공제) + 혼인·자녀·출산(세액공제) 항목별 대조.
 // 소득/세액 혼재라 소계 합산은 무의미 → 본행은 "N항목 중 M 불일치" 요약, 세부행이 항목별 YTS↔NTS 판정.
-function PersonalTable({ items, title, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo }: {
+function PersonalTable({ items, title, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: PersonalListItem[]; title: string; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const showInput = items.some(it => it.lines.some(l => l.ytsInput != null))   // 전송 사용액(납입액) 있는 그룹만 컬럼 표시
-  const { sorted, sort, onSort } = useSortedList(items)
+  const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full text-sm border-collapse">
       <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">

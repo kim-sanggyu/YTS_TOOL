@@ -1,5 +1,6 @@
 import { buildCompareInput, runCompareForInput, type CompareRunResult } from "@/features/hometax-calc/lib/runCompareForCalcNo"
 import type { StoredRow } from "@/features/hometax-calc/lib/batchResultStore"
+import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
 
 export interface BatchRow<T> { item: T; result: CompareRunResult | null; error: string | null; ranAt: string; duration: number }
 
@@ -32,6 +33,7 @@ export function streamCompareBatch<T extends { calcNo: string }>(
   ntsYear: string,
   saveResults: (rows: BatchRow<T>[]) => string,
   cached?: Record<string, StoredRow>,   // 직전 저장결과(calcNo별). 보낼 값 지문이 같으면 국세청 호출·딜레이 스킵
+  sort?: SortState | null,              // 화면 정렬 순서(sortKey/dir) — 배치 처리순서를 화면과 일치시킴(순차 진행 시각화)
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   let cancelled = false
@@ -47,7 +49,7 @@ export function streamCompareBatch<T extends { calcNo: string }>(
       }
 
       try {
-        const items = await getItems()
+        const items = sortItems(await getItems(), sort)   // 화면 정렬순으로 처리(getItems 는 CALC_NO순 조회)
         send("start", { total: items.length })
 
         const rows: BatchRow<T>[] = []
