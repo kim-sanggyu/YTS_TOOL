@@ -1973,8 +1973,8 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                   return (
                     <Fragment key={code}>
                       {code === firstEtcCode && (
-                        <tr className="border-t-2 border-muted-foreground/20 bg-muted/60">
-                          <td colSpan={11} className="px-2 py-1 text-[10px] font-semibold text-muted-foreground">기타 (계산과정 로스터 밖)</td>
+                        <tr className="border-t-2 border-muted-foreground/50 bg-muted-foreground/15">
+                          <td colSpan={11} className="px-2 py-1 text-[11px] font-bold text-foreground">기타 (계산과정 로스터 밖)</td>
                         </tr>
                       )}
                       <tr onClick={() => setSelRow(`o:${code}`)} className={`border-t ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
