@@ -4,7 +4,45 @@
 
 ---
 
-## 최신: 2026-07-22 (origin/master = `2895bf4`)
+## 최신: 2026-07-23 (origin/master = `d5ecce0` 이후 이 핸드오프 커밋)
+
+### 이번 세션 한 것 (push 완료)
+| 커밋 | 내용 |
+|---|---|
+| `7be531b` | 현황표 원천 테이블명 접두(CALC./MAIN.)·sticky 헤더 불투명 + 부양가족 유형별 실측 주석 |
+| `008856d` | 8312 주택임차 원리금-거주자 원천 정정(PAY_WRK_MAIN → PAY_WRK_RENT_HABT_SPEC B0 SUM(PNINT_SUM)) |
+| `ea4df2e` | 장기주택저당 injectHousingVals 주석 라벨 정정(8324~29, 카탈로그 수기오류 제거) |
+| `c249495` | 전체실행 처리순서=화면 정렬순(sortItems 공통·클라서버, 12 route 배선) |
+| `4781912` | 실행과정 드로어 '기타(계산과정 로스터 밖)' 구분행 강조 |
+| `06e3cc1` | 기타 탭에 세액감면 그룹 추가(그밖의소득공제 아래) |
+| `d5ecce0` | 기타 탭에 보장성보험료·교육비 그룹 + 교육비 소계 YTS공제 연결 수정 |
+
+### 핵심 결과물
+- **★부양가족 유형별 실측 확정**([[reference_nts_family_type_8004]]): **H1 기본공제는 유형 무관**(전원 한 유형에 몰아도 과세표준 동일), **H2 자녀공제(8763)는 직계비속(8005) 의존**(8005=0이면 8763=0). → 유형별→통합 단순화 **금지**(FMLY 쓰는 이유는 기본공제 아닌 자녀공제 재현). 3명 실측 `docs/hometax-family-lump-probe.mjs`, 실수방지 주석 2곳(2025.ts·runCompareForCalcNo.ts).
+- **X202600522 자녀공제 규명**: YTS 319,370 vs 격리probe 550,000 차이 = **산출세액 소진**(정상, YTS 한도 정확적용). 세액공제 검증은 전체전송으로만 판단(격리 probe는 소진 못봄).
+- **현황표 UI**: yts IN/OUT에 소속 테이블 접두(`ytsSrcWithTable` 공용화·미사용 `ytsInOf` 제거), IN 컬럼 값 흑색, 매핑/로스터 sticky 헤더 불투명(bg-muted, border-collapse 대비 th별 배경), 기타 구분행 강조.
+- **8312 원천 정정**: 전송값을 `PAY_WRK_MAIN.HOUSE_RALR_HABT` → `PAY_WRK_RENT_HABT_SPEC`(RENT_HABT_CLS='B0') `SUM(PNINT_SUM)`. runCompareForCalcNo·housingList 양쪽. **8311(대출기관)은 MAIN.HOUSE_RALR_LENDER 확정**.
+- **★전체실행 정렬순 일치**: `lib/sortItems.ts` 공통 comparator(클라 `useSortedList`·서버 `streamCompareBatch` 공유), 정렬상태 `listSort` 상위 리프트(전 탭 공유·기본 이름순), `runItemBatch`가 sortKey/dir을 배치 URL에 전달, 배치 route 12개 파싱→정렬. 화면 위→아래 순차 진행 시각화.
+- **★기타 탭 신규 그룹 3개**: **세액감면**(그밖의소득공제 아래, `getTaxCutItems`, IN=8601 TAX_GOVM_AGREE/나머지 FN_PAY_GET_WRK_NTAX Txx, `filterByInput`=전송>0만), **보장성보험료**(혼인자녀출산 아래, `getInsuranceItems` 8710 12%·8711 15%), **교육비**(보장성보험료 아래, `getEducationItems` 소계형 8735 전용조회). 각 batch route(cut/insurance/education) + list 분기 + `ETC_GROUPS`/탭 등록.
+- **교육비 8730 resultCol=RT_EDU_AMT 추가**: ③표 8735 소계 YTS공제 빈칸 수정 — 없으면 `ytsDdcMap[8735]` 미채움(카드 8431→8430 대칭).
+
+### 검증 진행표(상규님 진행)
+- 인적공제~그밖의소득공제 항목별 ytsCol/resultCol의 **field·table** 대조표 작성 중. 8312(SPEC B0)·8005(자녀공제 열쇠)·투자조합(PEN_SAVE_SUB_AMT 집계) 등 원천 확정. 남은: 기타세액공제 등.
+
+### ▶ 다음 할 일
+1. **신규 3그룹(세액감면·보험료·교육비) 앱 동작 수동확인** + 전체실행 정렬순 확인(테스트 없음).
+2. **세액감면 8603(전송0)에 NTS공제 값 온 현상** = 국세청 조특법30조 통합처리 실측(백로그 기록됨).
+3. 검증 진행표 남은 그룹(기타세액공제 등) 이어가기.
+4. 백로그 다수: **인적공제 OUT 갭**(OUT_GROUPS에 "인적공제" 누락→현황표 OUT 전부 —)·**집계형 OUT 매핑 한계**·**self-subtotal 렌더 갭**(투자조합 개별이 소계 아래 안 붙음)·**yts↔amtClusCd 분리매핑**·**계약변경 감지기**.
+
+### ⚠️ 주의
+- **세액감면 RT_R_LAW(8개)·RT_R_LAW_CLAUS30(8603/8608) 공유 → 개별 대조 한계**. `filterByInput`로 전송>0 항목만 표시해 오표시는 완화했으나, 근본은 YTS가 여러 감면유형을 한 컬럼에 합산하는 구조.
+- 신규 그룹 대상자 연도 주의(X2026/Y2025) — 화면 기본 2025.
+- `npm run typecheck` 기존 에러 4개(tax-insight·hwp-layout) — 무관.
+
+---
+
+## 이전: 2026-07-22 (origin/master = `2895bf4`)
 
 ### 이번 세션 한 것 (push 완료)
 | 커밋 | 내용 |
