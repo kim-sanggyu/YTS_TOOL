@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef, Fragment, type ReactNode } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileDown, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { toast } from "sonner"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
@@ -383,7 +382,6 @@ export function HometaxCalcPanel() {
   const [sessionLoading, setSessionLoading] = useState(false)
   const [batchRunning,   setBatchRunning]   = useState(false)
   const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number; skipped: number } | null>(null)
-  const [batchFile,      setBatchFile]      = useState<string | null>(null)
   const [batchError,     setBatchError]     = useState<string | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
@@ -452,7 +450,6 @@ export function HometaxCalcPanel() {
     } catch { /* 무시 */ }
     setResults({})
     setCachedAt(null)
-    setBatchFile(null)
   }
 
   useEffect(() => {
@@ -499,7 +496,7 @@ export function HometaxCalcPanel() {
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
-      .then((d: { savedAt: string | null; filePath?: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
+      .then((d: { savedAt: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
         if (cancelled || !d.rows?.length) return
         setResults(prev => {
           const next = { ...prev }
@@ -513,7 +510,6 @@ export function HometaxCalcPanel() {
           return next
         })
         setCachedAt(d.savedAt)
-        setBatchFile(d.filePath ?? null)   // 복원 후에도 마지막 배치 엑셀 "결과파일 열기" 가능
       })
       .catch(() => { /* 캐시 없음/오류 무시 */ })
     return () => { cancelled = true }
@@ -560,7 +556,6 @@ export function HometaxCalcPanel() {
     if (batchRunning) return
     setBatchRunning(true)
     setBatchProgress({ done: 0, total, skipped: 0 })
-    setBatchFile(null)
     setBatchError(null)
 
     const sep = endpoint.includes("?") ? "&" : "?"
@@ -587,9 +582,7 @@ export function HometaxCalcPanel() {
       setBatchError(message)
     })
 
-    es.addEventListener("done", (e) => {
-      const { filePath } = JSON.parse((e as MessageEvent).data) as { filePath: string }
-      setBatchFile(filePath)
+    es.addEventListener("done", () => {
       setCachedAt(new Date().toISOString())   // 방금 돌린 결과도 캐시에 저장됨 → "저장된 결과 한 벌"로 통일 표시
       setBatchRunning(false)
       es.close()
@@ -792,29 +785,12 @@ export function HometaxCalcPanel() {
             {batchError && (
               <span className="text-xs text-red-600">{batchError}</span>
             )}
-            {/* 저장된 전체실행 결과 = 한 벌. 방금 돌렸든 복원됐든 항상 같은 모양: 실행시각 + (방금 돌렸으면)결과파일 + 지우기 */}
+            {/* 저장된 전체실행 결과 = 한 벌. 방금 돌렸든 복원됐든 항상 같은 모양: 실행시각 + 지우기 */}
             {cachedAt && !batchRunning && (
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span title="저장된 전체실행 결과입니다. 다시 실행하면 갱신됩니다.">
                   실행 {formatRanAt(new Date(cachedAt))}
                 </span>
-                {batchFile && (
-                  <span
-                    className="flex items-center gap-1 text-green-600 cursor-pointer hover:underline"
-                    title={`${batchFile}\n(클릭 시 탐색기에서 위치 열기)`}
-                    onClick={() => {
-                      fetch("/api/tools/hometax-calc/reveal-file", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify({ path: batchFile }),
-                      })
-                        .then(async r => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "열기 실패") })
-                        .catch(e => toast.error(e instanceof Error ? e.message : "열기 실패"))
-                    }}
-                  >
-                    <FileDown className="h-3.5 w-3.5" />결과파일
-                  </span>
-                )}
                 <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
                   지우기
                 </Button>
@@ -1733,8 +1709,8 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   const ok  = nts.resultCode === "S" || nts.resultCode === null
   const displayNm = nm ?? row?.nm
 
-  // 3개 영역(결과비교/전송한 공제입력/IN·OUT) 접기 상태 — 기본 전부 펼침
-  const [collapsed, setCollapsed] = useState({ compare: false, inputs: false, io: false })
+  // 3개 영역(결과비교/전송한 공제입력/IN·OUT) 접기 상태 — 기본 ①②접힘·③(IN·OUT)만 펼침
+  const [collapsed, setCollapsed] = useState({ compare: true, inputs: true, io: false })
   // 더블클릭으로 "이 영역만 최대화" — 포커스된 영역은 grow(자기 기본값 무관) + 나머지는 접힘
   const [focusedPanel, setFocusedPanel] = useState<keyof typeof collapsed | null>(null)
   const toggle = (k: keyof typeof collapsed) => { setFocusedPanel(null); setCollapsed(c => ({ ...c, [k]: !c[k] })) }

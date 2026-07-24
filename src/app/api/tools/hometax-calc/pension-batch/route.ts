@@ -1,63 +1,13 @@
 import { NextRequest } from "next/server"
-import fs from "node:fs"
-import path from "node:path"
-import * as XLSX from "xlsx"
 import { auth } from "@/auth"
 import { getPensionItems, type PensionListItem } from "@/features/hometax-calc/lib/pensionList"
-import { streamCompareBatch, type BatchRow } from "@/features/hometax-calc/lib/streamCompareBatch"
+import { streamCompareBatch } from "@/features/hometax-calc/lib/streamCompareBatch"
 import { upsertBatchResults, batchRowToStored, loadBatchResults } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 800
 
 const ATTR_YR = "2025"
-
-// 연금계좌 요약(건별 세액공제 합)+세부(종류별 self 대조) 두 시트로 엑셀 워크북 구성.
-//   ★국세청 항목별 self(8701~8708) → NTS 공제는 lines 의 각 code 합, 세부는 항목별 YTS↔NTS 대조.
-function buildWorkbook(rows: BatchRow<PensionListItem>[]) {
-  const summary = rows.map(({ item, result, error }) => {
-    const ntsDdc = result ? item.lines.reduce((s, l) => s + (result.ntsMap[l.code] ?? 0), 0) : null
-    const diff   = ntsDdc != null ? ntsDdc - item.penDdc : null
-    return {
-      CALC_NO:        item.calcNo,
-      이름:            item.nm,
-      총급여:          item.totPayAmt,
-      YTS_연금계좌공제: item.penDdc,
-      NTS_연금계좌공제: ntsDdc,
-      차이:            diff,
-      일치:            diff === 0,
-      소진:            item.exhaustLabel ?? "",
-      오류:            error ?? "",
-    }
-  })
-
-  const detail = rows.flatMap(({ item, result }) =>
-    item.lines.map(line => ({
-      CALC_NO:   item.calcNo,
-      이름:       item.nm,
-      항목:       line.label,
-      코드:       line.code,
-      전송납입액: line.useAmt,
-      YTS공제:   line.ytsDdc,
-      NTS공제:   result ? (result.ntsMap[line.code] ?? null) : null,
-    }))
-  )
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "요약")
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "세부")
-  return wb
-}
-
-function saveWorkbook(rows: BatchRow<PensionListItem>[], year: string, ntsYear: string): string {
-  const dir = path.join(process.cwd(), "data", "hometax-pension-batch")
-  fs.mkdirSync(dir, { recursive: true })
-  const ts = new Date().toISOString().replace(/[:.]/g, "-")
-  const filePath = path.join(dir, `pension-batch-${year}-nts${ntsYear}-${ts}.xlsx`)
-  const buf = XLSX.write(buildWorkbook(rows), { type: "buffer", bookType: "xlsx" }) as Buffer
-  fs.writeFileSync(filePath, buf)
-  return path.relative(process.cwd(), filePath)
-}
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -72,9 +22,7 @@ export async function GET(req: NextRequest) {
     () => getPensionItems(year),
     ntsYear,
     rows => {
-      const filePath = saveWorkbook(rows, year, ntsYear)
-      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)   // 복원용 JSON 캐시(엑셀 경로 포함)
-      return filePath
+      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))
     },
     loadBatchResults(year, ntsYear)?.rows, sort,   // 지문 같은 사람은 국세청 호출 스킵
   )

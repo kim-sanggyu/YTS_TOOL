@@ -1,60 +1,13 @@
 import { NextRequest } from "next/server"
-import fs from "node:fs"
-import path from "node:path"
-import * as XLSX from "xlsx"
 import { auth } from "@/auth"
 import { getMediItems, type MediListItem } from "@/features/hometax-calc/lib/mediList"
-import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { streamCompareBatch, type BatchRow } from "@/features/hometax-calc/lib/streamCompareBatch"
+import { streamCompareBatch } from "@/features/hometax-calc/lib/streamCompareBatch"
 import { upsertBatchResults, batchRowToStored, loadBatchResults } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 800
 
 const ATTR_YR = "2025"
-
-// 의료비 요약(건별 세액공제 소계)+세부(대상자별 전송 지출금액) 두 시트로 엑셀 워크북 구성.
-function buildWorkbook(rows: BatchRow<MediListItem>[]) {
-  const summary = rows.map(({ item, result, error }) => {
-    const ntsDdc = result ? (result.ntsMap[MEDI_SUBTOTAL_CODE] ?? 0) : null
-    const diff   = ntsDdc != null ? ntsDdc - item.mediDdc : null
-    return {
-      CALC_NO:      item.calcNo,
-      이름:          item.nm,
-      총급여:        item.totPayAmt,
-      YTS_의료비공제: item.mediDdc,
-      NTS_의료비공제: ntsDdc,
-      차이:          diff,
-      일치:          diff === 0,
-      소진:          item.exhaustLabel ?? "",
-      오류:          error ?? "",
-    }
-  })
-
-  const detail = rows.flatMap(({ item }) =>
-    item.lines.map(line => ({
-      CALC_NO:     item.calcNo,
-      이름:         item.nm,
-      항목:         line.label,
-      전송사용액: line.useAmt,
-    }))
-  )
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "요약")
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "세부")
-  return wb
-}
-
-function saveWorkbook(rows: BatchRow<MediListItem>[], year: string, ntsYear: string): string {
-  const dir = path.join(process.cwd(), "data", "hometax-medi-batch")
-  fs.mkdirSync(dir, { recursive: true })
-  const ts = new Date().toISOString().replace(/[:.]/g, "-")
-  const filePath = path.join(dir, `medi-batch-${year}-nts${ntsYear}-${ts}.xlsx`)
-  const buf = XLSX.write(buildWorkbook(rows), { type: "buffer", bookType: "xlsx" }) as Buffer
-  fs.writeFileSync(filePath, buf)
-  return path.relative(process.cwd(), filePath)
-}
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -69,9 +22,7 @@ export async function GET(req: NextRequest) {
     () => getMediItems(year),
     ntsYear,
     rows => {
-      const filePath = saveWorkbook(rows, year, ntsYear)
-      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored), filePath)   // 복원용 JSON 캐시(엑셀 경로 포함)
-      return filePath
+      upsertBatchResults(year, ntsYear, rows.map(batchRowToStored))
     },
     loadBatchResults(year, ntsYear)?.rows, sort,   // 지문 같은 사람은 국세청 호출 스킵
   )

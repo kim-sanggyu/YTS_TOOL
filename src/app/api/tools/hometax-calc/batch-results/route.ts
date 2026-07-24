@@ -16,9 +16,9 @@ export async function GET(req: NextRequest) {
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? ATTR_YR).trim()
 
   const store = loadBatchResults(year, ntsYear)
-  if (!store) return Response.json({ savedAt: null, filePath: null, rows: [] })
+  if (!store) return Response.json({ savedAt: null, rows: [] })
 
-  return Response.json({ savedAt: store.savedAt, filePath: store.filePath ?? null, rows: Object.values(store.rows) })
+  return Response.json({ savedAt: store.savedAt, rows: Object.values(store.rows) })
 }
 
 // 저장된 이전 실행 결과(해당 year+ntsYear) 삭제.

@@ -24,14 +24,14 @@ async function interruptibleSleep(ms: number, isCancelled: () => boolean) {
 }
 
 // 리스트 조회 → calcNo 별 순차 비교실행(runCompareForCalcNo, 세션 재사용) → SSE로 진행상황 전송 →
-// 전량 완료 후 saveResults(엑셀 저장 등)를 호출해 결과 저장경로를 done 이벤트로 전달.
+// 전량 완료 후 saveResults(복원용 JSON 캐시 저장)를 호출.
 // 4개 비교탭(기부금/신용카드/의료비/연금계좌)의 "전체 실행" 배치 라우트가 공통으로 사용.
 // 클라이언트가 연결을 끊으면(중단 버튼 → EventSource.close()) 플랫폼이 stream의 cancel()을 호출 —
 // 이를 신호로 남은 인원은 요청을 보내지 않고 즉시 중단한다.
 export function streamCompareBatch<T extends { calcNo: string }>(
   getItems: () => Promise<T[]>,
   ntsYear: string,
-  saveResults: (rows: BatchRow<T>[]) => string,
+  saveResults: (rows: BatchRow<T>[]) => void,
   cached?: Record<string, StoredRow>,   // 직전 저장결과(calcNo별). 보낼 값 지문이 같으면 국세청 호출·딜레이 스킵
   sort?: SortState | null,              // 화면 정렬 순서(sortKey/dir) — 배치 처리순서를 화면과 일치시킴(순차 진행 시각화)
 ): ReadableStream<Uint8Array> {
@@ -102,8 +102,8 @@ export function streamCompareBatch<T extends { calcNo: string }>(
           if (!blocked && !skipped && i < items.length - 1) await interruptibleSleep(randomDelay(), () => cancelled)
         }
 
-        const filePath = saveResults(rows)
-        send("done", { filePath, count: rows.length, cancelled })
+        saveResults(rows)
+        send("done", { count: rows.length, cancelled })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         send("error", { message: msg })
