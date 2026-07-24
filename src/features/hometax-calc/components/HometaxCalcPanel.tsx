@@ -124,11 +124,14 @@ interface Exhaustable { exhausted?: boolean; exhaustLabel?: string | null }
 function ExhaustBadge({ item }: { item: Exhaustable }) {
   if (!item.exhausted) return null
   return (
+    // 아이콘 버튼(h-6)과 동일한 높이의 플렉스 래퍼로 감싸 세로 중앙을 맞춘다(계산 아이콘과 정렬 일치)
     <span
-      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 align-middle whitespace-nowrap"
+      className="inline-flex h-6 items-center align-middle"
       title="산출세액이 앞 항목에서 소진되어 이 항목 공제가 0으로 처리됨 — YTS·NTS 차이의 원인일 수 있음"
     >
-      {item.exhaustLabel ?? "세액소진"}
+      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 whitespace-nowrap">
+        {item.exhaustLabel ?? "세액소진"}
+      </span>
     </span>
   )
 }
@@ -1814,6 +1817,9 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
           <span className="text-muted-foreground text-sm font-normal">실행과정</span>
           <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             응답 {nts.resultCode ?? "—"}
+          </span>
+          <span className="text-muted-foreground text-xs font-normal">
+            {res.ranAt} · {time(res.duration)}
           </span>
         </div>
       </div>
