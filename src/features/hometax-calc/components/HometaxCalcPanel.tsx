@@ -249,6 +249,7 @@ interface PersonalLine {
   label: string; kind: string   // 소득공제/세액공제
   ytsDdc: number        // YTS 공제액 (NTS ntsMap[code] 와 대조)
   ytsInput?: number     // 전송 사용액(납입액 등) — 주택마련저축 등 일부 그룹만
+  birthBreakdown?: string  // 출산입양(8761) 전송 사용액을 순번별로("첫째 1·둘째 1"). 있으면 ytsInput 대신 표시
 }
 interface PersonalListItem {
   calcNo: string; nm: string; totPayAmt: number
@@ -1638,7 +1639,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                       {line.label}
                       <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                     </td>
-                    {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.ytsInput != null ? won(line.ytsInput) : "—"}</td>}
+                    {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">

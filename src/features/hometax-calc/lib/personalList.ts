@@ -3,7 +3,7 @@ import { PERSONAL_ROWS, type PersonalKind } from "@/features/hometax-calc/mappin
 import { exhaustInfo } from "@/features/hometax-calc/lib/exhaust"
 import { calcMethodLabel, workStatusLabel } from "@/features/hometax-calc/lib/personInfo"
 
-export interface PersonalLine { code: string; label: string; kind: string; ytsDdc: number; ytsInput?: number }
+export interface PersonalLine { code: string; label: string; kind: string; ytsDdc: number; ytsInput?: number; birthBreakdown?: string }
 export interface PersonalListItem {
   calcNo: string; nm: string; totPayAmt: number
   exhausted: boolean; exhaustLabel: string | null
@@ -29,12 +29,18 @@ export async function getPersonalItems(year: string, kind?: PersonalKind): Promi
   }).join(", ")
   const anyPositive = cols.map(r => `NVL(c.${r.ytsCol}, 0) > 0`).join(" OR ")
 
+  // 출산입양(8761) 조회 시 순번별(첫째3/둘째5/셋째7, FMLY_RELN 550-050) 인원 집계 — "전송 사용액" 을 순번별로 표시.
+  const hasBirth = cols.some(r => r.code === "8761")
+  const birthAgg = (v: string) => `(SELECT NVL(SUM(CASE WHEN PER_CHI_YN='${v}' AND FMLY_RELN='550-050' THEN 1 ELSE 0 END),0)
+           FROM YTS39.PAY_WRK_FMLY bf WHERE bf.CALC_NO=c.CALC_NO AND bf.BAS_SUB_YN='Y')`
+  const birthSel = hasBirth ? `, ${birthAgg("3")} AS BIRTH1, ${birthAgg("5")} AS BIRTH2, ${birthAgg("7")} AS BIRTH3` : ""
+
   const rows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
            c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
            m.EMP_NO, m.KEEP_PS,
-           ${ddcSel}, ${inSel}
+           ${ddcSel}, ${inSel}${birthSel}
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
@@ -44,8 +50,19 @@ export async function getPersonalItems(year: string, kind?: PersonalKind): Promi
   `, [year])
 
   return rows.map(r => {
+    // 출산입양 순번별 표시("첫째 1·둘째 1") — 있는 순번만. 없으면 undefined(→ 기존 총인원 표시로 폴백).
+    const birthParts: string[] = []
+    if (Number(r.BIRTH1 ?? 0) > 0) birthParts.push(`첫째 ${Number(r.BIRTH1)}`)
+    if (Number(r.BIRTH2 ?? 0) > 0) birthParts.push(`둘째 ${Number(r.BIRTH2)}`)
+    if (Number(r.BIRTH3 ?? 0) > 0) birthParts.push(`셋째 ${Number(r.BIRTH3)}`)
+    const birthBreakdown = birthParts.length ? birthParts.join("·") : undefined
+
     const lines: PersonalLine[] = cols
-      .map(row => ({ code: row.code, label: row.label, kind: row.kind, ytsDdc: Number(r[`DDC_${row.code}`] ?? 0), ytsInput: Number(r[`IN_${row.code}`] ?? 0) }))
+      .map(row => ({
+        code: row.code, label: row.label, kind: row.kind,
+        ytsDdc: Number(r[`DDC_${row.code}`] ?? 0), ytsInput: Number(r[`IN_${row.code}`] ?? 0),
+        ...(row.code === "8761" && birthBreakdown ? { birthBreakdown } : {}),
+      }))
       .filter(l => l.ytsDdc > 0)
     const ex = exhaustInfo(r.EXHAUSTED_POINT as string | null)
     return {
