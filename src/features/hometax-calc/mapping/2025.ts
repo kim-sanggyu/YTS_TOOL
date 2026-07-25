@@ -176,8 +176,8 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=7(70만). OUT은 소계 8761에 합산. resultCol=소계 총액" },
 
   // ── 세액공제: 보험료 (전송=공제대상금액 SPCL_*) ────────────────────────────
-  { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액(SPCL_IF_GRT_INSU_AMT, 100만 capped) 전송 → NTS self OUT ddcAmt=12% ↔ RT_IF_GRT_INSU_AMT 원단위 일치. 지출총액 컬럼 없음, 한도 정액이라 공제대상 전송이 정답(2026-07-17 실측확정)" },
-  { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "SPCL_IF_HDC_PERS_INSU_AMT", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액 전송 → NTS self OUT ddcAmt=15% ↔ RT_IF_HDC_PERS_INSU_AMT 일치(X202600325=66,229). 8710과 독립 self, X2026 대상 3명(2026-07-17 실측확정)" },
+  { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "INS_GRT", resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "★원본 지출총액(PAY_WRK_FMLY_DTL SUM(GRT_INSU)→INS_GRT) 전송. 국세청이 100만 한도 self cap(2026-07-25 구분프로브 실측: useAmt=원본 20,191,680·ddcLmtAmt=0 전송→OUT 120,000=100만×12%, no-cap 2,423,002 아님) → NTS self OUT ddcAmt=12% ↔ RT_IF_GRT_INSU_AMT 원단위 일치. 원본전송으로 한도로직 교차검증. 구 SPCL_IF_GRT_INSU_AMT(100만 capped) 전송 폐기: 한도 검증 사각이었음" },
+  { group: "세액공제", ntsCode: "8711", label: "장애인전용 보장성보험료", ytsCol: "INS_HDC", resultCol: "RT_IF_HDC_PERS_INSU_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "★원본 지출총액(PAY_WRK_FMLY_DTL SUM(HDC_PERS_INSU)→INS_HDC) 전송. 국세청 100만 self cap(2026-07-25 실측: 원본 1,525,400→OUT 150,000=100만×15%) → NTS OUT ddcAmt=15% ↔ RT_IF_HDC_PERS_INSU_AMT 일치. 8710과 독립 self. 구 SPCL_IF capped 전송 폐기" },
 
   // ── 세액공제: 교육비 = 소계형(8735). ★국세청 서버는 구분(8730~34) 무시하고 ddcTrgtAmt×15%를 8735로 합산 ──
   //   한도(초중고300만/대학900만)는 국세청 화면이 적용해 ddcTrgtAmt(공제대상)를 만들고, 서버는 그대로 신뢰(재한도 없음).

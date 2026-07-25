@@ -126,12 +126,12 @@ export const getTaxCutItems = (year: string) => getGroupItems(year, TAX_CUT_ROWS
 }, "세액감면", true)   // resultCol 공유(RT_R_LAW/RT_R_LAW_CLAUS30) → 전송사용액>0 항목만 표시
 
 // 보험료 세액공제 = 보장성(8710, 12%)·장애인전용 보장성(8711, 15%). self 대조(YTS RT_IF_* ↔ NTS 각 코드).
-// 전송 사용액(공제대상금액, 100만 capped) = PAY_WRK_CALC.SPCL_IF_* — resultCol 고유(공유 아님).
+// 전송 사용액 = 원본 지출총액(PAY_WRK_FMLY_DTL 합) — 국세청이 100만 self cap(2026-07-25 실측). resultCol(RT_IF_*) 고유.
 const INSURANCE_ROWS = MAPPING_2025.filter(m => ["8710", "8711"].includes(m.ntsCode) && m.resultCol)
-const INS_CALC_COL: Record<string, string> = { "8710": "SPCL_IF_GRT_INSU_AMT", "8711": "SPCL_IF_HDC_PERS_INSU_AMT" }
+const INS_SRC_COL: Record<string, string> = { "8710": "GRT_INSU", "8711": "HDC_PERS_INSU" }
 export const getInsuranceItems = (year: string) => getGroupItems(year, INSURANCE_ROWS, m => {
-  const col = INS_CALC_COL[m.ntsCode]
-  return col ? `NVL(c.${col}, 0)` : null
+  const col = INS_SRC_COL[m.ntsCode]
+  return col ? `(SELECT NVL(SUM(${col}),0) FROM YTS39.PAY_WRK_FMLY_DTL d WHERE d.CALC_NO=c.CALC_NO)` : null
 }, "세액공제")
 
 // 교육비 = 소계형(8735). 8730에 공제대상 총액(SPCL_EDU_AMT, 한도후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT.

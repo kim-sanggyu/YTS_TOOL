@@ -189,6 +189,18 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   if (Number(r.FAM_MRRG ?? 0) > 0) vals.FAM_MRRG = Number(r.FAM_MRRG)
 }
 
+// ── 보장성보험료 원본전송(INS_) — PAY_WRK_FMLY_DTL 원본 지출총액 합 주입 ──
+// 국세청이 100만 한도를 self cap(2026-07-25 구분프로브 실측, docs/insurance-cap-probe.mjs) → 원본을 보내
+// 국세청이 한도 재현 → YTS RT_IF_*(엔진 cap+율)와 대조로 한도로직 교차검증. 구 SPCL_IF(capped) 전송 폐기.
+async function injectInsuranceVals(calcNo: string, vals: Record<string, number>) {
+  const [r] = await ytsDb.query<Record<string, number>>(`
+    SELECT NVL(SUM(GRT_INSU),0) AS INS_GRT, NVL(SUM(HDC_PERS_INSU),0) AS INS_HDC
+    FROM YTS39.PAY_WRK_FMLY_DTL WHERE CALC_NO = :1`, [calcNo])
+  if (!r) return
+  if (Number(r.INS_GRT ?? 0) > 0) vals.INS_GRT = Number(r.INS_GRT)
+  if (Number(r.INS_HDC ?? 0) > 0) vals.INS_HDC = Number(r.INS_HDC)
+}
+
 // ── 세액감면 감면대상급여 → CUT_{코드} 주입 ──
 // 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"(감면세액=산출세액×(대상급여/총급여)×율). 율은 국세청 코드가 결정.
 // 원천 = FN_PAY_GET_WRK_NTAX(CALC_NO,'MAIN'/'SUB',NULL,'Txx') 합(비과세·감면소득 명세 함수) + 소득세법은 MAIN.TAX_GOVM_AGREE.
@@ -257,7 +269,7 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_") || c.startsWith("INS_")
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols()
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
@@ -308,6 +320,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   applyHouseMemberSavingsRule(mainRow?.HOUSE_HLDR_YN, vals)
 
   await injectFamilyVals(calcNo, vals)
+  await injectInsuranceVals(calcNo, vals)
   await injectTaxCutVals(calcNo, mainRow, vals)
 
   return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
