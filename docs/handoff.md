@@ -4,7 +4,38 @@
 
 ---
 
-## 최신: 2026-07-24 (origin/master = `03c36ed` 이후 이 핸드오프 커밋)
+## 최신: 2026-07-25 (origin/master = `c9a563d`)
+
+### 이번 세션 한 것 (push 완료)
+| 커밋 | 내용 |
+|---|---|
+| `d6008d8` | 혼인세액공제 원본 500,000 전송 + 출산입양 소계 8761 YTS공제 대조 |
+| `64a3b97` | 출산입양 전송 사용액 순번별(첫째·둘째·셋째 인원) 표시 |
+| `25237e8` | 장애인전용 보장성보험료(8711) 세부행 강조색(violet) |
+| `92c97cc` | 보장성보험료 8710/8711 원본 지출총액 전송 전환 (국세청 100만 self cap 실측) |
+| `5d9ae29` | 의료비 난임(teal)·미숙아(fuchsia) 세부행 색상 구분 |
+| `c9a563d` | 의료비 부양가족별 NTS 대조 검증도구 4종 + 유형집계 실측확정 |
+
+### 핵심 결과물 — ★원본전송 원칙 대거 적용(한도/소진 로직 교차검증)
+- **✅ 혼인 8790 소진캡 실측확정**: 라이브캡처(총급여2천만) — IN ddcAmt=500,000 → **OUT 276,750**(=산출615,000−근로338,250, 잔액). **국세청이 혼인에 잔액 소진캡 독립적용**(맹목에코 아님). → 전송 `RT_MRRG`(소진후값)→**원본 500,000** 전환. 자격판정=`FAM_MRRG`(PAY_WRK_FMLY `MRRG_TAX_SUB_YN='Y'`·배우자550-010 카운트, 소진 무관 원데이터→완전소진 자격자도 포착). 대조=국세청 캡 vs YTS RT_MRRG 엔진캡. `mappingSentValue`·`buildCompareBody`·`injectFamilyVals`·`personal.inputConst`.
+- **✅ 출산입양 8761 소계대조 붙임**: 8764~66에 `resultCol=RT_PER_CHI_AMT`(카드 OTO_CARD_ETC·의료 RT_MEDI_AMT 소계형 동형)→`ytsDdcMap[8761]` 대조. 실측 이영화(Y202500414, 둘째·소진) NTS 37,788=YTS 37,788 일치(소계형도 소진캡). + 전송사용액 순번별 표시(`birthBreakdown`, PAY_WRK_FMLY PER_CHI_YN 3/5/7).
+- **✅ 보장성보험료 100만 self cap 실측확정**: 구분프로브(`docs/insurance-cap-probe.mjs`) — 우리 전송형태(useAmt=원본·ddcLmtAmt=0)로 원본 20,191,680 전송→**OUT 120,000**(=100만×12%, no-cap 아님). 6건 전원 (A) 국세청 자체 cap. → 전송 `SPCL_IF_*`(100만 capped)→**원본 지출총액**(`PAY_WRK_FMLY_DTL SUM(GRT_INSU/HDC_PERS_INSU)`→`INS_GRT/INS_HDC` 가상컬럼) 전환. `injectInsuranceVals`·isVirtual `INS_`·housingList 표시.
+- **✅ 의료비 부양가족별 NTS 대조 완전일치**: `medi-popup-auto.mjs`(반자동)로 YTS 부양가족별(PAY_WRK_FMLY_DTL MEDI_AMT/CA/ISA/HDC_MC/LOSS)을 국세청 팝업 대상자별 그리드에 자동입력→NTS UI 유형집계와 대조. **IN·OUT 전원 ✅**(본인등 7,346,151=본인 8,206,010−실손 859,859 / 난임 2,213,270 / 소계 10,508,481 / 공제 1,573,489). **국세청 UI의 실손차감·본인/그밖의 분류·3%문턱·율 = YTS 완전동일** → 우리 매핑(injectMediVals 유형집계 전송) 정당성 확정. FMLY_DTL 의료비컬럼 코멘트: MEDI_AMT=일반/MEDI_CA=미숙아/MEDI_ISA=난임/MEDI_HDC_MC=본인등특례/MEDI_LOSS=실손.
+
+### ▶ 다음 할 일
+1. **보험료 원본전송 전체실행 값검증** — 보장성보험료 대상 전체실행해 NTS OUT ↔ `RT_IF_*` 원단위 일치 확인(구분프로브로 논리는 확증, 배선 경로 회귀 확인용). 혼인·출산입양 재실행 ③표 ✅도.
+2. 검증 진행표 남은 그룹(**기타세액공제 8751/8752/8753** 등) 이어가기.
+3. 백로그: **실행/지우기 범위 비대칭**(전체실행은 탭별 부분인데 지우기는 전체뿐→부분지우기, [[project_hometax_calc_backlog]] 추가함)·인적공제 OUT갭·집계형 OUT 매핑 한계·yts↔amtClusCd 분리매핑·계약변경 감지기.
+
+### ⚠️ 주의
+- **★websquare 자동화 한계**: JS value 세팅·dispatchEvent click 을 websquare가 거부(not enabled/내부모델 미반영). 팝업 그리드 입력은 elementHandle click+fill(사람이 연 팝업), **총급여는 수동입력 필요**(급여 적용→근로소득금액 산출돼야 의료비 3%문턱 계산). `medi-popup-auto.mjs`는 반자동(팝업열기·총급여·본계산만 사람, 나머지 자동). 완전무인은 미달성.
+- DB 오늘은 안정(어제 ORA-12170 재발했으나 오늘 정상).
+- `npm run typecheck` 기존 에러 4개(tax-insight·hwp-layout) — 무관.
+- 방법론 고정: NTS 계약은 라이브캡처(`hometax-capture-io.mjs`)·합성 프로브(`*-probe.mjs`), 팝업 셀렉터 탐색(`medi-popup-explore.mjs`).
+
+---
+
+## 이전: 2026-07-24 (origin/master = `03c36ed` 이후 이 핸드오프 커밋)
 
 ### 이번 세션 한 것 (push 완료)
 | 커밋 | 내용 |
