@@ -19,9 +19,12 @@ export async function getPersonalItems(year: string, kind?: PersonalKind): Promi
   const ddcSel    = cols.map(r => `NVL(c.${r.ytsCol}, 0) AS DDC_${r.code}`).join(", ")
   // 전송값(IN): flag 항목은 공제액컬럼>0 을 1명으로 환산, 나머지는 인원/금액 컬럼값 그대로
   const inSel     = cols.map(r => {
-    const expr = r.inputMode === "flag"
-      ? `CASE WHEN NVL(c.${r.inputCol}, 0) > 0 THEN 1 ELSE 0 END`
-      : `NVL(c.${r.inputCol}, 0)`
+    // inputConst: 고정 정액 전송(혼인 500,000 원본) — 컬럼 무시하고 리터럴. 단 자격(공제액>0=ytsCol) 있는 행만 표시되므로 여기선 상수로 충분.
+    const expr = r.inputConst != null
+      ? `${r.inputConst}`
+      : r.inputMode === "flag"
+        ? `CASE WHEN NVL(c.${r.inputCol}, 0) > 0 THEN 1 ELSE 0 END`
+        : `NVL(c.${r.inputCol}, 0)`
     return `${expr} AS IN_${r.code}`
   }).join(", ")
   const anyPositive = cols.map(r => `NVL(c.${r.ytsCol}, 0) > 0`).join(" OR ")

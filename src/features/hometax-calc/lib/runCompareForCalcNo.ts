@@ -159,7 +159,7 @@ function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Re
   put("8329", mainRow?.LH_LRSF60)           // 2012이후 10~15년  ※매핑(코드↔컬럼)은 정답, 라벨은 국세청 화면 2011이전5/2012이후4 기준(2025.ts). 카탈로그 3구분(2015이후)은 수기오류라 되돌리지 말 것
 }
 
-// ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
+// ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) + 혼인자격(FAM_MRRG) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
 // 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
 // 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
 // ★이 FMLY 집계를 CALC 통합인원(BASC_SUB_FAMILY_CNT)으로 대체하지 말 것: 기본공제는 유형 무관이나 자녀공제(8763)가
@@ -176,7 +176,8 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
       SUM(CASE WHEN FMLY_RELN = '550-080' THEN 1 ELSE 0 END) AS FAM_8009,
       SUM(CASE WHEN PER_CHI_YN = '3' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8764,
       SUM(CASE WHEN PER_CHI_YN = '5' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8765,
-      SUM(CASE WHEN PER_CHI_YN = '7' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8766
+      SUM(CASE WHEN PER_CHI_YN = '7' AND FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8766,
+      SUM(CASE WHEN MRRG_TAX_SUB_YN = 'Y' AND FMLY_RELN = '550-010' THEN 1 ELSE 0 END) AS FAM_MRRG
     FROM YTS39.PAY_WRK_FMLY
     WHERE CALC_NO = :1 AND BAS_SUB_YN = 'Y'`, [calcNo])
   if (!r) return
@@ -184,6 +185,8 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
     const n = Number(r[`FAM_${code}`] ?? 0)
     if (n > 0) vals[`FAM_${code}`] = n
   }
+  // 혼인세액공제 자격(소진 무관 원데이터): >0 이면 buildCompareBody 가 원본 500,000 전송(8790). (2026-07-25 실측)
+  if (Number(r.FAM_MRRG ?? 0) > 0) vals.FAM_MRRG = Number(r.FAM_MRRG)
 }
 
 // ── 세액감면 감면대상급여 → CUT_{코드} 주입 ──

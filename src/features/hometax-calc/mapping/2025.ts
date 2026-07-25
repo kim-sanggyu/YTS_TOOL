@@ -166,14 +166,14 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약(교직자)", ytsCol: "CUT_8606", resultCol: "RT_TAX_TREATY", valueKey: "useAmt", rule: "value", status: "추정", send: true, note: "IN=FN Txx T20 합(조세조약 교직자 감면대상급여)→CUT_8606. OUT self ↔ RT_TAX_TREATY. X2026 대상 0 미검증. 2026-07-22 원천확정" },
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
-  { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "RT_MRRG",             valueKey: "useAmt", rule: "flag",  status: "확정", send: true, note: "혼인공제는 국세청 미검산(입력 ddcAmt 그대로 인정). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=RT_MRRG) → 결정세액에만 반영. tab 미부여=항목대조 제외(고정 50만·대조실익 없음). 2026-07-16 실측" },
+  { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "FAM_MRRG",            resultCol: "RT_MRRG", valueKey: "useAmt", rule: "flag",  status: "확정", send: true, note: "★국세청이 혼인 ddcAmt에 잔액 소진캡 독립적용(2026-07-25 실측: IN ddcAmt=500,000 → OUT 276,750 = 산출615,000−근로338,250). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=500,000 원본, 자격=FAM_MRRG>0=PAY_WRK_FMLY MRRG_TAX_SUB_YN 'Y'·배우자550-010 카운트). 원본전송→국세청이 소진 독립재현→YTS RT_MRRG(엔진캡)와 ③표 대조로 소진로직 교차검증. 구 RT_MRRG(소진후값) 전송 폐기: 검증 사각이었음" },
   { group: "세액공제", ntsCode: "8763", label: "자녀세액공제",  ytsCol: "RT_HWC_CNT",     resultCol: "RT_HWC_AMT",     valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "★총인원(RT_HWC_CNT) 필수 전송. 8004~8009(유형별)만으론 8763=0 → 유형별+총인원 둘 다 있어야 산출(8~20세 조건이라 국세청이 직계비속 수만으론 미판단). 2026-07-17 실측 정정" },
   // ── 출산·입양(8761) = 소계형(카드8430·의료8726 동형): 순번별 8764~8766(개별 IN)을 국세청이 합산해 8761(소계 OUT)로 회신 ──
   //   ★8761 자체엔 값 전송 안 함 — 총인원(RT_PER_CHI_CNT) 전송은 국세청이 무시하는 잉여(2026-07-17 실측). 8761은 SUBTOTAL_CODES(소계코드)로만 존재.
   //   순번별 (PAY_WRK_FMLY.PER_CHI_YN 3/5/7 = 첫째/둘째/셋째, 모두 FMLY_RELN 550-050). 8761 소계 OUT ↔ YTS RT_PER_CHI_AMT 대조.
-  { group: "세액공제", ntsCode: "8764", label: "출산입양-첫째",     ytsCol: "FAM_8764", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=3(30만). OUT은 소계 8761에 합산" },
-  { group: "세액공제", ntsCode: "8765", label: "출산입양-둘째",     ytsCol: "FAM_8765", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=5(50만). OUT은 소계 8761에 합산" },
-  { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=7(70만). OUT은 소계 8761에 합산" },
+  { group: "세액공제", ntsCode: "8764", label: "출산입양-첫째",     ytsCol: "FAM_8764", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=3(30만). OUT은 소계 8761에 합산. resultCol=소계 총액(카드 OTO_CARD_ETC·의료 RT_MEDI_AMT 동형)→ytsDdcMap[8761] 대조(국세청 소진캡 vs YTS 엔진캡, 2026-07-25)" },
+  { group: "세액공제", ntsCode: "8765", label: "출산입양-둘째",     ytsCol: "FAM_8765", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=5(50만). OUT은 소계 8761에 합산. resultCol=소계 총액" },
+  { group: "세액공제", ntsCode: "8766", label: "출산입양-셋째이상", ytsCol: "FAM_8766", resultCol: "RT_PER_CHI_AMT", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, outCode: "8761", note: "PER_CHI_YN=7(70만). OUT은 소계 8761에 합산. resultCol=소계 총액" },
 
   // ── 세액공제: 보험료 (전송=공제대상금액 SPCL_*) ────────────────────────────
   { group: "세액공제", ntsCode: "8710", label: "보장성보험료",        ytsCol: "SPCL_IF_GRT_INSU_AMT",      resultCol: "RT_IF_GRT_INSU_AMT",      valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "공제대상금액(SPCL_IF_GRT_INSU_AMT, 100만 capped) 전송 → NTS self OUT ddcAmt=12% ↔ RT_IF_GRT_INSU_AMT 원단위 일치. 지출총액 컬럼 없음, 한도 정액이라 공제대상 전송이 정답(2026-07-17 실측확정)" },
@@ -309,11 +309,14 @@ export function mappingSelectCols(): string[] {
   return [...set]
 }
 
+/** 혼인세액공제 법정 정액(50만). 자격자면 이 원본값을 ddcAmt 로 전송 → 국세청이 잔액 소진캡 독립적용. */
+export const MARRIAGE_CREDIT = 500000
+
 /** 한 매핑행이 실제로 L03 에 넣을 값. 미전송(send:false)이면 0.
  *  const1=1, flag=원천값>0이면 1, value=원천값 그대로. */
 export function mappingSentValue(m: MappingRow, vals: Record<string, number>): number {
   if (!m.send) return 0
-  if (m.ntsCode === "8790") return m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0   // 혼인공제 특수: ddcAmt 직접전송(=RT_MRRG)
+  if (m.ntsCode === "8790") return Number(vals.FAM_MRRG ?? 0) > 0 ? MARRIAGE_CREDIT : 0   // 혼인공제 특수: 자격(FAM_MRRG>0)이면 원본 500,000 직접전송(국세청이 잔액 소진캡)
   if (m.rule === "const1") return 1
   const raw = m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0
   return m.rule === "flag" ? (raw > 0 ? 1 : 0) : raw

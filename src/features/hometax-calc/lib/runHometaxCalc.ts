@@ -1,5 +1,5 @@
 import { chromium, type Page, type Browser } from "playwright"
-import { MAPPING_2025, computeInputs, mappingSentValue, type NtsInputRow } from "@/features/hometax-calc/mapping/2025"
+import { MAPPING_2025, computeInputs, mappingSentValue, MARRIAGE_CREDIT, type NtsInputRow } from "@/features/hometax-calc/mapping/2025"
 
 const START_URL = "https://hometax.go.kr/websquare/websquare.html?w2xPath=/ui/pp/index_pp.xml&menuCd=index3"
 const L03_URL   = "https://teys.hometax.go.kr/wqAction.do?actionId=ATEYSEAA001L03&screenId=UTEYSEJF01&popupYn=false&realScreenId="
@@ -206,9 +206,11 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
     setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals))
   }
 
-  // 혼인세액공제(8790) 특수: 국세청이 검산하지 않고 입력 ddcAmt 를 그대로 인정 → incDdcNfpCnt=1 + ddcAmt=RT_MRRG.
-  const mrrg = Number(vals.RT_MRRG ?? 0)
-  if (mrrg > 0) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", mrrg) }
+  // 혼인세액공제(8790) 특수: 자격(FAM_MRRG>0=혼인세액공제대상 배우자)이면 원본 500,000 전송 → 국세청이 잔액 소진캡 독립적용.
+  //   ★RT_MRRG(소진후값)를 보내면 소진 검증 사각(우리가 캡한 값을 국세청이 에코). 원본을 보내야 국세청이 소진을 독립재현
+  //   → YTS RT_MRRG(엔진캡)와 대조로 소진로직 교차검증. 자격은 소진 무관한 원데이터라 완전소진자도 포착. (2026-07-25 실측)
+  const mrrgEligible = Number(vals.FAM_MRRG ?? 0) > 0
+  if (mrrgEligible) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", MARRIAGE_CREDIT) }
 
   const totPay = Number(vals.TOT_PAY_AMT ?? 0)
 

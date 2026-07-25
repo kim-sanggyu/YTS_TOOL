@@ -8,6 +8,8 @@
 // (전송값 IN 은 이미 MAPPING_2025 에서 send:true — 여기선 결과 대조 정의만. NTS OUT 은 실행 결과 ntsMap 에서 읽음.)
 // 코드·단가 실측확정: docs/nts-contract-capture-method.md, reference_nts_family_type_8004 (2026-07-18)
 
+import { MARRIAGE_CREDIT } from "@/features/hometax-calc/mapping/2025"
+
 export type PersonalKind = "소득공제" | "세액공제"
 
 export interface PersonalRow {
@@ -17,6 +19,7 @@ export interface PersonalRow {
   kind:      PersonalKind
   inputCol:  string        // 국세청 전송값(IN) 원천 PAY_WRK_CALC 컬럼 (인원 CNT 또는 금액)
   inputMode: "value" | "flag"   // value=컬럼값 그대로, flag=컬럼>0이면 1(인원 1명)
+  inputConst?: number      // 전송값이 고정 정액일 때(혼인=500,000 원본). 지정 시 inputCol/inputMode 무시하고 이 값 표시
 }
 
 // inputCol/inputMode = "전송 사용액" 컬럼 표시용. 국세청에 실제 보내는 값의 성격:
@@ -29,7 +32,7 @@ export const PERSONAL_ROWS: PersonalRow[] = [
   { code: "8102", label: "장애인",        ytsCol: "ADD_SUB_HDC_PERS_AMT",  kind: "소득공제", inputCol: "ADD_SUB_HDC_PERS_CNT",  inputMode: "value" },
   { code: "8103", label: "부녀자",        ytsCol: "ADD_SUB_LADY_AMT",      kind: "소득공제", inputCol: "ADD_SUB_LADY_AMT",      inputMode: "flag"  },
   { code: "8104", label: "한부모",        ytsCol: "ADD_SUB_SNGL_PRNT_AMT", kind: "소득공제", inputCol: "ADD_SUB_SNGL_PRNT_AMT", inputMode: "flag"  },
-  { code: "8790", label: "혼인세액공제",   ytsCol: "RT_MRRG",              kind: "세액공제", inputCol: "RT_MRRG",               inputMode: "value" },
+  { code: "8790", label: "혼인세액공제",   ytsCol: "RT_MRRG",              kind: "세액공제", inputCol: "RT_MRRG",               inputMode: "value", inputConst: MARRIAGE_CREDIT },  // 전송=원본 50만 고정(국세청 소진캡)·대조=RT_MRRG(엔진캡)
   { code: "8763", label: "자녀세액공제",   ytsCol: "RT_HWC_AMT",           kind: "세액공제", inputCol: "RT_HWC_CNT",            inputMode: "value" },
   { code: "8761", label: "출산입양",      ytsCol: "RT_PER_CHI_AMT",        kind: "세액공제", inputCol: "RT_PER_CHI_CNT",        inputMode: "value" },
 ]
