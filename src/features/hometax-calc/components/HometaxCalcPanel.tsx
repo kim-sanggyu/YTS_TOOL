@@ -1312,14 +1312,16 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
               {/* 세부행 = 대상자별 지출금액 (입력) */}
               {row.lines.map((line, i) => {
                 const last = i === row.lines.length - 1
+                // 난임시술비(8725, 30%)·미숙아선천성이상아(8729, 20%)는 강조색으로 구분 — 일반 의료비와, 서로도 구별
+                const hi = line.code === "8725" ? "text-teal-600 font-semibold" : line.code === "8729" ? "text-fuchsia-600 font-semibold" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
-                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                    <td className={`px-3 py-1 whitespace-nowrap ${hi || "text-muted-foreground"}`}>
                       {line.label}
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                      <span className={`ml-1.5 font-mono text-[10px] ${hi ? "opacity-60" : "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
-                    <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${hi}`}>{won(line.useAmt)}</td>
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
                     <td /><td /><td colSpan={2} />
