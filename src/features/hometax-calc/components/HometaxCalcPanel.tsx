@@ -9,6 +9,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import { GIFT_CARRY_BASE } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
@@ -101,6 +102,7 @@ interface GiftLine {
   giftCls: string; label: string; giftYy: string
   ytsSub: number        // YTS 세액공제 (GIFT_SUB_AMT)
   ableSub: number       // 공제대상금액 (전송값, GIFT_ABLE_SUB_AMT)
+  carried: boolean      // 이월 기부금(당해=false, 이월=true) — amber 색상 구분
 }
 interface GiftListItem {
   calcNo: string; nm: string; totPayAmt: number; giftTax: number
@@ -325,6 +327,20 @@ function MatchIcon({ yts, nts }: { yts: number | null; nts: number | null }) {
   return yts === nts
     ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
     : <XCircle      className="h-3.5 w-3.5 text-red-500" />
+}
+
+// 본행 그룹 헤더 = 라벨 + 항목수만큼 점(●). 검증정보는 세부행이 담당, 본행은 개수만 시각화(N항목 텍스트 대신).
+function GroupHeader({ label, n }: { label: string; n: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`${n}항목`}>
+      {label}
+      <span className="inline-flex items-center gap-1">
+        {Array.from({ length: n }).map((_, i) => (
+          <span key={i} className="inline-block h-2.5 w-2.5 rounded-full bg-amber-300" />
+        ))}
+      </span>
+    </span>
+  )
 }
 
 // ranAt 미지정 시 현재시각(라이브 실행). 캐시 복원 시엔 원래 실행시각 표시문자열을 넘긴다.
@@ -1026,6 +1042,14 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
 }
 
+// 기부금 유형별 세부행 강조색(GIFT_CLS 기준) — 정치자금=emerald, 고향사랑(일반+특별)=sky.
+// 이월(amber)보다 우선. 여기 없는 유형은 이월이면 amber, 아니면 기본(muted).
+const GIFT_TYPE_HL: Record<string, string> = {
+  "548-020": "text-emerald-600 font-semibold",   // 정치자금
+  "548-100": "text-sky-600 font-semibold",        // 고향(일반)
+  "548-110": "text-sky-600 font-semibold",        // 고향(특별)
+}
+
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
 function GiftTable({ items, loading, results, running, onRun, onDetail, onShowProc, onSelect, selectedCalcNo, listSort, onListSort }: {
   items: GiftListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
@@ -1066,12 +1090,9 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const ntsTotal  = res ? row.lines.reduce((s, l) => s + (l.code ? (res.ntsMap[l.code] ?? 0) : 0), 0) : null
-          const diff      = ntsTotal != null ? ntsTotal - row.giftTax : null
-          const ableTotal = row.lines.reduce((s, l) => s + l.ableSub, 0)
           return (
             <Fragment key={row.calcNo}>
-              {/* 본행 = 합계 */}
+              {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 유형×연도 self 대조가 담당. */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
@@ -1088,16 +1109,12 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={2}>기부금공제 소계</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(ableTotal)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.giftTax)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
-                <td className="px-3 py-2 text-center">
-                  <span className="inline-flex justify-center"><MatchIcon yts={ntsTotal != null ? row.giftTax : null} nts={ntsTotal} /></span>
-                </td>
-                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
-                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
-                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={2}><GroupHeader label="기부금" n={row.lines.length} /></td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
               </tr>
@@ -1106,12 +1123,14 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const ntsVal = res && line.code ? (res.ntsMap[line.code] ?? 0) : null
                 const d = ntsVal != null ? ntsVal - line.ytsSub : null
                 const last = i === row.lines.length - 1
+                // 유형별 강조색(정치=emerald·고향=sky) 우선, 없으면 이월=amber, 그 외 기본 — 라벨·연도·대상금액에 적용(대조컬럼은 불일치 적색 유지)
+                const hi = GIFT_TYPE_HL[line.giftCls] ?? (line.carried ? "text-amber-600 font-semibold" : "text-muted-foreground")
                 return (
                   <tr key={`${line.giftCls}-${line.giftYy}`} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
-                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">{line.label}</td>
-                    <td className="px-3 py-1 text-center tabular-nums text-muted-foreground">{line.giftYy}</td>
-                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.ableSub)}</td>
+                    <td className={`px-3 py-1 whitespace-nowrap ${hi}`}>{line.label}</td>
+                    <td className={`px-3 py-1 text-center tabular-nums ${hi}`}>{line.giftYy}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${hi}`}>{won(line.ableSub)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsSub)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
@@ -1377,12 +1396,9 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
-          const diff      = ntsTotal != null ? ntsTotal - row.etcDdc : null
-          const inputTotal = row.lines.reduce((s, l) => s + l.ytsInput, 0)
           return (
             <Fragment key={row.calcNo}>
-              {/* 본행 = 기타 세액공제 합 */}
+              {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 항목별 self 대조가 담당. */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
@@ -1399,16 +1415,13 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">기타공제 소계</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(inputTotal)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.etcDdc)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
-                <td className="px-3 py-2 text-center">
-                  <span className="inline-flex justify-center"><MatchIcon yts={ntsTotal != null ? row.etcDdc : null} nts={ntsTotal} /></span>
-                </td>
-                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
-                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
-                </td>
+                {/* 기타 탭은 드롭다운으로 한 항목만 필터 → 헤더도 그 항목명(월세액 등)으로. 다중이면 "기타" 폴백. */}
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={row.lines.length === 1 ? row.lines[0].label : "기타"} n={row.lines.length} /></td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
               </tr>
@@ -1487,12 +1500,9 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const ntsTotal  = res ? row.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0) : null
-          const diff      = ntsTotal != null ? ntsTotal - row.penDdc : null
-          const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
           return (
             <Fragment key={row.calcNo}>
-              {/* 본행 = 연금계좌 세액공제 합 */}
+              {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 self 대조가 담당. */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
@@ -1509,16 +1519,12 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">연금계좌공제 소계</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.penDdc)}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsTotal != null ? won(ntsTotal) : "—"}</td>
-                <td className="px-3 py-2 text-center">
-                  <span className="inline-flex justify-center"><MatchIcon yts={ntsTotal != null ? row.penDdc : null} nts={ntsTotal} /></span>
-                </td>
-                <td className={`px-3 py-2 text-right tabular-nums text-xs ${diff != null && diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
-                  {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
-                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label="연금계좌" n={row.lines.length} /></td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
               </tr>
@@ -1598,10 +1604,9 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
-          const mismatch  = res ? row.lines.filter(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc).length : null
           return (
             <Fragment key={row.calcNo}>
-              {/* 본행 = 인적공제 요약(항목수·불일치 건수). 소득/세액 혼재라 공제액 합산은 표시 안 함. */}
+              {/* 본행 = 대상 요약(항목수). 소득/세액 혼재라 공제액 합산은 표시 안 함 → 비교값이 없어 일치/차이 판정도 비움(세부행이 항목별 판정 담당). */}
               <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
@@ -1618,16 +1623,13 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{title} ({row.lines.length}항목)</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={title} n={row.lines.length} /></td>
                 {showInput && <td className="px-3 py-2" />}
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
-                <td className="px-3 py-2 text-center">
-                  <span className="inline-flex justify-center"><MatchIcon yts={mismatch != null ? 0 : null} nts={mismatch} /></span>
-                </td>
-                <td className={`px-3 py-2 text-right tabular-nums text-xs ${mismatch ? "text-red-600 font-medium" : "text-muted-foreground/50"}`}>
-                  {mismatch == null ? "—" : mismatch === 0 ? "0" : `${mismatch}건`}
-                </td>
+                {/* 본행은 공제값을 표시하지 않아(합산 무의미 그룹) 비교 대상이 없음 → 일치/차이 판정은 세부행이 담당, 본행은 비움 */}
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2" />
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
                 <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
               </tr>
@@ -1768,6 +1770,8 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
     if (di != null) return [di, 0, c]                                             // 로스터(계산과정) 순서
     const sub = SUBTOTAL_OF.get(c)
     if (sub) { const si = rosterOrder.get(sub); if (si != null) return [si, 1, c] }   // 소계 멤버는 소계코드 뒤
+    const gb = GIFT_CARRY_BASE[c]
+    if (gb) { const gi = rosterOrder.get(gb); if (gi != null) return [gi, 1, c] }  // 이월 기부금은 당해 유형(base) 뒤(코드순 -1년,-2년…)
     return [Number.MAX_SAFE_INTEGER, mapOrder.get(c) ?? 0, c]                     // 로스터에 없는 매핑항목은 맨 뒤(매핑순)
   }
   // 전체보기: 매핑+소계 전 항목(값 없으면 —). 값보기: 실제 IN/OUT 이 오간 코드만. 둘 다 매핑 밖(국세청 내부) 제외.
@@ -1783,7 +1787,9 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   const isRosterItem = (c: string): boolean => {
     if (rosterOrder.has(c)) return true
     const sub = SUBTOTAL_OF.get(c)
-    return sub != null && rosterOrder.has(sub)
+    if (sub != null && rosterOrder.has(sub)) return true
+    const gb = GIFT_CARRY_BASE[c]                                                  // 이월 기부금은 당해 유형(base)이 로스터에 있으면 로스터 항목으로 간주
+    return gb != null && rosterOrder.has(gb)
   }
   const firstEtcCode = ioRows.find(r => {
     const sp = SUBTOTAL_OF.get(r.code)

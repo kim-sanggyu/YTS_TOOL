@@ -3,7 +3,7 @@ import { giftCarryDiff, giftNtsCode, giftTypeLabel, giftTypeRank } from "@/featu
 import { exhaustInfo } from "@/features/hometax-calc/lib/exhaust"
 import { calcMethodLabel, workStatusLabel } from "@/features/hometax-calc/lib/personInfo"
 
-export interface GiftLine { code: string | null; giftCls: string; label: string; giftYy: string; ytsSub: number; ableSub: number }
+export interface GiftLine { code: string | null; giftCls: string; label: string; giftYy: string; ytsSub: number; ableSub: number; carried: boolean }
 export interface GiftListItem {
   calcNo: string; nm: string; totPayAmt: number; giftTax: number
   exhausted: boolean; exhaustLabel: string | null
@@ -65,6 +65,7 @@ export async function getGiftItems(year: string, ntsYear: string): Promise<GiftL
       giftYy:  String(ntsBase - diff),   // 국세청 기준 표시연도(당해→ntsYear, 이월→실제 기부연도)
       ytsSub:  sub,
       ableSub: Number(r.GIFT_ABLE_SUB_AMT ?? 0),
+      carried: diff > 0,                 // 이월 기부금(당해=0, 이월>0) — 리스트에서 색상 구분
     })
   }
 

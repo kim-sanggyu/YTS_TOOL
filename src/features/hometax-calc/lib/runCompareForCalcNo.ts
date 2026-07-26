@@ -40,6 +40,23 @@ function injectGiftVals(
   }
 }
 
+// 기부금 유형×연도별 YTS 세액공제(GIFT_SUB_AMT)를 ytsDdcMap(③표 OUT 대조)에 주입 — IN injectGiftVals 대칭.
+//   정치자금(8740)·고향(8783/84)·이월(8811~8835)은 CALC resultCol 이 없거나 조각나 있어(RT_POLITIC_FUND=초과분만)
+//   GIFT_SUB_AMT 만이 온전한 per-건 공제. resultCol 기반 특례/일반 코드도 이 값으로 덮어 비교탭과 통일한다.
+function injectGiftDdc(
+  adjRows: { GIFT_CLS: string; GIFT_YY: string; GIFT_SUB_AMT: number }[],
+  ytsYear: number,
+  ntsYear: number,
+  ytsDdcMap: Record<string, number>,
+) {
+  for (const row of adjRows) {
+    const yy   = Number(row.GIFT_YY)
+    const diff = yy === ytsYear ? 0 : ntsYear - yy
+    const code = giftNtsCode(row.GIFT_CLS, diff)
+    if (code) ytsDdcMap[code] = Number(row.GIFT_SUB_AMT ?? 0)
+  }
+}
+
 // ── 신용카드 CALC_PROC_CARD(JSON) → CARD_{코드} 가상컬럼 주입 (가~아 사용액) ────
 function injectCardVals(cardJson: string | null, vals: Record<string, number>) {
   const parsed = parseCardProc(cardJson)
@@ -254,6 +271,7 @@ export interface CompareInput {
   vals:        Record<string, number>
   unknownCols: string[]
   inputHash:   string
+  giftDdc:     Record<string, number>   // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) — ③표 OUT 대조용(vals와 분리해 지문 불변)
 }
 
 // 보낼 값(vals)을 이름순 정렬·직렬화 후 ntsYear 를 붙여 sha256. 같은 값=같은 지문(재현), 하나만 바뀌어도 달라짐.
@@ -287,8 +305,8 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   const vals: Record<string, number> = {}
   for (const c of cols) vals[c] = Number(row[c] ?? 0)
 
-  const giftAdj = await ytsDb.query<{ GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number }>(
-    `SELECT GIFT_CLS, GIFT_YY, GIFT_ABLE_SUB_AMT FROM YTS39.PAY_WRK_GIFT_ADJ WHERE CALC_NO = :1`,
+  const giftAdj = await ytsDb.query<{ GIFT_CLS: string; GIFT_YY: string; GIFT_ABLE_SUB_AMT: number; GIFT_SUB_AMT: number }>(
+    `SELECT GIFT_CLS, GIFT_YY, GIFT_ABLE_SUB_AMT, GIFT_SUB_AMT FROM YTS39.PAY_WRK_GIFT_ADJ WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectGiftVals(giftAdj, Number(dataYear), Number(ntsYear), vals)
@@ -323,7 +341,10 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   await injectInsuranceVals(calcNo, vals)
   await injectTaxCutVals(calcNo, mainRow, vals)
 
-  return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear) }
+  const giftDdc: Record<string, number> = {}
+  injectGiftDdc(giftAdj, Number(dataYear), Number(ntsYear), giftDdc)
+
+  return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear), giftDdc }
 }
 
 // ② 조립된 입력을 국세청 L03에 보내 비교결과 조립(여기서만 NTS 호출).
@@ -337,6 +358,8 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
   for (const m of MAPPING_2025) {
     if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
   }
+  // 기부금 코드는 GIFT_SUB_AMT(온전한 per-건 공제)로 채움/덮어씀 — resultCol 뒤에 실행해 특례/일반도 통일.
+  Object.assign(ytsDdcMap, input.giftDdc)
 
   return {
     calcNo,

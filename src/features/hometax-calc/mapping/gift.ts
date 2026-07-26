@@ -53,3 +53,12 @@ export function giftTypeLabel(giftCls: string): string {
 export function giftTypeRank(giftCls: string): number {
   return GIFT_TYPES[giftCls]?.rank ?? 99
 }
+
+/**
+ * 이월 기부금 코드 → 당해(base) 코드. 예: 8811~8815→8743(특례), 8821~8825→8746(종교), 8831~8835→8747(종교외).
+ * 국세청 계산과정(로스터)엔 이월분이 별도 라벨로 없어(당해 유형에 합산), ③표에서 이월 코드가
+ * 당해 base 의 로스터 위치를 상속받아 그 뒤에 정렬되도록 앵커 상속에 쓴다. (소계멤버 SUBTOTAL_OF 와 동형)
+ */
+export const GIFT_CARRY_BASE: Record<string, string> = Object.fromEntries(
+  Object.values(GIFT_TYPES).flatMap(t => (t.carry ?? []).map(c => [c, t.base]))
+)
