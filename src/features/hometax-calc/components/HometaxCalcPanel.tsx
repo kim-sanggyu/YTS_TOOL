@@ -1638,17 +1638,22 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
+                // 세부행 강조색: 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan — 리스트에서 한눈에 구분.
+                //   (리터럴 클래스 유지 — Tailwind JIT 퍼지 안전)
+                const hiText = line.code === "8711" ? "text-violet-600 font-semibold"
+                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600 font-semibold" : ""
+                const hiCode = line.code === "8711" ? "text-violet-600/60"
+                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600/60" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
-                    <td className={`px-3 py-1 whitespace-nowrap ${line.code === "8711" ? "text-violet-600 font-semibold" : "text-muted-foreground"}`}>
+                    <td className={`px-3 py-1 whitespace-nowrap ${hiText || "text-muted-foreground"}`}>
                       {line.label}
-                      <span className={`ml-1.5 font-mono text-[10px] ${line.code === "8711" ? "text-violet-600/60" : "text-muted-foreground/40"}`}>{line.code}</span>
+                      <span className={`ml-1.5 font-mono text-[10px] ${hiCode || "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
-                    {/* 장애인전용 보장성보험료(8711)는 라벨·금액을 강조색(violet)으로 — 보장성보험료 리스트에서 한눈에 구분 */}
-                    {showInput && <td className={`px-3 py-1 text-right tabular-nums ${line.code === "8711" ? "text-violet-600 font-semibold" : "text-muted-foreground"}`}>{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
-                    <td className={`px-3 py-1 text-right tabular-nums ${line.code === "8711" ? "text-violet-600 font-semibold" : ""}`}>{won(line.ytsDdc)}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${line.code === "8711" ? "text-violet-600 font-semibold" : ""}`}>{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    {showInput && <td className={`px-3 py-1 text-right tabular-nums ${hiText || "text-muted-foreground"}`}>{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
+                    <td className={`px-3 py-1 text-right tabular-nums ${hiText}`}>{won(line.ytsDdc)}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${hiText}`}>{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
                       <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
                     </td>
