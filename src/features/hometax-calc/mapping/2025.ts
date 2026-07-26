@@ -236,8 +236,12 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8701" },
   { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8702" },
   { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8703" },
-  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8707" },
-  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8708" },
+  // ISA(8707/8708)는 IN은 코드별 전송(각 계좌 납입액), OUT은 국세청이 코드별 ddcAmt + 소계 8705(ISA합)를 함께 반환.
+  //   ★YTS는 ISA 세액공제를 RT_ISA_PEN_AMT 단일(합산)컬럼으로만 보관 → ③표 per-code 대조 불가(둘 다 non-zero면
+  //   8707/8708 각각 합산값과 비교돼 오탐). 그래서 소계 8705에서만 대조(카드8430·의료8726 동형). outCode=8705.
+  //   (2026-07-26 이중케이스 X202600349 실측: 8707=88,429·8708=163,002·8705=251,431=합, 계좌별 한도 9M/6M 독립)
+  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8705" },
+  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8705" },
 
   
 ]
@@ -298,7 +302,7 @@ export const PROC_LABEL_CODE_2025: Record<string, string> = {
   "외국납부": "8751",
   // 세액공제 — 연금계좌
   "과학기술인공제회법": "8701", "근로자퇴직급여보장법": "8702", "연금저축": "8703",
-  "ISA연금계좌납입액": "8708",  // ※8707(퇴직연금)/8708(연금저축) 중 8708 추정
+  "ISA연금계좌납입액": "8705",  // ISA합 소계(8707/8708 멤버). 계산과정은 ISA 한 줄 → 소계코드 8705에 앵커(2026-07-26 실측)
 }
 
 /** 매핑에서 값을 읽어와야 하는 YTS39 컬럼 목록 (SQL SELECT 생성용, 중복·null 제거).

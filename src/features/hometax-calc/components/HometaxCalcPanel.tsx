@@ -1527,16 +1527,18 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? null) : null
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
+                // ISA만기 추가납입(8707 퇴직연금·8708 연금저축)은 강조색(indigo)으로 — 연금계좌 리스트에서 순수 연금(8701~8703)과 구분
+                const isa    = line.code === "8707" || line.code === "8708"
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
-                    <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
+                    <td className={`px-3 py-1 whitespace-nowrap ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>
                       {line.label}
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
+                      <span className={`ml-1.5 font-mono text-[10px] ${isa ? "text-indigo-600/60" : "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
-                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.useAmt)}</td>
-                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
-                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>{won(line.useAmt)}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : ""}`}>{won(line.ytsDdc)}</td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : ""}`}>{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
                       <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
                     </td>
@@ -1958,8 +1960,12 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                   if (subParent && !openSubs.has(subParent)) return null       // 소계가 접혀 있으면 멤버 숨김(기본은 펼침)
                   const isSubtotal = SUBTOTAL_CODES.has(code)                  // 소계코드 행(카드8430/의료8726 등)
                   const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
-                  const ytsD = res.ytsDdcMap[code]
-                  const ntsD = o?.ddcAmt
+                  // 소계 멤버(카드8431·ISA8707 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT(한도·인원)은 소계행이 담당(카드·의료 동형).
+                  //   ISA는 국세청이 per-code OUT도 주지만(카드·의료는 소계만), 소계형은 8705가 유일 YTS 대조점이라 멤버는 입력만.
+                  const isSubMember = subParent != null
+                  const oOut = isSubMember ? undefined : o
+                  const ytsD = isSubMember ? undefined : res.ytsDdcMap[code]
+                  const ntsD = oOut?.ddcAmt
                   const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
@@ -1985,9 +1991,9 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                       <td className={`px-2 py-1 text-right tabular-nums border-l ${cmpCls || (ytsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ytsD)}</td>
                       <td className={`px-2 py-1 text-right tabular-nums ${cmpCls || (ntsD ? "" : "text-muted-foreground/30")}`}>{ioNum(ntsD)}</td>
                       <td className={`px-2 py-1 text-center ${cmpCls}`}>{cmp === "diff" ? "✗" : cmp === "match" ? "✓" : "—"}</td>
-                      <td className={`px-2 py-1 text-right tabular-nums border-l ${o?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcTrgtAmt)}</td>
-                      <td className={`px-2 py-1 text-right tabular-nums ${o?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.ddcLmtAmt)}</td>
-                      <td className={`px-2 py-1 text-right tabular-nums ${o?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(o?.incDdcNfpCnt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums border-l ${oOut?.ddcTrgtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(oOut?.ddcTrgtAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${oOut?.ddcLmtAmt ? "" : "text-muted-foreground/30"}`}>{ioNum(oOut?.ddcLmtAmt)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums ${oOut?.incDdcNfpCnt ? "" : "text-muted-foreground/30"}`}>{ioNum(oOut?.incDdcNfpCnt)}</td>
                     </tr>
                     </Fragment>
                   )
@@ -2042,6 +2048,7 @@ const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
   ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
   ["8410",             { label: "투자조합출자 소계", ytsOut: "OTO_IU_ETC" }],               // self-subtotal(매핑행 8410 자체가 소계). 개별 8415~8423은 self OUT도 반환(하이브리드) → 멤버 아닌 결과전용행으로 렌더(2026-07-21 프로브)
+  ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. YTS는 RT_ISA_PEN_AMT 합산단일컬럼뿐이라 per-code 불가 → 소계 대조(2026-07-26 실측)
 ])
 
 // 소계 멤버코드 → 소계코드 역참조. ③표 그룹블록 정렬용: 계산과정엔 소계 한 줄만 나오므로
