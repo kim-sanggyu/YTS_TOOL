@@ -30,7 +30,9 @@ async function getOrCreateSession(): Promise<Page> {
     }
   }
 
-  const browser = await chromium.launch({ headless: false, args: ["--window-position=-10000,0"] })
+  // 화면 안(오프스크린 아님)에 생성하되, 아래 minimizeWindow 로 즉시 최소화 → 작업표시줄에만 존재.
+  // 보고 싶으면 작업표시줄 아이콘 클릭으로 복원. (--window-position 은 복원 시 뜰 위치)
+  const browser = await chromium.launch({ headless: false, args: ["--window-position=120,120"] })
   const page    = await establishSession(browser)
   globalThis.__ntsSession = { browser, page, at: Date.now() }
   return page
@@ -59,9 +61,20 @@ export function getNtsSessionInfo(): { active: boolean; ageMinutes: number | nul
 }
 
 // ── NTS 세션 수립 공통 함수 ─────────────────────────────────────────────────
+// 세션 창을 즉시 최소화(작업표시줄로) — CDP Browser.setWindowBounds. viewport(논리 뷰포트)는 유지돼
+//   최소화 상태에서도 CDP 기반 클릭 네비·fetch 는 정상 동작(오프스크린으로도 수립되던 것과 동형).
+async function minimizeWindow(page: Page): Promise<void> {
+  try {
+    const s = await page.context().newCDPSession(page)
+    const { windowId } = await s.send("Browser.getWindowForTarget") as { windowId: number }
+    await s.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "minimized" } })
+  } catch { /* 최소화 실패해도 세션 수립엔 지장 없음 */ }
+}
+
 async function establishSession(browser: Browser): Promise<Page> {
   const ctx  = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
   const page = await ctx.newPage()
+  await minimizeWindow(page)   // 생성 즉시 최소화 → 수립 과정도 화면에 안 보임
   page.on("dialog", d => d.accept().catch(() => {}))
 
   await page.goto(START_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {})
