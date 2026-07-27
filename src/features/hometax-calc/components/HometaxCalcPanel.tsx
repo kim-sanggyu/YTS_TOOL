@@ -1675,22 +1675,25 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
 // 실행과정의 접이식 영역(결과비교/전송한 공제입력/IN·OUT 대조) 공용 껍데기.
 // 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
 // grow=false 면 내용 길이만큼만 차지(짧은 표에서 밑에 빈 여백 안 남게) — 나머지 flex-1 영역이 남는 공간을 가져간다.
-function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, children }: {
-  title: string; extra?: ReactNode; collapsed: boolean; onToggle?: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
+function DetailPanel({ title, extra, rightExtra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, children }: {
+  title: string; extra?: ReactNode; rightExtra?: ReactNode; collapsed: boolean; onToggle?: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
 }) {
   const expand = !collapsed && grow
   return (
     <div className={`flex flex-col border rounded-md overflow-hidden ${expand ? "flex-1 min-h-0" : "shrink-0"}`}>
       <div
+        onClick={onToggle}
         onDoubleClick={onExpandOnly}
-        title="더블클릭: 이 영역만 전체보기(최대화)"
-        className={`flex items-center justify-between gap-2 px-3 py-2 bg-background border-b text-xs font-semibold shrink-0 select-none ${onExpandOnly ? "cursor-pointer" : ""}`}
+        title={onToggle ? "클릭: 접기/펼치기 · 더블클릭: 이 영역만 최대화" : "더블클릭: 이 영역만 전체보기(최대화)"}
+        className={`flex items-center justify-between gap-2 px-3 py-2 bg-background border-b text-xs font-semibold shrink-0 select-none ${onToggle || onExpandOnly ? "cursor-pointer" : ""}`}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">{title}</span>
           {extra}
         </span>
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* 오른쪽 컨트롤(rightExtra=전체보기/값보기 등 + 접기·최대화) — 클릭이 헤더 토글로 번지지 않게 정지 */}
+        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}>
+          {rightExtra}
           {onToggle && (
             <button
               type="button"
@@ -1715,6 +1718,15 @@ function DetailPanel({ title, extra, collapsed, onToggle, onExpandOnly, maximize
       </div>
       {!collapsed && <div className={expand ? "flex-1 min-h-0 overflow-auto" : "overflow-auto"}>{children}</div>}
     </div>
+  )
+}
+
+// 비교 패널(①·③) 헤더 배지 — 색 범례 대신 불일치 건수. 0이면 무채색.
+function MismatchBadge({ n }: { n: number }) {
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${n > 0 ? "bg-red-100 text-red-700" : "bg-muted text-muted-foreground"}`}>
+      불일치 {n}건
+    </span>
   )
 }
 
@@ -1825,6 +1837,22 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   }
   const ioRowsByMap = [...ioRows].sort((a, b) => { const x = anchorMap(a.code), y = anchorMap(b.code); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) })
 
+  // ③ 판정 단일원천 — 렌더와 불일치 건수가 같은 함수를 공유(로직 분기 방지).
+  //   기부금 코드는 ytsDdcMap 키 없어도 0 공제로 대조(고향특별 8784 등), 그 외 undefined 는 대조점 아님.
+  const giftCmp = (code: string, ytsD: number | undefined, ntsD: number | undefined): "match" | "diff" | null => {
+    const y = ytsD ?? (GIFT_CODES.has(code) ? 0 : undefined)
+    return (y != null && ntsD != null && (y || ntsD)) ? (y === ntsD ? "match" : "diff") : null
+  }
+  // ① 결과비교 불일치 건수 (계산흐름 7행 중 차이≠0)
+  const compareDiffCount = compareRows.filter(r => r.yts != null && r.nts != null && r.nts - r.yts !== 0).length
+  // ③ NTS IN/OUT 대조 불일치 건수 — 렌더와 동일 필터(①중복·매핑밖·소계멤버 제외)
+  const ioDiffCount = ioRows.reduce((n, { code, o }) => {
+    if (compareCodes.has(code)) return n
+    if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return n
+    if (SUBTOTAL_OF.has(code)) return n
+    return giftCmp(code, res.ytsDdcMap[code], o?.ddcAmt) === "diff" ? n + 1 : n
+  }, 0)
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="border-b px-4 py-3 pr-12 shrink-0">
@@ -1843,7 +1871,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
 
       <div className="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden">
         {/* 1) 결과 비교 */}
-        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} maximized={focusedPanel === "compare"} grow={isGrow("compare", false)}>
+        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" extra={<MismatchBadge n={compareDiffCount} />} collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} maximized={focusedPanel === "compare"} grow={isGrow("compare", false)}>
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b text-[11px] text-muted-foreground">
@@ -1879,7 +1907,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
         {/* 2) YTS 원천 — 보낸값·공제값을 YTS 어느 컬럼에서 찾아왔나(제대로 된 값인지 확인). ③과 동일 항목·순서(로스터). */}
         <DetailPanel
           title="② YTS 원천 (보낸값·공제값 출처)"
-          extra={
+          rightExtra={
             <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
               <button type="button" onClick={() => setIoShowAll(true)} className={`px-2 py-0.5 ${ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>전체보기</button>
               <button type="button" onClick={() => setIoShowAll(false)} className={`px-2 py-0.5 border-l ${!ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>값보기</button>
@@ -1936,13 +1964,11 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
         {(res.ntsIn.length > 0 || res.ntsOut.length > 0) && (
           <DetailPanel
             title="③ NTS 원본 IN / OUT + YTS 대조"
-            extra={
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-normal text-muted-foreground"><span className="text-red-600">■</span> 불일치 · <span className="text-blue-600">■</span> 일치</span>
-                <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
-                  <button type="button" onClick={() => setIoShowAll(true)} className={`px-2 py-0.5 ${ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>전체보기</button>
-                  <button type="button" onClick={() => setIoShowAll(false)} className={`px-2 py-0.5 border-l ${!ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>값보기</button>
-                </div>
+            extra={<MismatchBadge n={ioDiffCount} />}
+            rightExtra={
+              <div className="inline-flex rounded border overflow-hidden text-[10px] font-normal">
+                <button type="button" onClick={() => setIoShowAll(true)} className={`px-2 py-0.5 ${ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>전체보기</button>
+                <button type="button" onClick={() => setIoShowAll(false)} className={`px-2 py-0.5 border-l ${!ioShowAll ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>값보기</button>
               </div>
             }
             collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")} maximized={focusedPanel === "io"}
@@ -1977,12 +2003,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                   const oOut = isSubMember ? undefined : o
                   const ytsD = isSubMember ? undefined : res.ytsDdcMap[code]
                   const ntsD = oOut?.ddcAmt
-                  // 기부금 코드는 per-건 대조점(없는 유형=0 공제) → ytsDdcMap 키가 없어도 0 으로 보고 대조:
-                  //   "YTS 없음 vs NTS nonzero"(고향특별 8784=1 등) 사각 제거. (2026-07-27 상규님 지적)
-                  // 그 외 undefined 는 대조점 아님(부양가족 유형별 8004~09·투자 8420 등 — 실제 공제 동일/소계서 대조,
-                  //   0 으로 보면 거짓양성 330+명) → 종전대로 대조 스킵. (전수 triage: docs/gift-8784-triage.ts)
-                  const ytsCmp = ytsD ?? (GIFT_CODES.has(code) ? 0 : undefined)
-                  const cmp  = (ytsCmp != null && ntsD != null && (ytsCmp || ntsD)) ? (ytsCmp === ntsD ? "match" : "diff") : null
+                  const cmp  = giftCmp(code, ytsD, ntsD)   // 판정 단일원천(불일치 건수와 공유)
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
                     <Fragment key={code}>
