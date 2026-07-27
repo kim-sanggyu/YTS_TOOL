@@ -62,3 +62,12 @@ export function giftTypeRank(giftCls: string): number {
 export const GIFT_CARRY_BASE: Record<string, string> = Object.fromEntries(
   Object.values(GIFT_TYPES).flatMap(t => (t.carry ?? []).map(c => [c, t.base]))
 )
+
+/**
+ * 기부금 전체 코드셋(당해 base + 이월 carry). ③표 판정에서 "이 코드는 per-건 대조점"임을 표시.
+ * 기부금은 없는 유형=0 공제이므로 ytsDdcMap 에 키가 없어도(대상자 0) NTS nonzero 와 0 대조 → 불일치로 잡는다.
+ * (부양가족 유형별 8004~09·투자 8420 등은 대조점이 아니라 undefined 를 0 으로 보면 거짓양성 → 이 셋으로 격리)
+ */
+export const GIFT_CODES: Set<string> = new Set(
+  Object.values(GIFT_TYPES).flatMap(t => [t.base, ...(t.carry ?? [])])
+)

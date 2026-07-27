@@ -183,9 +183,11 @@ const ALL_CODES = [
   "8831","8832","8833","8834","8835",
 ]
 
-function buildCompareBody(vals: Record<string, number>, attrYr: string): { body: object; coveredCodes: string[] } {
+function buildCompareBody(vals: Record<string, number>, attrYr: string, omitCodes: string[] = []): { body: object; coveredCodes: string[] } {
   // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑코드 (미래에 send flip 해도 항상 포함)
+  // omitCodes: 계약 A/B 프로브용 — 특정 amtClusCd 를 payload 에서 아예 제외(0 전송조차 안 함)
   const codes = Array.from(new Set([...ALL_CODES, ...MAPPING_2025.filter(m => m.send).map(m => m.ntsCode)]))
+    .filter(c => !omitCodes.includes(c))
   const detail = codes.map(code => ({
     amtClusCd: code, useAmt: "0", ddcLmtAmt: "0", incDdcNfpCnt: "0", ddcTrgtAmt: "0", ddcAmt: "0",
   }))
@@ -234,7 +236,7 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string): { body:
   return { body, coveredCodes }
 }
 
-export async function runHometaxCompare(vals: Record<string, number>, attrYr: string = ATTR_YR): Promise<HometaxCompareResult> {
+export async function runHometaxCompare(vals: Record<string, number>, attrYr: string = ATTR_YR, opts: { omitCodes?: string[] } = {}): Promise<HometaxCompareResult> {
   const inputs  = computeInputs(vals)
   // 값은 있으나 아직 미전송(send:false)인 항목 = 결과차이 원인 후보 (자동 적출)
   const missing = inputs
@@ -247,7 +249,7 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       status: i.status,
     }))
 
-  const { body, coveredCodes } = buildCompareBody(vals, attrYr)
+  const { body, coveredCodes } = buildCompareBody(vals, attrYr, opts.omitCodes ?? [])
 
   // 세션 재사용 — 없으면 생성 (첫 실행 ~30초, 이후 재사용)
   const page = await getOrCreateSession()

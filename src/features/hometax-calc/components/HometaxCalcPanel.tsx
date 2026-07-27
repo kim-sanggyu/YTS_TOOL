@@ -9,7 +9,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
-import { GIFT_CARRY_BASE } from "@/features/hometax-calc/mapping/gift"
+import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
@@ -1977,7 +1977,12 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                   const oOut = isSubMember ? undefined : o
                   const ytsD = isSubMember ? undefined : res.ytsDdcMap[code]
                   const ntsD = oOut?.ddcAmt
-                  const cmp  = (ytsD != null && ntsD != null && (ytsD || ntsD)) ? (ytsD === ntsD ? "match" : "diff") : null
+                  // 기부금 코드는 per-건 대조점(없는 유형=0 공제) → ytsDdcMap 키가 없어도 0 으로 보고 대조:
+                  //   "YTS 없음 vs NTS nonzero"(고향특별 8784=1 등) 사각 제거. (2026-07-27 상규님 지적)
+                  // 그 외 undefined 는 대조점 아님(부양가족 유형별 8004~09·투자 8420 등 — 실제 공제 동일/소계서 대조,
+                  //   0 으로 보면 거짓양성 330+명) → 종전대로 대조 스킵. (전수 triage: docs/gift-8784-triage.ts)
+                  const ytsCmp = ytsD ?? (GIFT_CODES.has(code) ? 0 : undefined)
+                  const cmp  = (ytsCmp != null && ntsD != null && (ytsCmp || ntsD)) ? (ytsCmp === ntsD ? "match" : "diff") : null
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
                     <Fragment key={code}>
