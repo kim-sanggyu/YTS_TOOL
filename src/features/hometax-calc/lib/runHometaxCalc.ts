@@ -239,8 +239,9 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, omitCode
 export async function runHometaxCompare(vals: Record<string, number>, attrYr: string = ATTR_YR, opts: { omitCodes?: string[] } = {}): Promise<HometaxCompareResult> {
   const inputs  = computeInputs(vals)
   // 값은 있으나 아직 미전송(send:false)인 항목 = 결과차이 원인 후보 (자동 적출)
+  //   altSent(대체전송, 예 8003 부양가족통합→8004~09 유형별)은 실질 전송돼 차이원인 아님 → 제외(거짓경보 방지)
   const missing = inputs
-    .filter(i => !i.send && i.hasValue)
+    .filter(i => !i.send && i.hasValue && !i.altSent)
     .map(i => ({
       code:   i.code,
       label:  i.label,

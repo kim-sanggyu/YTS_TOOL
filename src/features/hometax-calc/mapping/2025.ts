@@ -38,6 +38,9 @@ export interface MappingRow {
   rule:      SendRule
   status:    MappingStatus
   send:      boolean
+  /** send:false 지만 값이 다른 코드로 대체 전송돼 실질 "미전송"이 아닌 경우(예 8003 부양가족통합→8004~09 유형별).
+   *  ④ 미전송(차이 원인 후보)에서 제외 — 거짓경보 방지. */
+  altSent?:  boolean
   /** 전용 비교탭 소속(예 "기타") — 잡다한 단일 세액공제 항목을 한 탭에 모을 때. 미지정=탭 없음. */
   tab?:      string
   /** 국세청 결과(OUT) 코드. 소계형만 명시(카드8430/의료8726/연금8706).
@@ -58,7 +61,7 @@ export const MAPPING_2025: MappingRow[] = [
   // ── 인적공제 (인원, incDdcNfpCnt) ──────────────────────────────────────────
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "확정", send: true, note: "self ddcAmt=1,500,000(본인 150만). 인원(incDdcNfpCnt=1) 전송. 라이브 payload 캡처 실측(capture-io 2026-07-18, n=38)" },
   { group: "인적공제", ntsCode: "8002", label: "기본공제-배우자",   ytsCol: "BASC_SUB_MATE_AMT",   resultCol: "BASC_SUB_MATE_AMT",   valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=1,500,000(150만). 인원(flag→1) 전송, 결과대조=BASC_SUB_MATE_AMT. 라이브 payload 캡처 실측(2026-07-18, n=38)" },
-  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", resultCol: "BASC_SUB_FAMILY_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, note: "IN은 8004~8009 유형별로 전송(8003 미전송)하나, ★국세청 OUT은 8003(통합)에 회신 → 부양가족은 8003 소계형 대조. YTS BASC_SUB_FAMILY_AMT(인원×150만) ↔ NTS 8003 OUT. 라이브 실측(2026-07-22 X202600219: 5명 7,500,000 일치)" },
+  { group: "인적공제", ntsCode: "8003", label: "기본공제-부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_CNT", resultCol: "BASC_SUB_FAMILY_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: false, altSent: true, note: "IN은 8004~8009 유형별로 전송(8003 미전송)하나, ★국세청 OUT은 8003(통합)에 회신 → 부양가족은 8003 소계형 대조. YTS BASC_SUB_FAMILY_AMT(인원×150만) ↔ NTS 8003 OUT. 라이브 실측(2026-07-22 X202600219: 5명 7,500,000 일치)" },
   // 부양가족 유형별 (PAY_WRK_FMLY.FMLY_RELN 집계 → FAM_{코드} 가상컬럼) = 부양가족 인적공제.
   //   ★유형별을 통합(CALC BASC_SUB_FAMILY_CNT 등)으로 단순화하지 말 것 — "과한 코드"로 보이나 자녀공제와 엮여 필수.
   //     기본공제만 보면 유형 무관(전원 한 유형에 몰아도 과세표준 동일)이지만, 자녀공제(8763)가 직계비속(8005)
@@ -335,6 +338,8 @@ export interface NtsInputRow {
   valueKey: ValueKey
   status:   MappingStatus
   send:     boolean
+  /** send:false 지만 다른 코드로 대체 전송돼 실질 미전송 아님 → ④ 미전송에서 제외 */
+  altSent:  boolean
   /** 원천 YTS 컬럼값 (const1 등 ytsCol 없으면 0) */
   ytsValue: number
   /** 원천 YTS 값이 있음(>0) — const1(본인 등)은 항상 true */
@@ -358,6 +363,7 @@ export function computeInputs(vals: Record<string, number>): NtsInputRow[] {
       valueKey: m.valueKey,
       status:   m.status,
       send:     m.send,
+      altSent:  m.altSent ?? false,
       ytsValue: raw,
       hasValue: m.rule === "const1" ? true : raw > 0,
       sent:     mappingSentValue(m, vals),
