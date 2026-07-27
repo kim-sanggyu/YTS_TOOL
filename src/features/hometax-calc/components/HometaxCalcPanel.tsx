@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRad
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import { MAPPING_2025, PROC_LABEL_CODE_2025, coverageOf, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
@@ -2221,6 +2221,19 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>
 }
 
+// 검증 커버리지 판정 배지(안전/사각/미검증/해당없음). 검토상태는 별도 열. mapping/2025.ts COVERAGE_2025 근거.
+//   verdict 미지정 = send:true 인데 COVERAGE_2025 미등록 → "미분류"(적색, 누락 경고).
+const COV_CLS: Record<string, string> = {
+  "안전":     "bg-green-100 text-green-700",
+  "사각":     "bg-red-100 text-red-700",
+  "미검증":   "bg-amber-100 text-amber-700",
+  "해당없음": "bg-muted text-muted-foreground",
+}
+function VerdictBadge({ verdict }: { verdict?: Coverage["verdict"] }) {
+  if (!verdict) return <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700 font-semibold" title="COVERAGE_2025 미등록 — 커버리지 판정 필요">미분류</span>
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${COV_CLS[verdict] ?? "bg-muted text-muted-foreground"}`}>{verdict}</span>
+}
+
 function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const yy = Number(ntsYear)
   // 두 영역(매핑 현황 / 계산과정 로스터)을 실행과정 드로어처럼 접기·최대화
@@ -2238,6 +2251,16 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const totCnt  = MAPPING_2025.length
   const totConf = MAPPING_2025.filter(m => m.status === "확정").length
   const totSend = MAPPING_2025.filter(m => m.send).length
+
+  // 검증 커버리지 롤업 — 판정별 개수 + 미분류(send:true 인데 COVERAGE 누락) + 검토중 진행도
+  const cov = { 안전: 0, 사각: 0, 미검증: 0, 해당없음: 0, 미분류: 0, 검토중: 0, 총: 0 }
+  for (const m of MAPPING_2025) {
+    const c = coverageOf(m.ntsCode)
+    if (!c) { if (m.send) cov.미분류++; continue }
+    cov[c.verdict]++
+    cov.총++
+    if (c.review === "검토중") cov.검토중++
+  }
 
   // 계산과정 순서 로스터 — PROC_LABEL_CODE_2025(계산과정 등장순) × MAPPING 매칭. ③표 정렬의 단일 원천 조회.
   //   판정 3분류로 오탐 차단: 입력(MAPPING ntsCode) / 소계·결과·내부 OUT / 미등록(진짜 신규=세법개정 신호).
@@ -2263,6 +2286,16 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         extra={<span className="text-[10px] font-normal text-muted-foreground">국세청 in-out 정리 진도 · <span className="font-mono">mapping/2025.ts › MAPPING_2025</span></span>}
         collapsed={isCollP("mapping")} onToggle={() => toggleP("mapping")} onExpandOnly={() => expandOnlyP("mapping")} maximized={focused === "mapping"}
       >
+        {/* 검증 커버리지 롤업 범례 — 각 항목이 국세청 대조로 검증되는 깊이(mapping/2025.ts COVERAGE_2025) */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-[11px]">
+          <span className="font-semibold">검증 커버리지:</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 text-green-700">안전</span>{cov.안전}</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">사각</span>{cov.사각}</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-700">미검증</span>{cov.미검증}</span>
+          <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">해당없음</span>{cov.해당없음}</span>
+          {cov.미분류 > 0 && <span className="inline-flex items-center gap-1 font-semibold text-red-600"><span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">미분류</span>{cov.미분류}</span>}
+          <span className="text-muted-foreground">· 검토중 {cov.검토중}/{cov.총} (나머지 확정)</span>
+        </div>
         <table className="w-full border-collapse table-fixed text-xs">
           <colgroup>
             {/* 항목 (고정·truncate) — w-56(14rem)에서 확대(20%→추가 10%) */}
@@ -2277,6 +2310,10 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <col />
             {/* yts OUT (가변 흡수) */}
             <col />
+            {/* 커버리지 (판정) */}
+            <col className="w-16" />
+            {/* 검토 (상태) */}
+            <col className="w-14" />
             {/* 확정 */}
             <col className="w-12" />
           </colgroup>
@@ -2288,6 +2325,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts OUT</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts IN</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts OUT</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">커버리지</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">검토</th>
               <th className="px-2 py-1.5 border-b font-medium text-center bg-muted">확정</th>
             </tr>
           </thead>
@@ -2295,7 +2334,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             {groups.flatMap(g => {
               return [
                 <tr key={`h-${g.name}`} className="bg-muted/70 border-y">
-                  <td colSpan={7} className="px-2 py-1">
+                  <td colSpan={9} className="px-2 py-1">
                     <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
                   </td>
                 </tr>,
@@ -2307,6 +2346,22 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                     <td className={`px-2 py-1 border-l font-mono text-[10px] ${r.ntsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{r.ntsOut}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`} title={r.ytsOut}>{r.ytsOut}</td>
+                    {(() => {
+                      const c = coverageOf(r.code.split(" ")[0])
+                      // 소계 합성행(자기 send 경로 없음)은 커버리지 대상 아님 → —. 미등록(send:true 누락)은 "미분류"(적색).
+                      const noCov = !c && r.isSubtotal
+                      return (
+                        <>
+                          <td className="px-2 py-1 border-l text-center whitespace-nowrap">
+                            {noCov ? <span className="text-muted-foreground/40">—</span> : <VerdictBadge verdict={c?.verdict} />}
+                          </td>
+                          <td className="px-2 py-1 border-l text-center whitespace-nowrap text-[9px]">
+                            {noCov || !c ? <span className="text-muted-foreground/40">—</span>
+                              : <span className={c.review === "확정" ? "text-green-600" : "text-muted-foreground"}>{c.review}</span>}
+                          </td>
+                        </>
+                      )
+                    })()}
                     <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} /></td>
                   </tr>
                 )),

@@ -246,8 +246,90 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8705" },
   { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "8705" },
 
-  
+
 ]
+
+/**
+ * ── 검증 커버리지 맵 (2026-07-27 1차 판정) ────────────────────────────────────
+ * 각 전송항목이 "국세청 대조로 실제 검증되는 깊이"를 명시. [[project_nts_verification_coverage_model]]
+ *
+ * ▶ 판정 원리: 계산사슬 `원본 → [로직A:한도·3%·실손·집계] → 공제대상 → [로직B:×율] → 공제세액`.
+ *   국세청은 우리가 "보낸 지점부터 앞으로만" 계산 → 무엇을 보내느냐가 검증 범위를 정한다.
+ *   - "안전"   = 원본을 보내 국세청이 로직A+B 재현(우리 계산 전체가 검증됨).
+ *   - "사각"   = 중간값(로직A 적용 후)을 보내 국세청은 로직B만, 로직A는 우리 값 에코(검증 안 됨).
+ *   - "미검증" = 구조는 안전하나 실데이터/한도경계 원단위 대조를 아직 못 함(대상 0명·한도캡 미실측 등).
+ *   - "해당없음" = 공제 아님(총급여 등 기본입력)·동반입력·결과전용 소계.
+ *
+ * ▶ review: 이 판정을 상규님이 검토했는지. "검토중"=AI 1차 판정(미확정) / "확정"=검토 완료.
+ *   ★1차 작성분은 전부 "검토중". 상규님 검토 후 항목별로 "확정"으로 승격한다.
+ *
+ * ▶ 매년 관리: MAPPING_2025 행이 추가/변경되면 여기도 채운다. send:true 인데 여기 없으면
+ *   현황탭 커버리지 열에 "미분류"(적색)로 떠서 누락을 바로 드러낸다(조용한 오염 방지).
+ */
+export type CoverageVerdict = "안전" | "사각" | "미검증" | "해당없음"
+export type CoverageReview  = "검토중" | "확정"
+export interface Coverage { verdict: CoverageVerdict; review: CoverageReview }
+
+export const COVERAGE_2025: Record<string, Coverage> = {
+  // 기본입력
+  "8900": { verdict: "해당없음", review: "확정" },   // 총급여(계산 기본입력, 공제 아님)
+  // 인적공제 — 인원/정액 전송, 국세청 서버가 공제액(인원×정액) 계산
+  "8001": { verdict: "안전", review: "검토중" }, "8002": { verdict: "안전", review: "검토중" }, "8003": { verdict: "안전", review: "검토중" },
+  "8004": { verdict: "안전", review: "검토중" }, "8005": { verdict: "안전", review: "검토중" }, "8006": { verdict: "안전", review: "검토중" },
+  "8007": { verdict: "안전", review: "검토중" }, "8008": { verdict: "안전", review: "검토중" }, "8009": { verdict: "안전", review: "검토중" },
+  "8101": { verdict: "안전", review: "검토중" }, "8102": { verdict: "안전", review: "검토중" }, "8103": { verdict: "안전", review: "검토중" }, "8104": { verdict: "안전", review: "검토중" },
+  // 연금보험료 — _OBJ_AMT(캡 전) 전송, 국세청이 근로소득금액 잔액소진 재현
+  "8201": { verdict: "안전", review: "검토중" }, "8205": { verdict: "안전", review: "검토중" }, "8208": { verdict: "안전", review: "검토중" }, "8211": { verdict: "안전", review: "검토중" }, "8215": { verdict: "안전", review: "검토중" },
+  // 특별소득공제 — 건보/고용 _OBJ_AMT(캡 전) 전송
+  "8301": { verdict: "안전", review: "검토중" }, "8305": { verdict: "안전", review: "검토중" },
+  // 주택자금 — LOAN_ 원본 상환액 전송, 국세청 한도 재현
+  "8311": { verdict: "안전", review: "검토중" }, "8312": { verdict: "안전", review: "검토중" },
+  "8321": { verdict: "안전", review: "검토중" }, "8322": { verdict: "안전", review: "검토중" }, "8323": { verdict: "안전", review: "검토중" },
+  "8324": { verdict: "안전", review: "검토중" }, "8325": { verdict: "안전", review: "검토중" }, "8326": { verdict: "안전", review: "검토중" },
+  "8327": { verdict: "안전", review: "검토중" }, "8328": { verdict: "안전", review: "검토중" }, "8329": { verdict: "안전", review: "검토중" },
+  // 그밖의소득공제
+  "8401": { verdict: "미검증", review: "검토중" },   // 원본 납입이나 한도캡(납입>180만) 시 국세청 자체캡 미실측(note)
+  "8402": { verdict: "미검증", review: "검토중" },   // 원본 납입이나 소득금액별 한도캡 미실측(note)
+  "8403": { verdict: "안전", review: "검토중" }, "8407": { verdict: "안전", review: "검토중" }, "8404": { verdict: "안전", review: "검토중" },   // 주택마련저축 ×40% 실측
+  "8415": { verdict: "안전", review: "검토중" }, "8416": { verdict: "안전", review: "검토중" }, "8417": { verdict: "안전", review: "검토중" },
+  "8418": { verdict: "안전", review: "검토중" }, "8419": { verdict: "안전", review: "검토중" }, "8420": { verdict: "안전", review: "검토중" },
+  "8421": { verdict: "안전", review: "검토중" }, "8422": { verdict: "안전", review: "검토중" }, "8423": { verdict: "안전", review: "검토중" },   // 투자조합출자
+  "8410": { verdict: "해당없음", review: "검토중" },   // 투자조합 소계(결과전용, send:false)
+  "8431": { verdict: "안전", review: "검토중" }, "8432": { verdict: "안전", review: "검토중" }, "8433": { verdict: "안전", review: "검토중" },
+  "8434": { verdict: "안전", review: "검토중" }, "8435": { verdict: "안전", review: "검토중" },
+  "8461": { verdict: "안전", review: "검토중" }, "8462": { verdict: "안전", review: "검토중" }, "8463": { verdict: "안전", review: "검토중" },   // 신용카드 원본 지출→국세청 소계 8430 자체계산
+  "8452": { verdict: "미검증", review: "검토중" }, "8451": { verdict: "미검증", review: "검토중" }, "8501": { verdict: "미검증", review: "검토중" }, "8453": { verdict: "미검증", review: "검토중" },   // 실데이터 0명(대상 미발생)
+  // 세액감면 — 감면대상급여(원본) 전송, 국세청이 감면세액 자동계산
+  "8603": { verdict: "안전", review: "검토중" }, "8608": { verdict: "안전", review: "검토중" },   // 조특법30조, 9명 원단위 검증
+  "8601": { verdict: "미검증", review: "검토중" }, "8602": { verdict: "미검증", review: "검토중" }, "8612": { verdict: "미검증", review: "검토중" },
+  "8609": { verdict: "미검증", review: "검토중" }, "8611": { verdict: "미검증", review: "검토중" }, "8617": { verdict: "미검증", review: "검토중" },
+  "8610": { verdict: "미검증", review: "검토중" }, "8616": { verdict: "미검증", review: "검토중" }, "8614": { verdict: "미검증", review: "검토중" }, "8606": { verdict: "미검증", review: "검토중" },   // status 추정·대상 0명
+  // 세액공제
+  "8790": { verdict: "안전", review: "검토중" },   // 혼인 원본 500,000, 국세청 잔액소진캡 실측(2026-07-25)
+  "8763": { verdict: "안전", review: "검토중" },   // 자녀(인원+총인원)
+  "8764": { verdict: "안전", review: "검토중" }, "8765": { verdict: "안전", review: "검토중" }, "8766": { verdict: "안전", review: "검토중" },   // 출산입양
+  "8710": { verdict: "안전", review: "검토중" }, "8711": { verdict: "안전", review: "검토중" },   // 보험료 원본 지출총액, 100만 self cap 교차검증(2026-07-27)
+  "8730": { verdict: "사각", review: "검토중" },   // ★교육비: 한도후 중간값(SPCL_EDU_AMT) 전송 → 국세청 ×15%만, 한도(초중고300/대학900)는 화면JS → 한도로직 사각
+  "8751": { verdict: "미검증", review: "검토중" }, "8752": { verdict: "미검증", review: "검토중" }, "8753": { verdict: "미검증", review: "검토중" },   // 기타세액공제 대상 0명
+  "8754": { verdict: "해당없음", review: "검토중" },   // 외국납부 국외총급여(한도계산용 동반입력, 자체결과 없음)
+  "8750": { verdict: "안전", review: "검토중" },   // 월세 원본 지급총액, 국세청 한도·율 자체계산
+  // 의료비 — ★유형별 집계(3%·실손차감 후) 전송 → 국세청 서버는 로직A 재현 안 함(화면JS) → 사각(화면구동 검증 필요)
+  "8720": { verdict: "사각", review: "검토중" }, "8721": { verdict: "사각", review: "검토중" }, "8725": { verdict: "사각", review: "검토중" }, "8729": { verdict: "사각", review: "검토중" },
+  // 기부금 — 원본(공제가능액) 전송, 국세청이 한도·tiered율·이월 건별 재현(커버리지 모범 케이스)
+  "8740": { verdict: "안전", review: "검토중" }, "8783": { verdict: "안전", review: "검토중" }, "8784": { verdict: "안전", review: "검토중" },
+  "8743": { verdict: "안전", review: "검토중" }, "8744": { verdict: "안전", review: "검토중" }, "8746": { verdict: "안전", review: "검토중" }, "8747": { verdict: "안전", review: "검토중" },
+  "8811": { verdict: "안전", review: "검토중" }, "8812": { verdict: "안전", review: "검토중" }, "8813": { verdict: "안전", review: "검토중" }, "8814": { verdict: "안전", review: "검토중" }, "8815": { verdict: "안전", review: "검토중" },
+  "8821": { verdict: "안전", review: "검토중" }, "8822": { verdict: "안전", review: "검토중" }, "8823": { verdict: "안전", review: "검토중" }, "8824": { verdict: "안전", review: "검토중" }, "8825": { verdict: "안전", review: "검토중" },
+  "8831": { verdict: "안전", review: "검토중" }, "8832": { verdict: "안전", review: "검토중" }, "8833": { verdict: "안전", review: "검토중" }, "8834": { verdict: "안전", review: "검토중" }, "8835": { verdict: "안전", review: "검토중" },
+  // 연금계좌 — 납입액(원본) 전송, 국세청이 한도·율 자체계산(ISA도 전환액 원본)
+  "8701": { verdict: "안전", review: "검토중" }, "8702": { verdict: "안전", review: "검토중" }, "8703": { verdict: "안전", review: "검토중" },
+  "8707": { verdict: "안전", review: "검토중" }, "8708": { verdict: "안전", review: "검토중" },
+}
+
+/** 커버리지 판정 조회. send:true 인데 여기 없으면 undefined → 현황탭이 "미분류"(적색)로 표시. */
+export function coverageOf(code: string): Coverage | undefined {
+  return COVERAGE_2025[code]
+}
 
 /** L03 응답 계산흐름 표시용 결과코드 (표시 순서) — 입력 아님, 파싱/추적용 */
 export const NTS_RESULT_CODES: { code: string; label: string }[] = [
