@@ -1,0 +1,87 @@
+/**
+ * 코드별 대조 판정 단일원천 — 드로어 ③표·리스트 배지("차이 N건")·차이만보기가 전부 이 모듈을 쓴다.
+ * 과거엔 리스트는 합/소계/`?? 0`, 드로어는 코드별 giftCmp 로 갈려 같은 사람이 화면마다 다르게 판정됐다.
+ * 순수 함수만 두어 유닛테스트 가능(HometaxCalcPanel.tsx 에서 추출, 2026-07-28).
+ */
+import { MAPPING_2025, type MappingRow } from "@/features/hometax-calc/mapping/2025"
+import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
+import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
+import { GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
+
+// self OUT(각 코드가 자기 ddcAmt 회신) 그룹. 연금보험료·특별소득공제(건강고용·주택자금)는 소득공제지만
+//   라이브 캡처로 코드별 self ddcAmt 회신 실측확정(2026-07-18). ※카드(소계 8430)는 그밖의소득공제라 아래서 CARD_ 우선처리로 제외.
+export const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금", "연금보험료", "특별소득공제"])
+
+// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → self → 없음(—)
+export function outCodeOf(m: MappingRow): string {
+  if (m.outCode) return m.outCode
+  if (m.ytsCol?.startsWith("CARD_")) return CARD_SUBTOTAL_CODE
+  if (m.ytsCol?.startsWith("MEDI_")) return MEDI_SUBTOTAL_CODE
+  if (m.ytsCol?.startsWith("OTHER_")) return m.ntsCode      // 그밖의소득공제 self(개인연금저축8401·노란우산8402, 실측)
+  // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 self
+  if (OUT_GROUPS.has(m.group)) return m.ntsCode
+  return "—"
+}
+
+// 소계형: 개별 입력행들이 하나의 소계 코드로 결과(ddcAmt)를 받는 그룹. 여기 매핑되면 self OUT 아님.
+//   코드=화면 동기: outCode/CARD_·MEDI_ prefix(=payload 실측근거)에서만 파생, 그룹명 하드코딩 금지.
+//   ytsOut = 실제 비교탭이 대조 기준으로 읽는 YTS 물리 공제컬럼(카드=OTO_CARD_ETC, 의료=RT_MEDI_AMT).
+export const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>([
+  [CARD_SUBTOTAL_CODE, { label: "카드소득공제 소계", ytsOut: "OTO_CARD_ETC" }],
+  [MEDI_SUBTOTAL_CODE, { label: "의료비 세액공제 소계", ytsOut: "RT_MEDI_AMT" }],
+  ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
+  ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
+  ["8410",             { label: "투자조합출자 소계", ytsOut: "OTO_IU_ETC" }],               // self-subtotal(매핑행 8410 자체가 소계). 개별 8415~8423은 self OUT도 반환(하이브리드) → 멤버 아닌 결과전용행으로 렌더(2026-07-21 프로브)
+  ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. YTS는 RT_ISA_PEN_AMT 합산단일컬럼뿐이라 per-code 불가 → 소계 대조(2026-07-26 실측)
+])
+
+// 소계 멤버코드 → 소계코드 역참조. ③표 그룹블록 정렬용: 계산과정엔 소계 한 줄만 나오므로
+//   개별 멤버(8431~/8720~/8730/8764~)를 소계코드(8430/8726/8735/8761) 위치 바로 뒤에 붙인다.
+export const SUBTOTAL_OF: Map<string, string> = (() => {
+  const m = new Map<string, string>()
+  for (const row of MAPPING_2025) {
+    const oc = outCodeOf(row)
+    if (SUBTOTAL_CODES.has(oc) && oc !== row.ntsCode) m.set(row.ntsCode, oc)
+  }
+  return m
+})()
+
+// 계산흐름 7행(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.
+export const FLOW_CODES = new Set(["8900", "8901", "8902", "8903", "8990", "8700", "8999"])
+
+// ③ 항목대조 순서·필터용 — MAPPING_2025 정의순(단일원천). 컴포넌트 mapOrder 도 이걸 참조한다.
+export const MAP_ORDER: Map<string, number> = (() => {
+  const m = new Map<string, number>()
+  MAPPING_2025.forEach((row, i) => { if (!m.has(row.ntsCode)) m.set(row.ntsCode, i) })
+  return m
+})()
+
+export type Verdict = "match" | "diff" | null
+
+/** 판정 입력 = 코드별 NTS OUT(ntsMap)·YTS 공제(ytsDdcMap) 두 맵. RowResult 가 구조적으로 만족한다. */
+export interface DdcCells { ntsMap: Record<string, number>; ytsDdcMap: Record<string, number> }
+
+// 코드 하나의 YTS공제 ↔ NTS OUT(ntsMap[code]=응답 ddcAmt) 대조.
+//   판정대상 아님(null): 계산흐름(①중복)·매핑밖(국세청 내부코드)·소계 멤버(소계행이 담당).
+//   기부 코드는 YTS 공제 없어도 0 으로 대조(국세청 자체생성 고향특별 8784 등), 그 외 YTS 없으면 대조점 아님.
+//   둘 다 0/없음 → 대조 없음(none). 둘 다 값 → 원단위 일치 판정.
+export function ddcVerdict(res: DdcCells, code: string): Verdict {
+  if (FLOW_CODES.has(code)) return null
+  if (!MAP_ORDER.has(code) && !SUBTOTAL_CODES.has(code)) return null
+  if (SUBTOTAL_OF.has(code)) return null
+  const nts = res.ntsMap[code] as number | undefined
+  const yts = res.ytsDdcMap[code] ?? (GIFT_CODES.has(code) ? 0 : undefined)
+  return (yts != null && nts != null && (yts || nts)) ? (yts === nts ? "match" : "diff") : null
+}
+
+// 코드 집합 중 diff 인 코드들(중복 제거) — 배지·건수·차이만보기가 공유.
+export function diffCodesOf(res: DdcCells, codes: Iterable<string | null>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const c of codes) {
+    if (!c || seen.has(c)) continue
+    seen.add(c)
+    if (ddcVerdict(res, c) === "diff") out.push(c)
+  }
+  return out
+}
