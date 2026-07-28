@@ -12,7 +12,7 @@ import { MAPPING_2025, PROC_LABEL_CODE_2025, coverageOf, type MappingRow, type C
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
-import { outCodeOf, SUBTOTAL_CODES, SUBTOTAL_OF, MAP_ORDER, ddcVerdict, diffCodesOf } from "@/features/hometax-calc/lib/ddcVerdict"
+import { outCodeOf, SUBTOTAL_CODES, SUBTOTAL_OF, MAP_ORDER, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes } from "@/features/hometax-calc/lib/ddcVerdict"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
@@ -341,6 +341,40 @@ function GroupHeader({ label, n }: { label: string; n: number }) {
         ))}
       </span>
     </span>
+  )
+}
+
+// ── 리스트↔드로어 모순 표시 ─────────────────────────────────────────────────
+// 드로어 ③표에서 ✗ 인데 리스트 라인에 없던 코드(hiddenDiffCodes)를 리스트에 강제 노출.
+//   ★도구 존재이유: 오류가 어느 화면에서든 반드시 눈에 띄어야 사람이 발견한다(상규님 2026-07-28).
+// 본행 배지 — 그 사람의 숨은 불일치 개수.
+function HiddenBadge({ n }: { n: number }) {
+  return (
+    <span className="ml-2 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+          title="드로어 ③표엔 ✗ 인데 목록 세부행엔 없던 불일치 — 아래 경고행 참고">
+      숨은 불일치 {n}
+    </span>
+  )
+}
+// 세부행과 같은 컬럼 배치의 경고행. 테이블마다 컬럼이 달라 span 을 파라미터로:
+//   leftSpan=좌측 병합 열수 · labelSpan=항목열 칸수(gift=2 항목+연도, 그 외=1) · hasInput=입력열 유무 · rightSpan=우측 병합.
+//   합계(leftSpan + labelSpan + (hasInput?5:4) + rightSpan)가 그 테이블 총 열수와 같아야 정렬이 맞는다.
+function HiddenDiffRow({ code, res, leftSpan, labelSpan = 1, hasInput = true, rightSpan = 2 }:
+  { code: string; res: RowResult; leftSpan: number; labelSpan?: number; hasInput?: boolean; rightSpan?: number }) {
+  const nts = res.ntsMap[code] ?? 0
+  const yts = res.ytsDdcMap[code]
+  const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "국세청 코드"
+  return (
+    <tr className="border-b border-red-200 bg-red-50 text-xs">
+      <td colSpan={leftSpan} />
+      <td className="px-3 py-1 whitespace-nowrap font-semibold text-red-700" colSpan={labelSpan}>⚠ [{code}] {label} — 목록에 없음</td>
+      {hasInput && <td className="px-3 py-1 text-right tabular-nums text-red-700">—</td>}
+      <td className="px-3 py-1 text-right tabular-nums text-red-700">{yts != null ? won(yts) : "—"}</td>
+      <td className="px-3 py-1 text-right tabular-nums text-red-700">{won(nts)}</td>
+      <td className="px-3 py-1 text-center"><XCircle className="inline h-3.5 w-3.5 text-red-500" /></td>
+      <td className="px-3 py-1 text-right tabular-nums font-medium text-red-600">{won(nts - (yts ?? 0))}</td>
+      <td colSpan={rightSpan} />
+    </tr>
   )
 }
 
@@ -1087,6 +1121,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
+          const hidden    = res ? hiddenDiffCodes(res, GIFT_CODES, row.lines.map(l => l.code).filter((c): c is string => !!c)) : []
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 유형×연도 self 대조가 담당. */}
@@ -1106,7 +1141,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={2}><GroupHeader label="기부금" n={row.lines.length} /></td>
+                <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={2}><GroupHeader label="기부금" n={row.lines.length} />{hidden.length > 0 && <HiddenBadge n={hidden.length} />}</td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
@@ -1140,6 +1175,8 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                   </tr>
                 )
               })}
+              {/* 드로어 ③표 ✗ 인데 세부행에 없던 코드 = 숨은 불일치 → 빨간 경고행으로 강제 노출 */}
+              {res && hidden.map(code => <HiddenDiffRow key={`hidden-${code}`} code={code} res={res} leftSpan={9} labelSpan={2} rightSpan={2} />)}
             </Fragment>
           )
         })}
@@ -1393,6 +1430,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
+          const hidden    = res ? hiddenDiffCodes(res, items.flatMap(i => i.lines.map(l => l.code)).filter((c): c is string => !!c), row.lines.map(l => l.code).filter((c): c is string => !!c)) : []
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 항목별 self 대조가 담당. */}
@@ -1413,7 +1451,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                   </div>
                 </td>
                 {/* 기타 탭은 드롭다운으로 한 항목만 필터 → 헤더도 그 항목명(월세액 등)으로. 다중이면 "기타" 폴백. */}
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={row.lines.length === 1 ? row.lines[0].label : "기타"} n={row.lines.length} /></td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={row.lines.length === 1 ? row.lines[0].label : "기타"} n={row.lines.length} />{hidden.length > 0 && <HiddenBadge n={hidden.length} />}</td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
@@ -1447,6 +1485,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                   </tr>
                 )
               })}
+              {res && hidden.map(code => <HiddenDiffRow key={`hidden-${code}`} code={code} res={res} leftSpan={9} labelSpan={1} rightSpan={2} />)}
             </Fragment>
           )
         })}
@@ -1497,6 +1536,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
+          const hidden    = res ? hiddenDiffCodes(res, items.flatMap(i => i.lines.map(l => l.code)).filter((c): c is string => !!c), row.lines.map(l => l.code).filter((c): c is string => !!c)) : []
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 self 대조가 담당. */}
@@ -1516,7 +1556,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label="연금계좌" n={row.lines.length} /></td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label="연금계좌" n={row.lines.length} />{hidden.length > 0 && <HiddenBadge n={hidden.length} />}</td>
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
@@ -1552,6 +1592,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                   </tr>
                 )
               })}
+              {res && hidden.map(code => <HiddenDiffRow key={`hidden-${code}`} code={code} res={res} leftSpan={9} labelSpan={1} rightSpan={2} />)}
             </Fragment>
           )
         })}
@@ -1601,6 +1642,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
         {sorted.map(row => {
           const res       = results[row.calcNo]
           const isRunning = running.has(row.calcNo)
+          const hidden    = res ? hiddenDiffCodes(res, items.flatMap(i => i.lines.map(l => l.code)).filter((c): c is string => !!c), row.lines.map(l => l.code).filter((c): c is string => !!c)) : []
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 대상 요약(항목수). 소득/세액 혼재라 공제액 합산은 표시 안 함 → 비교값이 없어 일치/차이 판정도 비움(세부행이 항목별 판정 담당). */}
@@ -1620,7 +1662,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={title} n={row.lines.length} /></td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap"><GroupHeader label={title} n={row.lines.length} />{hidden.length > 0 && <HiddenBadge n={hidden.length} />}</td>
                 {showInput && <td className="px-3 py-2" />}
                 <td className="px-3 py-2" />
                 <td className="px-3 py-2" />
@@ -1661,6 +1703,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                   </tr>
                 )
               })}
+              {res && hidden.map(code => <HiddenDiffRow key={`hidden-${code}`} code={code} res={res} leftSpan={9} labelSpan={1} hasInput={showInput} rightSpan={2} />)}
             </Fragment>
           )
         })}
@@ -1740,12 +1783,10 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes }: { res: RowRe
   //   YTS 배정 없는 국세청 자체생성 코드(고향특별 8784 등)는 제외(정당한 편차, 리스트 라인 없음).
   useEffect(() => {
     if (process.env.NODE_ENV === "production" || !listCodes) return
-    const listSet = new Set(listCodes)
-    const hidden = diffCodesOf(res, [...MAP_ORDER.keys(), ...SUBTOTAL_CODES.keys()]).filter(c =>
-      res.ytsDdcMap[c] != null && !listSet.has(c) && !SUBTOTAL_CODES.has(c))
+    const hidden = hiddenDiffCodes(res, DDC_DOMAIN, listCodes)   // 전체 도메인 안전망(어느 탭에도 안 걸리는 코드 포착)
     if (hidden.length) console.warn(
       `[검증도구 모순] ${nm ?? calcNo}: 드로어 ③표 ✗ 인데 리스트에 없는 코드 → ${hidden.join(", ")}. ` +
-      `리스트=드로어 판정이 갈리면 사람이 오류를 못 찾는다(YTS 공제 배정 근거 확인 필요).`)
+      `리스트=드로어 판정이 갈리면 사람이 오류를 못 찾는다.`)
   }, [res, calcNo, nm, listCodes])
 
   // 3개 영역(결과비교/전송한 공제입력/IN·OUT) 접기 상태 — 기본 ①②접힘·③(IN·OUT)만 펼침

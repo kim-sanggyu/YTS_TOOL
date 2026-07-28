@@ -85,3 +85,23 @@ export function diffCodesOf(res: DdcCells, codes: Iterable<string | null>): stri
   }
   return out
 }
+
+// ③ 드로어가 대조하는 전 코드 도메인(매핑 순 + 소계). 리스트 배지·경고행이 같은 범위로 대조.
+export const DDC_DOMAIN: string[] = [...MAP_ORDER.keys(), ...SUBTOTAL_CODES.keys()]
+
+// 드로어 ③표에서 ✗(diff)인데 리스트 라인에 없는 코드 = "숨은 불일치".
+//   ★불변식(2026-07-28, 상규님): 드로어 ✗ 는 예외 없이 전부 리스트에도 드러나야 한다
+//   (국세청 자체생성 8784 포함 — "모든 오류가 화면에 보여야 사람이 발견한다"는 도구 존재이유).
+//   ▶ domain = "그 탭이 책임지는 코드 집합"(기부탭=GIFT_CODES, 인적공제탭=그 그룹 코드…). 탭 밖 코드는
+//     그 탭 소관이 아니다(8001 인적공제가 기부탭에 새면 안 됨). 각 탭이 자기 domain 을 넘긴다.
+//     전체 안전망(dev 감지기)만 DDC_DOMAIN(전 코드)로 훑어 어느 탭에도 안 걸리는 코드를 잡는다.
+//   소계코드(카드8430·의료8726)는 리스트가 소계행/집계로 이미 대조하므로 제외(중복 아님).
+//   리스트 경고행·본행 배지·dev 감지기가 이 함수 하나를 공유(판정 분기 원천 차단).
+//   ⚠ 알려진 한계: 탭들이 넘기는 domain 은 대개 "그 탭에 실제 표시되는 라인 코드"라, 의도적으로 생략된
+//     코드(인적공제 본인 8001 등)는 여기서 안 잡힌다. 8001은 절사 ±1원 무해라 수용(상규님 2026-07-28).
+//     생략 코드에 큰 오류가 나면 dev 감지기(DDC_DOMAIN 전 코드)가 콘솔로 최후 포착. 재발 시 domain 을
+//     그룹 전체 코드로 넓히거나 절사(±1) match 처리를 검토.
+export function hiddenDiffCodes(res: DdcCells, domain: Iterable<string | null>, lineCodes: Iterable<string>): string[] {
+  const listSet = new Set(lineCodes)
+  return diffCodesOf(res, domain).filter(c => !listSet.has(c) && !SUBTOTAL_CODES.has(c))
+}
