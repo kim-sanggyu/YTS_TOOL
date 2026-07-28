@@ -657,47 +657,34 @@ export function HometaxCalcPanel() {
   const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isGroup ? groupItems.length : etcByCode.length) : allItems.length
 
   // 탭별 YTS·NTS 값이 다른지 판정 (실행 전이면 false) — 차이 건수 집계·필터링에 공통 사용
-  function giftHasDiff(i: GiftListItem): boolean {
-    const res = results[i.calcNo]
-    if (!res) return false
-    const ntsTotal = i.lines.reduce((s, l) => s + (l.code ? (res.ntsMap[l.code] ?? 0) : 0), 0)
-    return ntsTotal - i.giftTax !== 0
+  // ── 항목층 차이 판정: 전부 ddcVerdict 단일원천 사용(드로어 ③표와 동일 규칙) ──
+  //   코드집합 중 diff 가 하나라도 있으면 그 사람을 "차이"로 카운트(배지·차이만보기).
+  //   과거 합/소계/?? 0 파편화 제거 → 리스트 배지 = 드로어 ✗ 개수 항상 일치.
+  const rowHasDiff = (calcNo: string, codes: Iterable<string | null>): boolean => {
+    const res = results[calcNo]
+    return !!res && diffCodesOf(res, codes).length > 0
   }
-  function subtotalHasDiff<T extends { calcNo: string }>(i: T, target: (i: T) => number, code: string): boolean {
-    const res = results[i.calcNo]
-    if (!res) return false
-    return (res.ntsMap[code] ?? 0) - target(i) !== 0
+  // 기부: YTS 라인 없는 국세청 자체생성 코드(고향특별 8784 등)도 잡도록 기부 전체 도메인으로 대조
+  const giftHasDiff    = (i: GiftListItem)     => rowHasDiff(i.calcNo, GIFT_CODES)
+  const etcHasDiff     = (i: EtcListItem)      => rowHasDiff(i.calcNo, i.lines.map(l => l.code))
+  const pensionHasDiff = (i: PensionListItem)  => rowHasDiff(i.calcNo, i.lines.map(l => l.code))
+  const groupHasDiff   = (i: PersonalListItem) => rowHasDiff(i.calcNo, i.lines.map(l => l.code))
+  // 소계형(카드8430·의료8726): per-code 불가라 소계코드 한 점이 유일 대조점(구조적 예외)
+  const subtotalHasDiff = (calcNo: string, code: string): boolean => {
+    const res = results[calcNo]
+    return !!res && ddcVerdict(res, code) === "diff"
   }
+  // 전체탭은 계(세액) 층위 대조 — 항목층과 별개(총급여→결정세액 최종 결과 검증)
   function allHasDiff(i: ListItem): boolean {
     const res = results[i.calcNo]
     if (!res) return false
     return i.prodTaxAmt !== (res.nts.prodTax ?? -1) || i.resIncmTax !== (res.nts.decidedTax ?? -1)
   }
-  // 기타 탭: 이질 항목이라 소계코드가 없어 lines 의 각 code 합으로 대조 (giftHasDiff 동형)
-  function etcHasDiff(i: EtcListItem): boolean {
-    const res = results[i.calcNo]
-    if (!res) return false
-    const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
-    return ntsTotal - i.etcDdc !== 0
-  }
-  // 연금계좌: 국세청 항목별 self(8701~8708) 합으로 대조 (etcHasDiff 동형)
-  function pensionHasDiff(i: PensionListItem): boolean {
-    const res = results[i.calcNo]
-    if (!res) return false
-    const ntsTotal = i.lines.reduce((s, l) => s + (res.ntsMap[l.code] ?? 0), 0)
-    return ntsTotal - i.penDdc !== 0
-  }
-  // 인적공제 그룹: 항목별 code 대조 — 하나라도 YTS≠NTS 면 차이 (소득/세액 혼재라 합산 대신 항목별 판정)
-  function groupHasDiff(i: PersonalListItem): boolean {
-    const res = results[i.calcNo]
-    if (!res) return false
-    return i.lines.some(l => (res.ntsMap[l.code] ?? 0) !== l.ytsDdc)
-  }
 
   const diffCount =
     tab === "gift"    ? giftItems.filter(giftHasDiff).length :
-    tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)).length :
-    tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)).length :
+    tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i.calcNo, CARD_SUBTOTAL_CODE)).length :
+    tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i.calcNo, MEDI_SUBTOTAL_CODE)).length :
     tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
     tab === "etc"     ? (isGroup ? groupItems.filter(groupHasDiff).length : etcByCode.filter(etcHasDiff).length) :
     allItems.filter(allHasDiff).length
@@ -706,8 +693,8 @@ export function HometaxCalcPanel() {
   const showDiffOnly     = diffOnly && diffCount > 0
   const shownAllItems     = showDiffOnly ? allItems.filter(allHasDiff) : allItems
   const shownGiftItems    = showDiffOnly ? giftItems.filter(giftHasDiff) : giftItems
-  const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i, x => x.cardDdc, CARD_SUBTOTAL_CODE)) : cardItems
-  const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i, x => x.mediDdc, MEDI_SUBTOTAL_CODE)) : mediItems
+  const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i.calcNo, CARD_SUBTOTAL_CODE)) : cardItems
+  const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i.calcNo, MEDI_SUBTOTAL_CODE)) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
   const shownEtcItems     = showDiffOnly ? etcByCode.filter(etcHasDiff) : etcByCode
   const shownGroupItems = showDiffOnly ? groupItems.filter(groupHasDiff) : groupItems
@@ -1777,8 +1764,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   // 정렬: 계산과정 등장 순서(procOrder) 우선. 소계 멤버는 소계코드 위치 바로 뒤 블록으로 묶음.
   //   앵커 = [계산과정위치, 계층(0=소계/직접 · 1=소계멤버), 코드]. 계산과정에 없으면 맨 뒤 코드순.
   // ③표 항목 = MAPPING_2025 정의 항목만(국세청 내부 코드 제외). mapOrder 는 항목 필터 + tie-break 용.
-  const mapOrder = new Map<string, number>()
-  MAPPING_2025.forEach((m, i) => { if (!mapOrder.has(m.ntsCode)) mapOrder.set(m.ntsCode, i) })
+  const mapOrder = MAP_ORDER   // 판정·정렬 단일원천(모듈 상수)
   // ③표 순서 = 현황 '계산과정 순서 로스터'와 동일(PROC_LABEL_CODE_2025 등장순). 소계 멤버는 소계코드 위치 바로 뒤.
   const rosterOrder = new Map<string, number>()
   Object.values(PROC_LABEL_CODE_2025).forEach((code, i) => { if (!rosterOrder.has(code)) rosterOrder.set(code, i) })
@@ -1837,21 +1823,10 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
   }
   const ioRowsByMap = [...ioRows].sort((a, b) => { const x = anchorMap(a.code), y = anchorMap(b.code); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) })
 
-  // ③ 판정 단일원천 — 렌더와 불일치 건수가 같은 함수를 공유(로직 분기 방지).
-  //   기부금 코드는 ytsDdcMap 키 없어도 0 공제로 대조(고향특별 8784 등), 그 외 undefined 는 대조점 아님.
-  const giftCmp = (code: string, ytsD: number | undefined, ntsD: number | undefined): "match" | "diff" | null => {
-    const y = ytsD ?? (GIFT_CODES.has(code) ? 0 : undefined)
-    return (y != null && ntsD != null && (y || ntsD)) ? (y === ntsD ? "match" : "diff") : null
-  }
   // ① 결과비교 불일치 건수 (계산흐름 7행 중 차이≠0)
   const compareDiffCount = compareRows.filter(r => r.yts != null && r.nts != null && r.nts - r.yts !== 0).length
-  // ③ NTS IN/OUT 대조 불일치 건수 — 렌더와 동일 필터(①중복·매핑밖·소계멤버 제외)
-  const ioDiffCount = ioRows.reduce((n, { code, o }) => {
-    if (compareCodes.has(code)) return n
-    if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return n
-    if (SUBTOTAL_OF.has(code)) return n
-    return giftCmp(code, res.ytsDdcMap[code], o?.ddcAmt) === "diff" ? n + 1 : n
-  }, 0)
+  // ③ NTS IN/OUT 대조 불일치 건수 — ddcVerdict 단일원천(리스트 배지와 동일 규칙 → 항상 일치)
+  const ioDiffCount = diffCodesOf(res, [...mapOrder.keys(), ...SUBTOTAL_CODES.keys()]).length
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -2003,7 +1978,7 @@ function DetailView({ res, row, calcNo, procOrder, nm }: { res: RowResult; row: 
                   const oOut = isSubMember ? undefined : o
                   const ytsD = isSubMember ? undefined : res.ytsDdcMap[code]
                   const ntsD = oOut?.ddcAmt
-                  const cmp  = giftCmp(code, ytsD, ntsD)   // 판정 단일원천(불일치 건수와 공유)
+                  const cmp  = ddcVerdict(res, code)   // 판정 단일원천(리스트 배지·불일치 건수와 공유)
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
                   return (
                     <Fragment key={code}>
@@ -2098,6 +2073,43 @@ const SUBTOTAL_OF: Map<string, string> = (() => {
   }
   return m
 })()
+
+// ── ★코드별 대조 판정 단일원천 ──────────────────────────────────────────────
+// 드로어 ③표·리스트 배지("차이 N건")·차이만보기가 모두 이 함수를 쓴다(로직 분기 방지).
+// 과거엔 리스트는 합/소계/`?? 0`, 드로어는 코드별 giftCmp 로 갈려 같은 사람이 화면마다 다르게 판정됐다.
+// 계산흐름 7행(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.
+const FLOW_CODES = new Set(["8900", "8901", "8902", "8903", "8990", "8700", "8999"])
+// ③ 항목대조 순서·필터용 — MAPPING_2025 정의순(단일원천). 컴포넌트 mapOrder 도 이걸 참조한다.
+const MAP_ORDER: Map<string, number> = (() => {
+  const m = new Map<string, number>()
+  MAPPING_2025.forEach((row, i) => { if (!m.has(row.ntsCode)) m.set(row.ntsCode, i) })
+  return m
+})()
+
+type Verdict = "match" | "diff" | null
+// 코드 하나의 YTS공제 ↔ NTS OUT(ntsMap[code]=응답 ddcAmt) 대조.
+//   판정대상 아님(null): 계산흐름(①중복)·매핑밖(국세청 내부코드)·소계 멤버(소계행이 담당).
+//   기부 코드는 YTS 공제 없어도 0 으로 대조(국세청 자체생성 고향특별 8784 등), 그 외 YTS 없으면 대조점 아님.
+//   둘 다 0/없음 → 대조 없음(none). 둘 다 값 → 원단위 일치 판정.
+function ddcVerdict(res: Pick<RowResult, "ntsMap" | "ytsDdcMap">, code: string): Verdict {
+  if (FLOW_CODES.has(code)) return null
+  if (!MAP_ORDER.has(code) && !SUBTOTAL_CODES.has(code)) return null
+  if (SUBTOTAL_OF.has(code)) return null
+  const nts = res.ntsMap[code] as number | undefined
+  const yts = res.ytsDdcMap[code] ?? (GIFT_CODES.has(code) ? 0 : undefined)
+  return (yts != null && nts != null && (yts || nts)) ? (yts === nts ? "match" : "diff") : null
+}
+// 코드 집합 중 diff 인 코드들(중복 제거) — 배지·건수·차이만보기가 공유.
+function diffCodesOf(res: Pick<RowResult, "ntsMap" | "ytsDdcMap">, codes: Iterable<string | null>): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const c of codes) {
+    if (!c || seen.has(c)) continue
+    seen.add(c)
+    if (ddcVerdict(res, c) === "diff") out.push(c)
+  }
+  return out
+}
 
 // 기타세액공제 ETX_ 가상컬럼 → PAY_WRK_MAIN 실제 원천 컬럼
 const ETX_SRC: Record<string, string> = {

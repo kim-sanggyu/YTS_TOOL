@@ -356,9 +356,13 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
   // outCode 로 키를 잡아야 소계형(카드8430/의료8726 등)이 자기 코드가 아니라 소계코드에서 대조된다.
   const ytsDdcMap: Record<string, number> = {}
   for (const m of MAPPING_2025) {
+    // 기부금은 resultCol 경로 제외 — giftDdc(GIFT_SUB_AMT)가 유형×연도 코드별로 전담한다.
+    //   종교 8746 등의 resultCol(RT_PSA_RELGN)은 당해+이월 합산 총액이라, 전액 이월인 사람에서
+    //   당해코드(8746)에 잔존→국세청 OUT 0 과 대비돼 ✗ 오탐이 났다(2026-07-28 규명, Y202500150/398).
+    if (m.group === "기부금") continue
     if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
   }
-  // 기부금 코드는 GIFT_SUB_AMT(온전한 per-건 공제)로 채움/덮어씀 — resultCol 뒤에 실행해 특례/일반도 통일.
+  // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) 주입 — 유일 소스(위 resultCol 제외와 짝).
   Object.assign(ytsDdcMap, input.giftDdc)
 
   return {
