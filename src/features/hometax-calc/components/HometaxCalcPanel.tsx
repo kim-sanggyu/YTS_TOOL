@@ -446,6 +446,7 @@ export function HometaxCalcPanel() {
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
   const [groupItems,  setGroupItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
+  const [groupLoading, setGroupLoading] = useState(false)                  // 그룹 데이터 전용 로딩 — 목록 loading(effect1)과 별도 fetch(effect2)라 빈-메시지 깜빡임 방지
   const [etcCode,        setEtcCode]        = useState<string>(() => makeEtcTabItems(getYearConfig(NTS_SELECTABLE[0]).mapping)[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운). 초기값=기본연도 첫 항목
   const [etcMenuOpen,    setEtcMenuOpen]    = useState(false)                                  // 기타 드롭다운 열림(항목 선택 시 닫기)
   const [loading,        setLoading]        = useState(false)
@@ -563,13 +564,16 @@ export function HometaxCalcPanel() {
   }, [tab, year, ntsYear])
 
   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
+  //   이 fetch는 목록 loading(effect1, type=etc)과 별도라 groupLoading으로 조회중 표시 → 빈-메시지 깜빡임 방지.
   useEffect(() => {
-    if (tab !== "etc" || !ETC_GROUPS[etcCode]) return
+    if (tab !== "etc" || !ETC_GROUPS[etcCode]) { setGroupLoading(false); return }
     let cancelled = false
+    setGroupLoading(true)
     fetch(`/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&${ETC_GROUPS[etcCode].listQs}`)
       .then(r => r.json())
       .then(d => { if (!cancelled) setGroupItems(d.items ?? []) })
       .catch(() => { /* 무시 */ })
+      .finally(() => { if (!cancelled) setGroupLoading(false) })
     return () => { cancelled = true }
   }, [tab, etcCode, year, ntsYear])
 
@@ -940,7 +944,7 @@ export function HometaxCalcPanel() {
         {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
         {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
         {tab === "etc" && (isGroup
-          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
+          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
           : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
         </>)}
