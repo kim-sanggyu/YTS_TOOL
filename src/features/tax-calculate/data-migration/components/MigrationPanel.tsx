@@ -76,6 +76,8 @@ export function MigrationPanel() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   const cancelledRef = useRef(false)
+  // 과거 기부금(PAY_WRK_GIFT_ADJ) 기부연도 처리: false=A(그대로, 골든마스터 회귀비교) / true=B(+1, 2026 검증)
+  const [giftCarryPlusOne, setGiftCarryPlusOne] = useState(false)
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -135,7 +137,7 @@ export function MigrationPanel() {
       const res = await fetch("/api/tools/data-migration/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scripts: scriptIds, fromYear, toYear }),
+        body: JSON.stringify({ scripts: scriptIds, fromYear, toYear, giftCarryPlusOne }),
       })
 
       if (!res.body) throw new Error("스트림 없음")
@@ -282,6 +284,26 @@ export function MigrationPanel() {
               }
               건수 갱신
             </Button>
+          </div>
+        </div>
+
+        {/* 과거 기부금 기부연도 옵션 (PAY_WRK_GIFT_ADJ 이월분 처리) */}
+        <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+          <div className="mb-1.5">
+            <span className="font-medium">과거 기부금 기부연도</span>
+            <span className="text-muted-foreground ml-1">(GIFT_ADJ 이월분)</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={`flex items-center gap-2 ${isRunning ? "opacity-50" : "cursor-pointer"}`}>
+              <input type="radio" name="giftCarry" className="accent-emerald-600"
+                     checked={!giftCarryPlusOne} onChange={() => setGiftCarryPlusOne(false)} disabled={isRunning} />
+              <span>그대로 <span className="font-mono">(A)</span> — 연도 보존 · 2025 골든마스터 회귀비교</span>
+            </label>
+            <label className={`flex items-center gap-2 ${isRunning ? "opacity-50" : "cursor-pointer"}`}>
+              <input type="radio" name="giftCarry" className="accent-emerald-600"
+                     checked={giftCarryPlusOne} onChange={() => setGiftCarryPlusOne(true)} disabled={isRunning} />
+              <span>+1 <span className="font-mono">(B)</span> — 기부연도 +1 · 2026 모의계산/전산매체 검증</span>
+            </label>
           </div>
         </div>
 

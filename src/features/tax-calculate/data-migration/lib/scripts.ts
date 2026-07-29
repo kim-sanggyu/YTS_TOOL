@@ -30,7 +30,7 @@ function baseTransform(row: Row, fromYear: string, toYear: string): Row {
   return newRow
 }
 
-export function createScripts(fromYear: string, toYear: string, defectMap?: DefectMap): ScriptConfig[] {
+export function createScripts(fromYear: string, toYear: string, defectMap?: DefectMap, opts?: { giftCarryPlusOne?: boolean }): ScriptConfig[] {
   return [
     {
       id: "c01",
@@ -132,9 +132,13 @@ export function createScripts(fromYear: string, toYear: string, defectMap?: Defe
       table: "PAY_WRK_GIFT_ADJ",
       transformRow(row) {
         // 당해잔여(GIFT_YY=fromYear)는 마이그 제외: 2026당해(PAY_WRK_GIFT)와 이중계상 방지
-        // 과거이월(GIFT_YY<fromYear)만 이월하며, 기부연도는 원본 그대로 보존(공제율 기준)
         if (String(row.GIFT_YY) === fromYear) return null
-        return baseTransform(row, fromYear, toYear)
+        // 과거이월(GIFT_YY<fromYear)만 이월. 기부연도 처리 2모드(옵션):
+        //   A(기본): GIFT_YY 원본 보존 → 실제 기부연도(=공제율 기준) 유지, 2025 골든마스터 회귀비교용
+        //   B(+1)  : GIFT_YY+1 → 2026 기준 이월연차 보존(최고령 이월분 한도초과 방지), 모의계산/전산매체 검증용
+        const newRow = baseTransform(row, fromYear, toYear)
+        if (opts?.giftCarryPlusOne) newRow.GIFT_YY = yearPlusOne(row.GIFT_YY)
+        return newRow
       }
     },
     {

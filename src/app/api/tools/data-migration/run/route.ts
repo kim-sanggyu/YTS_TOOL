@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { scripts: scriptIds, fromYear, toYear }:
-    { scripts: string[]; fromYear: string; toYear: string } = await req.json()
+  const { scripts: scriptIds, fromYear, toYear, giftCarryPlusOne }:
+    { scripts: string[]; fromYear: string; toYear: string; giftCarryPlusOne?: boolean } = await req.json()
 
   // C03(PAY_WRK_FMLY) 포함 시 경계나이 보정 맵 사전 로드 (yttsDb)
   let defectMap: DefectMap | undefined
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     defectMap = new Map(defectRows.map(r => [`${r.CALC_NO}_${r.FMLY_SEQ}`, r]))
   }
 
-  const allScripts = createScripts(fromYear, toYear, defectMap)
+  const allScripts = createScripts(fromYear, toYear, defectMap, { giftCarryPlusOne })
   const selectedScripts = scriptIds
     .map(id => allScripts.find(s => s.id === id))
     .filter(Boolean) as ScriptConfig[]
