@@ -150,13 +150,30 @@ async function clickText(page, text, preferRight = false) {
     } catch {}
   }
 }
-async function establishSession(page) {
+async function establishSession(page, manualYear = false) {
   await page.goto(START_URL, { waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {})
   await page.waitForTimeout(7000)
   await clickText(page, "모의계산", true)
   await page.waitForTimeout(6000)
   try { await page.getByText("연말정산 자동계산하기", { exact: true }).first().click({ timeout: 8000 }) } catch {}
   await page.waitForTimeout(2000)
+  if (manualYear) {
+    // --manual-year: 연도 자동선택(2025 id a_1905120000)을 건너뛴다. 열린 드롭다운에서 사용자가
+    //   원하는 연도(2026)를 직접 클릭 → 그 연도항목의 element id 를 캡처(2026 배선용 산출물).
+    await page.evaluate(() => {
+      document.addEventListener("click", ev => {
+        const el = (ev.target.closest && ev.target.closest("a,li,button,span,div")) || ev.target
+        const id  = el.id || ""
+        const txt = (el.textContent || "").trim().slice(0, 30)
+        if (/\d{4}\s*년/.test(txt) || /^a_19\d+/.test(id)) {
+          window.__reportYearPick && window.__reportYearPick(JSON.stringify({ id, txt }))
+        }
+      }, true)
+    })
+    console.log("  [연도 수동선택 모드] 열린 드롭다운에서 2026년을 직접 클릭하세요.")
+    console.log("     → 클릭한 연도항목의 id 를 로깅합니다(2026 드롭다운 id 실측). 계산기 로드까지 대기하세요.")
+    return
+  }
   await page.evaluate(() => {
     const els = Array.from(document.querySelectorAll('[id="a_1905120000"]'))
     const vis = els.filter(e => e.offsetParent !== null)
@@ -192,8 +209,15 @@ async function main() {
     console.log(`  [계산 #${n}] ${actionId}  (status ${status})${codes ? "  값:" + codes : ""}`)
   })
 
-  console.log("[2] 모의계산 자동계산 화면 진입... (세션 노이즈는 무시)")
-  await establishSession(page)
+  const manualYear = process.argv.includes("--manual-year")
+  if (manualYear) {
+    await page.exposeFunction("__reportYearPick", json => {
+      try { const o = JSON.parse(json); console.log(`\n  ▶ 연도항목 클릭됨:  id="${o.id}"  text="${o.txt}"\n`) } catch {}
+    })
+  }
+
+  console.log(`[2] 모의계산 자동계산 화면 진입...${manualYear ? " (연도 수동선택)" : ""} (세션 노이즈는 무시)`)
+  await establishSession(page, manualYear)
   ready = true
   console.log("\n════════════════════════════════════════════════════")
   console.log("  준비 완료. 이제부터의 계산만 #1,#2,… 로 번호매김합니다.")
