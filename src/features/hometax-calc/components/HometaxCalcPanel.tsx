@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRad
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { MAPPING_2025, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
+import { type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
 import { coverageOf } from "@/features/hometax-calc/mapping/engine"
 import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
@@ -19,12 +19,15 @@ import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 // 연도별 판정 인스턴스(makeYearVerdict) 컨텍스트 — 리스트 Table·드로어가 드롭다운 연도의 판정기를 공유.
 //   HometaxCalcPanel 이 ntsYear 로 인스턴스를 만들어 Provider 로 공급, 하위(Table·DetailView)는 useYearVerdict() 로 받는다.
-const YearVerdictContext = createContext<YearVerdict | null>(null)
-function useYearVerdict(): YearVerdict {
+interface YearCtxValue { verdict: YearVerdict; codeLabel: Record<string, string> }
+const YearVerdictContext = createContext<YearCtxValue | null>(null)
+function useYearCtx(): YearCtxValue {
   const v = useContext(YearVerdictContext)
-  if (!v) throw new Error("YearVerdictContext 밖에서 useYearVerdict 호출")
+  if (!v) throw new Error("YearVerdictContext 밖에서 호출")
   return v
 }
+function useYearVerdict(): YearVerdict { return useYearCtx().verdict }
+function useCodeLabel(): Record<string, string> { return useYearCtx().codeLabel }
 
 const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
 const NTS_AVAILABLE  = availableYears()   // 실제 제공되는(=registry 등록된) 연도 — 단일원천. 미등록 연도는 "아직 없음" 안내.
@@ -41,9 +44,13 @@ const NTS_FLOW: { code: string; label: string }[] = [
 
 
 // NTS 코드 → 라벨 (실행과정 IN/OUT 전체표 항목명). 매핑 + 계산흐름코드에서 파생.
-const CODE_LABEL: Record<string, string> = {}
-for (const _m of MAPPING_2025) if (!CODE_LABEL[_m.ntsCode]) CODE_LABEL[_m.ntsCode] = _m.label
-for (const _f of NTS_FLOW) if (!CODE_LABEL[_f.code]) CODE_LABEL[_f.code] = _f.label
+//   연도별 매핑으로 생성 → Context codeLabel 로 공급(드롭다운 연도 따라감).
+function makeCodeLabel(mapping: MappingRow[]): Record<string, string> {
+  const m: Record<string, string> = {}
+  for (const row of mapping) if (!m[row.ntsCode]) m[row.ntsCode] = row.label
+  for (const f of NTS_FLOW) if (!m[f.code]) m[f.code] = f.label
+  return m
+}
 
 // 기타 탭 항목 카탈로그 — 매핑 tab:"기타"(send·resultCol) 에서 파생(etcList.ETC_ROWS 와 동일 필터).
 // 기타 탭은 이 목록으로 드롭다운을 채우고, 선택된 한 항목만 본문 리스트로 필터링한다.
@@ -65,33 +72,36 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
 // 표시 순서 상규님 지정: 인적공제>연금>건강고용>주택자금>개인연금저축(8401)>혼인자녀출산, 나머지 단일코드(월세액 등)는 뒤에.
 // 그밖의소득공제 그룹(OTHER_INCOME)으로 묶는 코드 — 개별 단일항목 목록에선 제외.
 const OTHER_INCOME_CODES = ["8451", "8452", "8453", "8501"]
-const ETC_SINGLE_ITEMS = MAPPING_2025
-  .filter(m => m.tab === "기타" && m.send && m.resultCol && !OTHER_INCOME_CODES.includes(m.ntsCode))
-  .map(m => ({ code: m.ntsCode, label: m.label }))
-const ETC_TAB_ITEMS: { code: string; label: string; disabled?: boolean }[] = [
-  { code: "PERSONAL",      label: ETC_GROUPS.PERSONAL.label },
-  { code: "PENSION_INS",   label: "연금보험료",      disabled: true },
-  { code: "SPECIAL_INS",   label: "건강고용보험료",  disabled: true },
-  { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
-  ...ETC_SINGLE_ITEMS.filter(i => i.code === "8401" || i.code === "8402"),   // 주택자금 아래: 개인연금저축 > 소기업소상공인
-  { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
-  { code: "INVESTMENT",      label: ETC_GROUPS.INVESTMENT.label },            // 주택마련저축 아래: 투자조합출자(그룹)
-  { code: "OTHER_INCOME",    label: ETC_GROUPS.OTHER_INCOME.label },          // 투자조합출자 아래: 그밖의소득공제(그룹)
-  { code: "TAX_CUT",         label: ETC_GROUPS.TAX_CUT.label },               // 그밖의소득공제 아래: 세액감면(그룹)
-  { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
-  { code: "INSURANCE",     label: ETC_GROUPS.INSURANCE.label },             // 혼인자녀출산 아래: 보장성보험료(그룹)
-  { code: "EDUCATION",     label: ETC_GROUPS.EDUCATION.label },             // 보장성보험료 아래: 교육비(그룹)
-  { code: "ETC_CREDIT",    label: ETC_GROUPS.ETC_CREDIT.label },            // 혼인자녀출산 아래: 기타세액공제(그룹)
-  ...ETC_SINGLE_ITEMS.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
-]
+// 기타 탭 드롭다운 항목(그룹 + 단일코드) — 연도별 매핑에서 파생. 단일코드 목록(tab:"기타" send·resultCol)만 연도 의존.
+function makeEtcTabItems(mapping: MappingRow[]): { code: string; label: string; disabled?: boolean }[] {
+  const single = mapping
+    .filter(m => m.tab === "기타" && m.send && m.resultCol && !OTHER_INCOME_CODES.includes(m.ntsCode))
+    .map(m => ({ code: m.ntsCode, label: m.label }))
+  return [
+    { code: "PERSONAL",      label: ETC_GROUPS.PERSONAL.label },
+    { code: "PENSION_INS",   label: "연금보험료",      disabled: true },
+    { code: "SPECIAL_INS",   label: "건강고용보험료",  disabled: true },
+    { code: "HOUSING",       label: ETC_GROUPS.HOUSING.label },
+    ...single.filter(i => i.code === "8401" || i.code === "8402"),   // 주택자금 아래: 개인연금저축 > 소기업소상공인
+    { code: "HOUSING_SAVINGS", label: ETC_GROUPS.HOUSING_SAVINGS.label },       // 소기업소상공인 아래: 주택마련저축(그룹)
+    { code: "INVESTMENT",      label: ETC_GROUPS.INVESTMENT.label },            // 주택마련저축 아래: 투자조합출자(그룹)
+    { code: "OTHER_INCOME",    label: ETC_GROUPS.OTHER_INCOME.label },          // 투자조합출자 아래: 그밖의소득공제(그룹)
+    { code: "TAX_CUT",         label: ETC_GROUPS.TAX_CUT.label },               // 그밖의소득공제 아래: 세액감면(그룹)
+    { code: "FAMILY_CREDIT", label: ETC_GROUPS.FAMILY_CREDIT.label },
+    { code: "INSURANCE",     label: ETC_GROUPS.INSURANCE.label },             // 혼인자녀출산 아래: 보장성보험료(그룹)
+    { code: "EDUCATION",     label: ETC_GROUPS.EDUCATION.label },             // 보장성보험료 아래: 교육비(그룹)
+    { code: "ETC_CREDIT",    label: ETC_GROUPS.ETC_CREDIT.label },            // 혼인자녀출산 아래: 기타세액공제(그룹)
+    ...single.filter(i => i.code !== "8401" && i.code !== "8402"),   // 나머지 단일코드(월세액 등)
+  ]
+}
 // 기타 탭 그룹(ETC_GROUPS)의 구성 항목 — 검색키(listQs)에 실제 연결된 코드만.
 //   그밖의소득공제 group 은 국세청 대분류라 광범(개인연금·주택마련·투자조합 포함) → OTHER_INCOME 은 OTHER_INCOME_CODES 로 좁힌다.
 //   기타세액공제는 group="기타세액공제" 가 정확히 3개(8751/8752/8753)라 group 파생.
-function etcGroupMembers(etcCode: string): { code: string; label: string }[] {
+function etcGroupMembers(etcCode: string, mapping: MappingRow[]): { code: string; label: string }[] {
   const codes = etcCode === "OTHER_INCOME" ? OTHER_INCOME_CODES
-              : etcCode === "ETC_CREDIT"   ? MAPPING_2025.filter(m => m.group === "기타세액공제").map(m => m.ntsCode)
+              : etcCode === "ETC_CREDIT"   ? mapping.filter(m => m.group === "기타세액공제").map(m => m.ntsCode)
               : []
-  return codes.map(c => { const m = MAPPING_2025.find(x => x.ntsCode === c); return { code: c, label: m?.label ?? c } })
+  return codes.map(c => { const m = mapping.find(x => x.ntsCode === c); return { code: c, label: m?.label ?? c } })
 }
 
 // ── 타입 ─────────────────────────────────────────────────────────────────────
@@ -373,9 +383,10 @@ function HiddenBadge({ n }: { n: number }) {
 //   합계(leftSpan + labelSpan + (hasInput?5:4) + rightSpan)가 그 테이블 총 열수와 같아야 정렬이 맞는다.
 function HiddenDiffRow({ code, res, leftSpan, labelSpan = 1, hasInput = true, rightSpan = 2 }:
   { code: string; res: RowResult; leftSpan: number; labelSpan?: number; hasInput?: boolean; rightSpan?: number }) {
+  const codeLabel = useCodeLabel()
   const nts = res.ntsMap[code] ?? 0
   const yts = res.ytsDdcMap[code]
-  const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "국세청 코드"
+  const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "국세청 코드"
   return (
     <tr className="border-b border-red-200 bg-red-50 text-xs">
       <td colSpan={leftSpan} />
@@ -421,8 +432,12 @@ export function HometaxCalcPanel() {
   const [ntsYear,        setNtsYear]        = useState(NTS_SELECTABLE[0])       // 국세청 모의계산 귀속연도 (중심축)
   const [year,           setYear]           = useState(NTS_SELECTABLE[0])       // YTS 데이터 연도 = 국세청 연도에 자동 연동(항상 동일, 수정 불가)
   const ntsAvailable = NTS_AVAILABLE.includes(ntsYear)                          // 국세청 모의계산 제공 연도 여부
-  // 판정 인스턴스 — 드롭다운 연도(ntsYear)의 매핑으로 생성. 헬퍼는 클로저로, Table·드로어는 Provider 로 공유.
-  const verdict = useMemo(() => makeYearVerdict(getYearConfig(ntsYear).mapping), [ntsYear])
+  // 연도 파생물 — 드롭다운 연도(ntsYear)의 매핑에서 판정 인스턴스·코드라벨·기타탭 항목을 생성.
+  //   verdict/codeLabel 은 Provider 로 하위(Table·드로어)에 공유, etcTabItems 는 이 컴포넌트 내부 소비.
+  const cfg = useMemo(() => getYearConfig(ntsYear), [ntsYear])
+  const verdict = useMemo(() => makeYearVerdict(cfg.mapping), [cfg])
+  const codeLabel = useMemo(() => makeCodeLabel(cfg.mapping), [cfg])
+  const etcTabItems = useMemo(() => makeEtcTabItems(cfg.mapping), [cfg])
   const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc" | "status">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
@@ -431,7 +446,7 @@ export function HometaxCalcPanel() {
   const [pensionItems,   setPensionItems]   = useState<PensionListItem[]>([])
   const [etcItems,       setEtcItems]       = useState<EtcListItem[]>([])
   const [groupItems,  setGroupItems]  = useState<PersonalListItem[]>([])   // 기타>인적공제 그룹
-  const [etcCode,        setEtcCode]        = useState<string>(ETC_TAB_ITEMS[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운)
+  const [etcCode,        setEtcCode]        = useState<string>(() => makeEtcTabItems(getYearConfig(NTS_SELECTABLE[0]).mapping)[0]?.code ?? "")   // 기타 탭에서 선택된 항목(드롭다운). 초기값=기본연도 첫 항목
   const [etcMenuOpen,    setEtcMenuOpen]    = useState(false)                                  // 기타 드롭다운 열림(항목 선택 시 닫기)
   const [loading,        setLoading]        = useState(false)
   const [running,        setRunning]        = useState<Set<string>>(new Set())
@@ -708,7 +723,7 @@ export function HometaxCalcPanel() {
     })
     .filter((r): r is EtcListItem => r !== null)
 
-  const etcLabel = ETC_TAB_ITEMS.find(i => i.code === etcCode)?.label ?? ""
+  const etcLabel = etcTabItems.find(i => i.code === etcCode)?.label ?? ""
   const isGroup = tab === "etc" && !!ETC_GROUPS[etcCode]   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 뷰
 
   const currentCount = tab === "gift" ? giftItems.length : tab === "card" ? cardItems.length : tab === "medi" ? mediItems.length : tab === "pension" ? pensionItems.length : tab === "etc" ? (isGroup ? groupItems.length : etcByCode.length) : allItems.length
@@ -757,7 +772,7 @@ export function HometaxCalcPanel() {
   const shownGroupItems = showDiffOnly ? groupItems.filter(groupHasDiff) : groupItems
 
   return (
-    <YearVerdictContext.Provider value={verdict}>
+    <YearVerdictContext.Provider value={{ verdict, codeLabel }}>
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
       <div className="shrink-0 flex items-center gap-2 p-4 border-b">
@@ -816,8 +831,8 @@ export function HometaxCalcPanel() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc"); setEtcMenuOpen(false) }}>
-                {ETC_TAB_ITEMS.map(it => {
-                  const members = etcGroupMembers(it.code)
+                {etcTabItems.map(it => {
+                  const members = etcGroupMembers(it.code, cfg.mapping)
                   return (
                     <DropdownMenuRadioItem key={it.code} value={it.code} disabled={it.disabled} className="text-xs flex flex-col items-start gap-0">
                       <span>{it.label}</span>
@@ -906,9 +921,9 @@ export function HometaxCalcPanel() {
       </div>
 
       {/* 기타 그룹 선택 시 구성 항목 캡션 (MAPPING group 파생) */}
-      {tab === "etc" && isGroup && etcGroupMembers(etcCode).length > 0 && (
+      {tab === "etc" && isGroup && etcGroupMembers(etcCode, cfg.mapping).length > 0 && (
         <div className="shrink-0 px-4 py-2 text-xs text-muted-foreground border-b bg-muted/30">
-          <span className="font-medium text-foreground">{etcLabel}</span> 포함: {etcGroupMembers(etcCode).map(m => `${m.label}(${m.code})`).join(" · ")}
+          <span className="font-medium text-foreground">{etcLabel}</span> 포함: {etcGroupMembers(etcCode, cfg.mapping).map(m => `${m.label}(${m.code})`).join(" · ")}
         </div>
       )}
       {/* 테이블 */}
@@ -1795,6 +1810,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
   const { mapping, procLabelCode } = getYearConfig(ntsYear)   // ②표 원천컬럼·③표 로스터 순서를 드롭다운 연도로 라우팅
   // 판정·정렬 단일원천(연도별 인스턴스) — 이름을 그대로 구조분해해 이하 코드는 무변경.
   const { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes } = useYearVerdict()
+  const codeLabel = useCodeLabel()
   const yts = res.yts
   const nts = res.nts
   const ok  = nts.resultCode === "S" || nts.resultCode === null
@@ -1810,7 +1826,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
     if (hidden.length) console.warn(
       `[검증도구 모순] ${nm ?? calcNo}: 드로어 ③표 ✗ 인데 리스트에 없는 코드 → ${hidden.join(", ")}. ` +
       `리스트=드로어 판정이 갈리면 사람이 오류를 못 찾는다.`)
-  }, [res, calcNo, nm, listCodes])
+  }, [res, calcNo, nm, listCodes, hiddenDiffCodes, DDC_DOMAIN])
 
   // 3개 영역(결과비교/전송한 공제입력/IN·OUT) 접기 상태 — 기본 ①②접힘·③(IN·OUT)만 펼침
   const [collapsed, setCollapsed] = useState({ compare: true, inputs: true, io: false })
@@ -1996,7 +2012,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                 const subParent  = SUBTOTAL_OF.get(code)
                 if (subParent && !openSubs.has(subParent)) return null
                 const isSubtotal = SUBTOTAL_CODES.has(code)
-                const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
+                const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                 const sent   = i?.useAmt || i?.incDdcNfpCnt || i?.ddcTrgtAmt
                 const ytsCol = ytsColOf.get(code)
                 const resCol = resultColOf.get(code)
@@ -2059,7 +2075,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                   const subParent  = SUBTOTAL_OF.get(code)                     // 소계형 개별 멤버면 그 소계코드(카드8430 등)
                   if (subParent && !openSubs.has(subParent)) return null       // 소계가 접혀 있으면 멤버 숨김(기본은 펼침)
                   const isSubtotal = SUBTOTAL_CODES.has(code)                  // 소계코드 행(카드8430/의료8726 등)
-                  const label = CODE_LABEL[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
+                  const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                   // 소계 멤버(카드8431·ISA8707 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT(한도·인원)은 소계행이 담당(카드·의료 동형).
                   //   ISA는 국세청이 per-code OUT도 주지만(카드·의료는 소계만), 소계형은 8705가 유일 YTS 대조점이라 멤버는 입력만.
                   const isSubMember = subParent != null
