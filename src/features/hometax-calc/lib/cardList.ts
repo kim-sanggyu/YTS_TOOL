@@ -29,6 +29,9 @@ export async function getCardItems(year: string): Promise<CardListItem[]> {
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND c.CALC_PROC_CARD IS NOT NULL
+      -- OTO_CARD_ETC>0: 소득소진으로 카드공제가 0된 건(~20건, 대부분 BASC_SUB_*)은 의도적 제외.
+      -- 소진 건은 대조 anchor가 망가져(국세청 8430 회신이 소진 전/후인지 미확정) 검증이 무의미 → 노이즈만 늘어남.
+      -- 실측 근거(2026-07-29): CALC_PROC_CARD.최종공제금액>0인데 OTO_CARD_ETC=0인 건 존재(소진 전 산출 vs 소진 후 적용).
       AND NVL(c.OTO_CARD_ETC, 0) > 0
     ORDER BY c.CALC_NO
   `, [year])
