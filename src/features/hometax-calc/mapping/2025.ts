@@ -24,35 +24,18 @@
  *   - note     : 1:N 분할·재확인 필요 등 주의
  */
 
-export type MappingStatus = "확정" | "추정" | "미확보"
-export type ValueKey = "useAmt" | "incDdcNfpCnt" | "ddcTrgtAmt"
-export type SendRule = "value" | "flag" | "const1"
-
-export interface MappingRow {
-  group:     string
-  ntsCode:   string
-  label:     string
-  ytsCol:    string | null
-  resultCol?: string
-  valueKey:  ValueKey
-  rule:      SendRule
-  status:    MappingStatus
-  send:      boolean
-  /** send:false 지만 값이 다른 코드로 대체 전송돼 실질 "미전송"이 아닌 경우(예 8003 부양가족통합→8004~09 유형별).
-   *  ④ 미전송(차이 원인 후보)에서 제외 — 거짓경보 방지. */
-  altSent?:  boolean
-  /** 전용 비교탭 소속(예 "기타") — 잡다한 단일 세액공제 항목을 한 탭에 모을 때. 미지정=탭 없음. */
-  tab?:      string
-  /** 국세청 결과(OUT) 코드. 소계형만 명시(카드8430/의료8726/연금8706).
-   *  미지정 = 세액공제성 그룹이면 self(ntsCode), 소득공제·입력이면 없음(—). */
-  outCode?:  string
-  /** 실제 국세청 "입력" 코드가 표시코드(ntsCode)와 다를 때만 지정. L03 전송은 sendCode 로.
-   *  현재 사용 행 없음(주택청약종합저축은 2026-07-21 8407 단일화로 sendCode 제거). 숨은 입력코드 재발견 시 대비한 인프라. */
-  sendCode?: string
-  /** 상대 귀속연도(투자조합출자 등 연도별 코드). 현황탭이 입력연도(ntsYear)+offset 로 "○○○○년" 렌더. 0=당해,-1=직전,-2=2년전 */
-  yearOffset?: number
-  note?:     string
-}
+// 타입은 mapping/types.ts(연도 무관)로 이관 — 하위호환 위해 재노출.
+import type { Coverage, MappingRow, NtsInputRow } from "./types"
+import {
+  mappingSelectCols as _mappingSelectCols,
+  mappingSentValue as _mappingSentValue,
+  computeInputs   as _computeInputs,
+  coverageOf      as _coverageOf,
+} from "./engine"
+export type {
+  MappingStatus, ValueKey, SendRule, MappingRow,
+  CoverageVerdict, CoverageReview, Coverage, NtsInputRow,
+} from "./types"
 
 export const MAPPING_2025: MappingRow[] = [
   // ── 총급여 (계산 기본입력) ───────────────────────────────────────────────
@@ -266,10 +249,6 @@ export const MAPPING_2025: MappingRow[] = [
  * ▶ 매년 관리: MAPPING_2025 행이 추가/변경되면 여기도 채운다. send:true 인데 여기 없으면
  *   현황탭 커버리지 열에 "미분류"(적색)로 떠서 누락을 바로 드러낸다(조용한 오염 방지).
  */
-export type CoverageVerdict = "안전" | "사각" | "미검증" | "해당없음"
-export type CoverageReview  = "검토중" | "확정"
-export interface Coverage { verdict: CoverageVerdict; review: CoverageReview }
-
 export const COVERAGE_2025: Record<string, Coverage> = {
   // 기본입력
   "8900": { verdict: "해당없음", review: "확정" },   // 총급여(계산 기본입력, 공제 아님)
@@ -326,9 +305,9 @@ export const COVERAGE_2025: Record<string, Coverage> = {
   "8707": { verdict: "안전", review: "검토중" }, "8708": { verdict: "안전", review: "검토중" },
 }
 
-/** 커버리지 판정 조회. send:true 인데 여기 없으면 undefined → 현황탭이 "미분류"(적색)로 표시. */
+/** 커버리지 판정 조회(2025). send:true 인데 여기 없으면 undefined → 현황탭이 "미분류"(적색)로 표시. */
 export function coverageOf(code: string): Coverage | undefined {
-  return COVERAGE_2025[code]
+  return _coverageOf(code, COVERAGE_2025)
 }
 
 /** L03 응답 계산흐름 표시용 결과코드 (표시 순서) — 입력 아님, 파싱/추적용 */
@@ -390,67 +369,20 @@ export const PROC_LABEL_CODE_2025: Record<string, string> = {
   "ISA연금계좌납입액": "8705",  // ISA합 소계(8707/8708 멤버). 계산과정은 ISA 한 줄 → 소계코드 8705에 앵커(2026-07-26 실측)
 }
 
-/** 매핑에서 값을 읽어와야 하는 YTS39 컬럼 목록 (SQL SELECT 생성용, 중복·null 제거).
- *  send 여부와 무관하게 전부 조회해야 "값은 있는데 미전송"을 감지할 수 있다. */
+/** 매핑에서 값을 읽어와야 하는 YTS39 컬럼 목록(2025, SQL SELECT 생성용). */
 export function mappingSelectCols(): string[] {
-  const set = new Set<string>()
-  for (const m of MAPPING_2025) if (m.ytsCol) set.add(m.ytsCol)
-  return [...set]
+  return _mappingSelectCols(MAPPING_2025)
 }
 
 /** 혼인세액공제 법정 정액(50만). 자격자면 이 원본값을 ddcAmt 로 전송 → 국세청이 잔액 소진캡 독립적용. */
 export const MARRIAGE_CREDIT = 500000
 
-/** 한 매핑행이 실제로 L03 에 넣을 값. 미전송(send:false)이면 0.
- *  const1=1, flag=원천값>0이면 1, value=원천값 그대로. */
+/** 한 매핑행이 실제로 L03 에 넣을 값(2025). const1=1, flag=원천값>0이면 1, value=원천값 그대로. */
 export function mappingSentValue(m: MappingRow, vals: Record<string, number>): number {
-  if (!m.send) return 0
-  if (m.ntsCode === "8790") return Number(vals.FAM_MRRG ?? 0) > 0 ? MARRIAGE_CREDIT : 0   // 혼인공제 특수: 자격(FAM_MRRG>0)이면 원본 500,000 직접전송(국세청이 잔액 소진캡)
-  if (m.rule === "const1") return 1
-  const raw = m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0
-  return m.rule === "flag" ? (raw > 0 ? 1 : 0) : raw
+  return _mappingSentValue(m, vals, MARRIAGE_CREDIT)
 }
 
-/** 상세뷰·미전송감지용 입력 한 행 */
-export interface NtsInputRow {
-  code:     string
-  label:    string
-  group:    string
-  ytsCol:   string | null
-  valueKey: ValueKey
-  status:   MappingStatus
-  send:     boolean
-  /** send:false 지만 다른 코드로 대체 전송돼 실질 미전송 아님 → ④ 미전송에서 제외 */
-  altSent:  boolean
-  /** 원천 YTS 컬럼값 (const1 등 ytsCol 없으면 0) */
-  ytsValue: number
-  /** 원천 YTS 값이 있음(>0) — const1(본인 등)은 항상 true */
-  hasValue: boolean
-  /** 실제 L03 body 에 넣은 값 (미전송이면 0) */
-  sent:     number
-  /** 결과(OUT)를 조회할 코드. 소계형(카드8430/의료8726 등)은 본인 코드가 아닌 소계코드. 미지정=자기 코드 */
-  outCode?: string
-  note?:    string
-}
-
-/** YTS 값 레코드(컬럼명→값) → 전 매핑행의 입력상태(0 포함) */
+/** YTS 값 레코드(컬럼명→값) → 전 매핑행의 입력상태(0 포함, 2025) */
 export function computeInputs(vals: Record<string, number>): NtsInputRow[] {
-  return MAPPING_2025.map(m => {
-    const raw = m.ytsCol ? Number(vals[m.ytsCol] ?? 0) : 0
-    return {
-      code:     m.ntsCode,
-      label:    m.label,
-      group:    m.group,
-      ytsCol:   m.ytsCol,
-      valueKey: m.valueKey,
-      status:   m.status,
-      send:     m.send,
-      altSent:  m.altSent ?? false,
-      ytsValue: raw,
-      hasValue: m.rule === "const1" ? true : raw > 0,
-      sent:     mappingSentValue(m, vals),
-      outCode:  m.outCode,
-      note:     m.note,
-    }
-  })
+  return _computeInputs(vals, MAPPING_2025, MARRIAGE_CREDIT)
 }

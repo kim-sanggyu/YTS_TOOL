@@ -1,18 +1,25 @@
 import { chromium, type Page, type Browser } from "playwright"
-import { MAPPING_2025, computeInputs, mappingSentValue, MARRIAGE_CREDIT, type NtsInputRow } from "@/features/hometax-calc/mapping/2025"
+import { getYearConfig } from "@/features/hometax-calc/mapping/registry"
+import { computeInputs, mappingSentValue } from "@/features/hometax-calc/mapping/engine"
+import type { NtsProfile } from "@/features/hometax-calc/mapping/ntsProfile"
+import type { MappingRow, NtsInputRow } from "@/features/hometax-calc/mapping/types"
 
 const START_URL = "https://hometax.go.kr/websquare/websquare.html?w2xPath=/ui/pp/index_pp.xml&menuCd=index3"
-const L03_URL   = "https://teys.hometax.go.kr/wqAction.do?actionId=ATEYSEAA001L03&screenId=UTEYSEJF01&popupYn=false&realScreenId="
-const ATTR_YR   = "2025"
+const ATTR_YR   = "2025"   // 기본 귀속연도(runHometaxCompare 기본 인자). 실제 연도·엔드포인트는 프로파일에서.
 const SESSION_TTL_MS = 25 * 60 * 1000 // 25분 (NTS 세션 만료 전 갱신)
 
-// ── 세션 싱글톤 (Next.js 프로세스 내 재사용) ─────────────────────────────────
+// ── 세션 스토어 (Next.js 프로세스 내 재사용, 귀속연도별) ─────────────────────
+//   ★연도별로 분리: 2025·2026 계산기는 진입 화면·엔드포인트가 달라 세션을 공유하면 안 된다.
 declare global {
-  var __ntsSession: { browser: Browser; page: Page; at: number } | undefined
+  var __ntsSessions: Record<string, { browser: Browser; page: Page; at: number }> | undefined
+}
+function sessionStore(): Record<string, { browser: Browser; page: Page; at: number }> {
+  return (globalThis.__ntsSessions ??= {})
 }
 
-async function getOrCreateSession(): Promise<Page> {
-  const s = globalThis.__ntsSession
+async function getOrCreateSession(year: string): Promise<Page> {
+  const store = sessionStore()
+  const s = store[year]
 
   if (s) {
     const age = Date.now() - s.at
@@ -22,39 +29,43 @@ async function getOrCreateSession(): Promise<Page> {
         return s.page
       } catch {
         await s.browser.close().catch(() => {})
-        globalThis.__ntsSession = undefined
+        delete store[year]
       }
     } else {
       await s.browser.close().catch(() => {})
-      globalThis.__ntsSession = undefined
+      delete store[year]
     }
   }
 
   // 화면 안(오프스크린 아님)에 생성하되, 아래 minimizeWindow 로 즉시 최소화 → 작업표시줄에만 존재.
   // 보고 싶으면 작업표시줄 아이콘 클릭으로 복원. (--window-position 은 복원 시 뜰 위치)
   const browser = await chromium.launch({ headless: false, args: ["--window-position=120,120"] })
-  const page    = await establishSession(browser)
-  globalThis.__ntsSession = { browser, page, at: Date.now() }
+  const page    = await establishSession(browser, getYearConfig(year).profile)
+  store[year] = { browser, page, at: Date.now() }
   return page
 }
 
-// ── 세션 관리 공개 API ───────────────────────────────────────────────────────
-export async function startNtsSession(): Promise<void> {
-  await getOrCreateSession()
+// ── 세션 관리 공개 API (연도 기본값 2025 — 호출측 미지정 시 현행 동작 유지) ────────
+export async function startNtsSession(year: string = "2025"): Promise<void> {
+  await getOrCreateSession(year)
 }
 
-export function stopNtsSession(): void {
-  globalThis.__ntsSession?.browser.close().catch(() => {})
-  globalThis.__ntsSession = undefined
+export function stopNtsSession(year?: string): void {
+  const store = sessionStore()
+  for (const y of year ? [year] : Object.keys(store)) {
+    store[y]?.browser.close().catch(() => {})
+    delete store[y]
+  }
 }
 
-export function getNtsSessionInfo(): { active: boolean; ageMinutes: number | null } {
-  const s = globalThis.__ntsSession
+export function getNtsSessionInfo(year: string = "2025"): { active: boolean; ageMinutes: number | null } {
+  const store = sessionStore()
+  const s = store[year]
   if (!s) return { active: false, ageMinutes: null }
   const age = Date.now() - s.at
   if (age >= SESSION_TTL_MS) {
     s.browser.close().catch(() => {})
-    globalThis.__ntsSession = undefined
+    delete store[year]
     return { active: false, ageMinutes: null }
   }
   return { active: true, ageMinutes: Math.floor(age / 60000) }
@@ -71,7 +82,7 @@ async function minimizeWindow(page: Page): Promise<void> {
   } catch { /* 최소화 실패해도 세션 수립엔 지장 없음 */ }
 }
 
-async function establishSession(browser: Browser): Promise<Page> {
+async function establishSession(browser: Browser, profile: NtsProfile): Promise<Page> {
   const ctx  = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
   const page = await ctx.newPage()
   await minimizeWindow(page)   // 생성 즉시 최소화 → 수립 과정도 화면에 안 보임
@@ -84,21 +95,21 @@ async function establishSession(browser: Browser): Promise<Page> {
   await clickByExactText(page, "모의계산", { preferRight: true })
   await page.waitForTimeout(6000)
 
-  // '연말정산 자동계산하기' → 드롭다운 → 2025년
+  // '연말정산 자동계산하기' → 드롭다운 → 해당 귀속연도(프로파일의 dropdownId)
   try { await page.getByText("연말정산 자동계산하기", { exact: true }).first().click({ timeout: 8000 }) } catch {}
   await page.waitForTimeout(2000)
-  await page.evaluate(() => {
-    const els = Array.from(document.querySelectorAll('[id="a_1905120000"]')) as HTMLElement[]
+  await page.evaluate((dropdownId) => {
+    const els = Array.from(document.querySelectorAll(`[id="${dropdownId}"]`)) as HTMLElement[]
     const vis = els.filter(e => e.offsetParent !== null)
     ;(vis[0] || els[0])?.click()
-  })
+  }, profile.dropdownId)
   await page.waitForTimeout(9000)
 
   return page
 }
 
 // ── L03 직접 POST ────────────────────────────────────────────────────────────
-async function postL03(page: Page, body: object): Promise<string> {
+async function postL03(page: Page, body: object, url: string): Promise<string> {
   return page.evaluate(async ({ url, bodyStr }) => {
     const res = await fetch(url, {
       method:      "POST",
@@ -107,7 +118,7 @@ async function postL03(page: Page, body: object): Promise<string> {
       credentials: "include",
     })
     return res.text()
-  }, { url: L03_URL, bodyStr: JSON.stringify(body) })
+  }, { url, bodyStr: JSON.stringify(body) })
 }
 
 // ── amtClusCd → ddcAmt 파싱 ──────────────────────────────────────────────────
@@ -196,10 +207,10 @@ const ALL_CODES = [
   "8831","8832","8833","8834","8835",
 ]
 
-function buildCompareBody(vals: Record<string, number>, attrYr: string, omitCodes: string[] = []): { body: object; coveredCodes: string[] } {
+function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping: MappingRow[], marriageCredit: number, omitCodes: string[] = []): { body: object; coveredCodes: string[] } {
   // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑코드 (미래에 send flip 해도 항상 포함)
   // omitCodes: 계약 A/B 프로브용 — 특정 amtClusCd 를 payload 에서 아예 제외(0 전송조차 안 함)
-  const codes = Array.from(new Set([...ALL_CODES, ...MAPPING_2025.filter(m => m.send).map(m => m.ntsCode)]))
+  const codes = Array.from(new Set([...ALL_CODES, ...mapping.filter(m => m.send).map(m => m.ntsCode)]))
     .filter(c => !omitCodes.includes(c))
   const detail = codes.map(code => ({
     amtClusCd: code, useAmt: "0", ddcLmtAmt: "0", incDdcNfpCnt: "0", ddcTrgtAmt: "0", ddcAmt: "0",
@@ -214,18 +225,18 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, omitCode
   // 매핑표에서 send:true 인 행만 값 주입(incDdcNfpCnt/useAmt 등).
   //   자녀공제(8763): 부양가족 8004~8009(유형별) + 8763 총인원 둘 다 필요(유형별만으론 미산출).
   //   출산입양(8761): 순번별 8764~8766 이 산출(총인원 전송은 잉여). (2026-07-17 실측 정정)
-  for (const m of MAPPING_2025) {
+  for (const m of mapping) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
     // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용(현재 지정 행 없음 — 인프라 유지)
-    setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals))
+    setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals, marriageCredit))
   }
 
   // 혼인세액공제(8790) 특수: 자격(FAM_MRRG>0=혼인세액공제대상 배우자)이면 원본 500,000 전송 → 국세청이 잔액 소진캡 독립적용.
   //   ★RT_MRRG(소진후값)를 보내면 소진 검증 사각(우리가 캡한 값을 국세청이 에코). 원본을 보내야 국세청이 소진을 독립재현
   //   → YTS RT_MRRG(엔진캡)와 대조로 소진로직 교차검증. 자격은 소진 무관한 원데이터라 완전소진자도 포착. (2026-07-25 실측)
   const mrrgEligible = Number(vals.FAM_MRRG ?? 0) > 0
-  if (mrrgEligible) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", MARRIAGE_CREDIT) }
+  if (mrrgEligible) { setAmt("8790", "incDdcNfpCnt", 1); setAmt("8790", "ddcAmt", marriageCredit) }
 
   const totPay = Number(vals.TOT_PAY_AMT ?? 0)
 
@@ -250,7 +261,8 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, omitCode
 }
 
 export async function runHometaxCompare(vals: Record<string, number>, attrYr: string = ATTR_YR, opts: { omitCodes?: string[] } = {}): Promise<HometaxCompareResult> {
-  const inputs  = computeInputs(vals)
+  const cfg     = getYearConfig(attrYr)
+  const inputs  = computeInputs(vals, cfg.mapping, cfg.marriageCredit)
   // 값은 있으나 아직 미전송(send:false)인 항목 = 결과차이 원인 후보 (자동 적출)
   //   altSent(대체전송, 예 8003 부양가족통합→8004~09 유형별)은 실질 전송돼 차이원인 아님 → 제외(거짓경보 방지)
   const missing = inputs
@@ -263,15 +275,16 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       status: i.status,
     }))
 
-  const { body, coveredCodes } = buildCompareBody(vals, attrYr, opts.omitCodes ?? [])
+  const { body, coveredCodes } = buildCompareBody(vals, attrYr, cfg.mapping, cfg.marriageCredit, opts.omitCodes ?? [])
 
   // 세션 재사용 — 없으면 생성 (첫 실행 ~30초, 이후 재사용)
-  const page = await getOrCreateSession()
+  const page = await getOrCreateSession(attrYr)
   // 세션 생성 후 info 갱신을 위해 at 업데이트
-  if (globalThis.__ntsSession) globalThis.__ntsSession.at = Date.now()
+  const store = sessionStore()
+  if (store[attrYr]) store[attrYr].at = Date.now()
 
   try {
-    const raw    = await postL03(page, body)
+    const raw    = await postL03(page, body, cfg.profile.l03Url)
     const parsed = JSON.parse(raw) as { yrsTaxClcDetailDVOList?: Array<Record<string, unknown>>; resultMsg?: { result?: string } }
     const list   = parsed.yrsTaxClcDetailDVOList ?? []
 
@@ -304,9 +317,9 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       ntsOut,
     }
   } catch (e) {
-    // 예외 시 세션 초기화
-    await globalThis.__ntsSession?.browser.close().catch(() => {})
-    globalThis.__ntsSession = undefined
+    // 예외 시 해당 연도 세션 초기화
+    await store[attrYr]?.browser.close().catch(() => {})
+    delete store[attrYr]
     throw e
   }
 }

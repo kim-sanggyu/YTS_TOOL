@@ -1,7 +1,8 @@
 import crypto from "node:crypto"
 import { ytsDb } from "@/lib/db/oracle"
 import { runHometaxCompare, type HometaxCompareResult } from "@/features/hometax-calc/lib/runHometaxCalc"
-import { mappingSelectCols, MAPPING_2025 } from "@/features/hometax-calc/mapping/2025"
+import { getYearConfig } from "@/features/hometax-calc/mapping/registry"
+import { mappingSelectCols } from "@/features/hometax-calc/mapping/engine"
 import { giftNtsCode } from "@/features/hometax-calc/mapping/gift"
 import { CARD_CATS, parseCardProc } from "@/features/hometax-calc/mapping/card"
 import { MEDI_CATS, parseMediProc } from "@/features/hometax-calc/mapping/medi"
@@ -286,14 +287,15 @@ function computeInputHash(vals: Record<string, number>, ntsYear: string): string
 // ① 국세청에 보낼 값(vals) 조립 + 지문 계산. DB 조회만(국세청 호출 없음) → 캐시 스킵 판정에 싸게 씀.
 export async function buildCompareInput(calcNo: string, ntsYear: string): Promise<CompareInput> {
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
+  const cfg = getYearConfig(ntsYear)
 
   const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_") || c.startsWith("INS_")
   const existing = await existingCalcCols()
-  const wanted   = mappingSelectCols()
+  const wanted   = mappingSelectCols(cfg.mapping)
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))
   const unknownCols = wanted.filter(c => !isVirtual(c) && !existing.has(c))
   // resultCol(YTS 자체 공제액 컬럼)도 조회 — 상세뷰 코드별 YTS↔NTS 대조용
-  const resultCols = [...new Set(MAPPING_2025.filter(m => m.resultCol).map(m => m.resultCol!))].filter(c => existing.has(c))
+  const resultCols = [...new Set(cfg.mapping.filter(m => m.resultCol).map(m => m.resultCol!))].filter(c => existing.has(c))
   const cols = [...new Set([...BASE_COLS, ...mapCols, ...resultCols])]
 
   // 카드 원천(CLOB JSON)은 숫자컬럼과 별도로 조회
@@ -350,12 +352,13 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
 // ② 조립된 입력을 국세청 L03에 보내 비교결과 조립(여기서만 NTS 호출).
 export async function runCompareForInput(input: CompareInput, ntsYear: string): Promise<CompareRunResult> {
   const { calcNo, vals, unknownCols, inputHash } = input
+  const cfg     = getYearConfig(ntsYear)
   const compare = await runHometaxCompare(vals, ntsYear)
 
   // 코드별 YTS 자체 공제액(resultCol) — 상세뷰에서 NTS OUT(ddcAmt)과 대조.
   // outCode 로 키를 잡아야 소계형(카드8430/의료8726 등)이 자기 코드가 아니라 소계코드에서 대조된다.
   const ytsDdcMap: Record<string, number> = {}
-  for (const m of MAPPING_2025) {
+  for (const m of cfg.mapping) {
     // 기부금은 resultCol 경로 제외 — giftDdc(GIFT_SUB_AMT)가 유형×연도 코드별로 전담한다.
     //   종교 8746 등의 resultCol(RT_PSA_RELGN)은 당해+이월 합산 총액이라, 전액 이월인 사람에서
     //   당해코드(8746)에 잔존→국세청 OUT 0 과 대비돼 ✗ 오탐이 났다(2026-07-28 규명, Y202500150/398).
