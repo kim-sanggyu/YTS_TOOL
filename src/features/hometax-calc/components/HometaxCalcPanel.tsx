@@ -470,15 +470,15 @@ export function HometaxCalcPanel() {
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
 
-  // 세션 상태 30초마다 폴링
+  // 세션 상태 30초마다 폴링 — 드롭다운 연도(ntsYear)별 세션을 조회(연도 바뀌면 재폴링)
   useEffect(() => {
     const check = () =>
-      fetch("/api/tools/hometax-calc/session")
+      fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`)
         .then(r => r.json()).then(setSessionInfo).catch(() => {})
     check()
     const id = setInterval(check, 30000)
     return () => clearInterval(id)
-  }, [])
+  }, [ntsYear])
 
   // 상세조회 드로어 좌우 리사이즈 드래그
   useEffect(() => {
@@ -510,7 +510,7 @@ export function HometaxCalcPanel() {
     try {
       const res = await fetch("/api/tools/hometax-calc/session", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
+        body: JSON.stringify({ action: "start", year: ntsYear }),
       })
       setSessionInfo(await res.json())
     } finally {
@@ -521,7 +521,7 @@ export function HometaxCalcPanel() {
   async function stopSession() {
     await fetch("/api/tools/hometax-calc/session", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stop" }),
+      body: JSON.stringify({ action: "stop", year: ntsYear }),
     })
     setSessionInfo({ active: false, ageMinutes: null })
   }
@@ -612,7 +612,7 @@ export function HometaxCalcPanel() {
       const json = await res.json()
       setResults(prev => ({ ...prev, [calcNo]: buildRowResult(json, Date.now() - start) }))
       // 세션이 새로 생성됐을 수 있으므로 상태 갱신
-      fetch("/api/tools/hometax-calc/session").then(r => r.json()).then(setSessionInfo).catch(() => {})
+      fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     } catch {
       setResults(prev => ({ ...prev, [calcNo]: errorRowResult(Date.now() - start) }))
     } finally {
@@ -671,7 +671,7 @@ export function HometaxCalcPanel() {
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
-      fetch("/api/tools/hometax-calc/session").then(r => r.json()).then(setSessionInfo).catch(() => {})
+      fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     })
 
     es.addEventListener("error", (e) => {
