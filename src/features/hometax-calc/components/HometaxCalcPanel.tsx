@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, useTransition, createContext, useContext, Fragment, type ReactNode } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, useTransition, memo, createContext, useContext, Fragment, type ReactNode } from "react"
 import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -556,20 +556,23 @@ export function HometaxCalcPanel() {
   }
 
   // 계산과정 텍스트 lazy 로드 — 목록 쿼리에서 뺀 CLOB(CALC_PROC_TOTAL)을 그 한 명치만 조회해 캐시.
-  async function ensureProcText(calcNo: string): Promise<string | null> {
-    if (procTexts[calcNo] != null) return procTexts[calcNo]
+  // procTexts는 ref로 읽어(procTextsRef) 콜백을 안정화 → 테이블 React.memo가 procTexts 변경에 리렌더되지 않게.
+  const procTextsRef = useRef(procTexts)
+  procTextsRef.current = procTexts
+  const ensureProcText = useCallback(async (calcNo: string): Promise<string | null> => {
+    if (procTextsRef.current[calcNo] != null) return procTextsRef.current[calcNo]
     try {
       const d = await fetch(`/api/tools/hometax-calc/proc-total?calcNo=${calcNo}`).then(r => r.json())
       if (d.text != null) setProcTexts(prev => (prev[calcNo] != null ? prev : { ...prev, [calcNo]: d.text }))
       return d.text ?? null
     } catch { return null }
-  }
+  }, [])
 
   // 계산과정 팝업 열기 — 목록에 텍스트가 실려오면(대부분 탭) 즉시, 없으면(카드 등 lazy 탭) 단건 조회 후 표시.
-  async function showProc(info: { calcNo: string; nm: string; text: string | null }) {
+  const showProc = useCallback(async (info: { calcNo: string; nm: string; text: string | null }) => {
     const text = info.text ?? await ensureProcText(info.calcNo)
     if (text != null) setProcTotalFor({ calcNo: info.calcNo, nm: info.nm, text })
-  }
+  }, [ensureProcText])
 
   // year/ntsYear 변경 → 전 탭 목록·결과·캐시 무효화(탭 전환만으론 유지 = 재조회/재읽기 방지).
   useEffect(() => {
@@ -653,8 +656,11 @@ export function HometaxCalcPanel() {
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
 
-  async function runCompare(calcNo: string) {
-    if (running.has(calcNo)) return
+  // 진행중 가드는 ref로(running state 의존 제거) → runCompare를 안정화해 테이블 React.memo 유지.
+  const inFlightRef = useRef<Set<string>>(new Set())
+  const runCompare = useCallback(async (calcNo: string) => {
+    if (inFlightRef.current.has(calcNo)) return
+    inFlightRef.current.add(calcNo)
     setRunning(prev => new Set(prev).add(calcNo))
     const start = Date.now()
     try {
@@ -670,9 +676,10 @@ export function HometaxCalcPanel() {
     } catch {
       setResults(prev => ({ ...prev, [calcNo]: errorRowResult(Date.now() - start) }))
     } finally {
+      inFlightRef.current.delete(calcNo)
       setRunning(prev => { const s = new Set(prev); s.delete(calcNo); return s })
     }
-  }
+  }, [ntsYear, year])
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
   const BATCH_ENDPOINT = { all: "all-batch", gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const
@@ -785,12 +792,13 @@ export function HometaxCalcPanel() {
     : []
 
   // 기타 탭: 드롭다운으로 고른 한 항목(etcCode)만 남긴다 — 각 사람의 lines 를 해당 code 한 줄로 축소.
-  const etcByCode: EtcListItem[] = etcItems
+  // useMemo로 참조 안정화(매 렌더 새 배열 방지) → EtcTable React.memo가 무관한 리렌더에 스킵되게.
+  const etcByCode: EtcListItem[] = useMemo(() => etcItems
     .map(row => {
       const line = row.lines.find(l => l.code === etcCode)
       return line ? { ...row, lines: [line], etcDdc: line.ytsDdc } : null
     })
-    .filter((r): r is EtcListItem => r !== null)
+    .filter((r): r is EtcListItem => r !== null), [etcItems, etcCode])
 
   const etcLabel = etcTabItems.find(i => i.code === etcCode)?.label ?? ""
   const isGroup = tab === "etc" && !!ETC_GROUPS[etcCode]   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 뷰
@@ -1003,14 +1011,14 @@ export function HometaxCalcPanel() {
             <span>국세청 서비스가 개시되면 지원 예정입니다.</span>
           </div>
         ) : (<>
-        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "all"  && <AllTableMemo  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "gift" && <GiftTableMemo items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "card" && <CardTableMemo items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "medi" && <MediTableMemo items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "pension" && <PensionTableMemo items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
         {tab === "etc" && (isGroup
-          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
-          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
+          ? <PersonalTableMemo items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
+          : <EtcTableMemo items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
         </>)}
       </div>
@@ -1823,6 +1831,17 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
     </table>
   )
 }
+
+// 리스트 테이블 React.memo 래퍼 — 무관한 상위 상태 변화(세션 30초 폴링·배치 진행·드로어 열기·procTexts 등)에
+// 프롭이 그대로면 거대한 테이블(수백~수천 행) 리렌더를 건너뛴다.
+// 프롭 안정화 전제: runCompare·showProc = useCallback, etcByCode = useMemo, 나머지 setter는 useState 고정.
+const AllTableMemo      = memo(AllTable)
+const GiftTableMemo     = memo(GiftTable)
+const CardTableMemo     = memo(CardTable)
+const MediTableMemo     = memo(MediTable)
+const EtcTableMemo      = memo(EtcTable)
+const PensionTableMemo  = memo(PensionTable)
+const PersonalTableMemo = memo(PersonalTable)
 
 // 실행과정의 접이식 영역(결과비교/전송한 공제입력/IN·OUT 대조) 공용 껍데기.
 // 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
