@@ -1180,12 +1180,12 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
 }
 
-// 기부금 유형별 세부행 강조색(GIFT_CLS 기준) — 정치자금=emerald, 고향사랑(일반+특별)=sky.
-// 이월(amber)보다 우선. 여기 없는 유형은 이월이면 amber, 아니면 기본(muted).
+// 기부금 항목(라벨)만 강조하는 유형 — 정치자금·고향사랑(일반+특별) = 동일 청색.
+// (이월은 별도로 '연도' 칸만 오렌지 — 항목/금액엔 색 없음. 색 최소화.)
 const GIFT_TYPE_HL: Record<string, string> = {
-  "548-020": "text-emerald-600 font-semibold",   // 정치자금
-  "548-100": "text-sky-600 font-semibold",        // 고향(일반)
-  "548-110": "text-sky-600 font-semibold",        // 고향(특별)
+  "548-020": "text-blue-600 font-semibold",   // 정치자금
+  "548-100": "text-blue-600 font-semibold",   // 고향(일반)
+  "548-110": "text-blue-600 font-semibold",   // 고향(특별)
 }
 
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
@@ -1263,14 +1263,15 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const ntsVal = res && line.code ? (res.ntsMap[line.code] ?? 0) : null
                 const d = ntsVal != null ? ntsVal - line.ytsSub : null
                 const last = i === row.lines.length - 1
-                // 유형별 강조색(정치=emerald·고향=sky) 우선, 없으면 이월=amber, 그 외 기본 — 라벨·연도·대상금액에 적용(대조컬럼은 불일치 적색 유지)
-                const hi = GIFT_TYPE_HL[line.giftCls] ?? (line.carried ? "text-amber-600 font-semibold" : "text-muted-foreground")
+                // 색 최소화: 항목=정치/고향만 청색, 연도=이월만 오렌지, 금액은 무색. 그 외는 기본(회색). (대조컬럼은 불일치 적색 유지)
+                const labelCls = GIFT_TYPE_HL[line.giftCls] ?? "text-muted-foreground"
+                const yearCls  = line.carried ? "text-orange-600 font-semibold" : "text-muted-foreground"
                 return (
                   <tr key={`${line.giftCls}-${line.giftYy}`} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
-                    <td className={`px-3 py-1 whitespace-nowrap ${hi}`}>{line.label}</td>
-                    <td className={`px-3 py-1 text-center tabular-nums ${hi}`}>{line.giftYy}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${hi}`}>{won(line.ableSub)}</td>
+                    <td className={`px-3 py-1 whitespace-nowrap ${labelCls}`}>{line.label}</td>
+                    <td className={`px-3 py-1 text-center tabular-nums ${yearCls}`}>{line.giftYy}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.ableSub)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsSub)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
