@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRad
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
+import { MAPPING_2025, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
 import { coverageOf } from "@/features/hometax-calc/mapping/engine"
 import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
@@ -172,11 +172,11 @@ function PersonMainCells({ item, onShowProc }: {
 // ── 계산과정(CALC_PROC_TOTAL) 전체 텍스트 드로어 ─────────────────────────────
 // 파싱·순서 도출은 lib/procOrder(테스트 잠금 대상). 라벨→코드 단일 원천은 mapping/2025.
 // 계산과정 한 줄의 대조 색: 매핑코드의 YTS 공제금액 ↔ NTS ntsMap[code]. 불일치=적, 일치=청, 그 외 무색.
-function procLineClass(line: string, ntsMap?: Record<string, number>): string {
+function procLineClass(line: string, procLabelCode: Record<string, string>, ntsMap?: Record<string, number>): string {
   if (!ntsMap) return ""
   const m = PROC_ROW_RE.exec(line)
   if (!m) return ""
-  const code = PROC_LABEL_CODE_2025[m[2].trim()]
+  const code = procLabelCode[m[2].trim()]
   if (!code || ntsMap[code] == null) return ""
   const ytsAmt = Number(m[1].replace(/,/g, ""))
   const ntsAmt = ntsMap[code]
@@ -184,7 +184,8 @@ function procLineClass(line: string, ntsMap?: Record<string, number>): string {
   return ytsAmt === ntsAmt ? "text-blue-600" : "text-red-600 font-semibold"
 }
 
-function ProcTotalView({ info, ntsMap }: { info: { calcNo: string; nm: string; text: string }; ntsMap?: Record<string, number> }) {
+function ProcTotalView({ info, ntsMap, ntsYear }: { info: { calcNo: string; nm: string; text: string }; ntsMap?: Record<string, number>; ntsYear: string }) {
+  const { procLabelCode } = getYearConfig(ntsYear)   // 계산과정 라벨→코드 매핑을 드롭다운 연도로 라우팅
   const lines = info.text.split("\n")
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -205,7 +206,7 @@ function ProcTotalView({ info, ntsMap }: { info: { calcNo: string; nm: string; t
         style={{ fontFamily: "'D2Coding', 'GulimChe', '굴림체', monospace" }}
       >
         {lines.map((line, i) => (
-          <div key={i} className={`whitespace-pre ${procLineClass(line, ntsMap)}`}>{line || " "}</div>
+          <div key={i} className={`whitespace-pre ${procLineClass(line, procLabelCode, ntsMap)}`}>{line || " "}</div>
         ))}
       </div>
     </div>
@@ -939,7 +940,7 @@ export function HometaxCalcPanel() {
                 className="flex min-w-0 flex-col border-r"
                 style={{ width: detailRes ? `${detailLeftPct}%` : "100%" }}
               >
-                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow.nm, text: detailRow.calcProcTotal }} ntsMap={detailRes?.ntsMap} />
+                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow.nm, text: detailRow.calcProcTotal }} ntsMap={detailRes?.ntsMap} ntsYear={ntsYear} />
               </div>
             )}
             {detailRow?.calcProcTotal && detailRes && (
@@ -953,7 +954,7 @@ export function HometaxCalcPanel() {
                 <DetailView
                   res={detailRes} row={detailRow} calcNo={detailFor!}
                   procOrder={detailRow?.calcProcTotal ? procCodeOrder(detailRow.calcProcTotal) : undefined}
-                  listCodes={detailListCodes}
+                  listCodes={detailListCodes} ntsYear={ntsYear}
                 />
               </div>
             )}
@@ -976,7 +977,7 @@ export function HometaxCalcPanel() {
           >
             {calcDrawerFull ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
-          {procTotalFor && <ProcTotalView info={procTotalFor} ntsMap={results[procTotalFor.calcNo]?.ntsMap} />}
+          {procTotalFor && <ProcTotalView info={procTotalFor} ntsMap={results[procTotalFor.calcNo]?.ntsMap} ntsYear={ntsYear} />}
         </SheetContent>
       </Sheet>
     </div>
@@ -1773,7 +1774,8 @@ function MismatchBadge({ n }: { n: number }) {
 }
 
 // ── 상세조회 뷰 ──────────────────────────────────────────────────────────────
-function DetailView({ res, row, calcNo, procOrder, nm, listCodes }: { res: RowResult; row: DetailRowLike | null; calcNo: string; procOrder?: string[]; nm?: string; listCodes?: string[] }) {
+function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { res: RowResult; row: DetailRowLike | null; calcNo: string; procOrder?: string[]; nm?: string; listCodes?: string[]; ntsYear: string }) {
+  const { mapping, procLabelCode } = getYearConfig(ntsYear)   // ②표 원천컬럼·③표 로스터 순서를 드롭다운 연도로 라우팅
   const yts = res.yts
   const nts = res.nts
   const ok  = nts.resultCode === "S" || nts.resultCode === null
@@ -1834,7 +1836,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes }: { res: RowRe
   const mapOrder = MAP_ORDER   // 판정·정렬 단일원천(모듈 상수)
   // ③표 순서 = 현황 '계산과정 순서 로스터'와 동일(PROC_LABEL_CODE_2025 등장순). 소계 멤버는 소계코드 위치 바로 뒤.
   const rosterOrder = new Map<string, number>()
-  Object.values(PROC_LABEL_CODE_2025).forEach((code, i) => { if (!rosterOrder.has(code)) rosterOrder.set(code, i) })
+  Object.values(procLabelCode).forEach((code, i) => { if (!rosterOrder.has(code)) rosterOrder.set(code, i) })
   const anchorOf = (c: string): [number, number, string] => {
     const di = rosterOrder.get(c)
     if (di != null) return [di, 0, c]                                             // 로스터(계산과정) 순서
@@ -1871,7 +1873,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes }: { res: RowRe
   // ② YTS 원천 표시용: code → 물리 원천컬럼(전송값 ytsInOf) / 물리 공제컬럼(ytsOutOf). 가상변수(CARD_/CUT_ 등)는 실제 테이블 컬럼으로 환원.
   const ytsColOf = new Map<string, string>()
   const resultColOf = new Map<string, string>()
-  MAPPING_2025.forEach(m => {
+  mapping.forEach(m => {
     if (m.ytsCol && !ytsColOf.has(m.ntsCode)) ytsColOf.set(m.ntsCode, ytsSrcWithTable(m))
     const oc = m.outCode ?? m.ntsCode
     if (m.resultCol && !resultColOf.has(oc)) resultColOf.set(oc, ytsOutOf(m))
