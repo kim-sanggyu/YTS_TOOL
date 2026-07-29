@@ -7,7 +7,9 @@ export interface GiftLine { code: string | null; giftCls: string; label: string;
 export interface GiftListItem {
   calcNo: string; nm: string; totPayAmt: number; giftTax: number
   exhausted: boolean; exhaustLabel: string | null
-  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  empNo: string; calcType: string; workStatus: string
+  calcProcTotal: string | null   // 목록에선 항상 null — CLOB은 팝업/드로어에서 lazy 로드
+  hasProc: boolean               // 계산과정 존재 여부(버튼 활성화용)
   lines: GiftLine[]
 }
 
@@ -19,14 +21,15 @@ export async function getGiftItems(year: string, ntsYear: string): Promise<GiftL
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
-    CALC_METHOD: string | null; CALC_PROC_TOTAL: string | null
+    CALC_METHOD: string | null; HAS_PROC: number
     EMP_NO: string | null; KEEP_PS: string | null
     GIFT_CLS: string; GIFT_YY: string
     GIFT_ABLE_SUB_AMT: number; GIFT_SUB_AMT: number
   }>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
-           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS,
            g.GIFT_CLS, g.GIFT_YY,
            g.GIFT_ABLE_SUB_AMT, g.GIFT_SUB_AMT
@@ -49,7 +52,8 @@ export async function getGiftItems(year: string, ntsYear: string): Promise<GiftL
         calcNo: r.CALC_NO, nm: r.NM, totPayAmt: Number(r.TOT_PAY_AMT), giftTax: 0,
         exhausted: ex.exhausted, exhaustLabel: ex.exhaustLabel,
         empNo: r.EMP_NO ?? "-", calcType: calcMethodLabel(r.CALC_METHOD), workStatus: workStatusLabel(r.KEEP_PS),
-        calcProcTotal: r.CALC_PROC_TOTAL,
+        calcProcTotal: null,
+        hasProc: Number(r.HAS_PROC) === 1,
         lines: [],
       }
       map.set(r.CALC_NO, item)

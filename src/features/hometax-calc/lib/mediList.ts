@@ -7,7 +7,9 @@ export interface MediLine { code: string; label: string; useAmt: number }
 export interface MediListItem {
   calcNo: string; nm: string; totPayAmt: number; mediDdc: number
   exhausted: boolean; exhaustLabel: string | null
-  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  empNo: string; calcType: string; workStatus: string
+  calcProcTotal: string | null   // 목록에선 항상 null — CLOB은 팝업/드로어에서 lazy 로드
+  hasProc: boolean               // 계산과정 존재 여부(버튼 활성화용)
   lines: MediLine[]
 }
 
@@ -17,14 +19,15 @@ export async function getMediItems(year: string): Promise<MediListItem[]> {
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
     RT_MEDI_AMT: number; CALC_PROC_MEDI: string | null
-    CALC_METHOD: string | null; CALC_PROC_TOTAL: string | null
+    CALC_METHOD: string | null; HAS_PROC: number
     EMP_NO: string | null; KEEP_PS: string | null
   }>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
            c.TOT_PAY_AMT, c.EXHAUSTED_POINT,
            NVL(c.RT_MEDI_AMT, 0) AS RT_MEDI_AMT,
-           c.CALC_PROC_MEDI, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.CALC_PROC_MEDI, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
@@ -50,7 +53,8 @@ export async function getMediItems(year: string): Promise<MediListItem[]> {
       empNo:     r.EMP_NO ?? "-",
       calcType:  calcMethodLabel(r.CALC_METHOD),
       workStatus: workStatusLabel(r.KEEP_PS),
-      calcProcTotal: r.CALC_PROC_TOTAL,
+      calcProcTotal: null,
+      hasProc:   Number(r.HAS_PROC) === 1,
       lines,
     }
   })

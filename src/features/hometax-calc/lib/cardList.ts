@@ -5,7 +5,9 @@ import { calcMethodLabel, workStatusLabel } from "@/features/hometax-calc/lib/pe
 export interface CardLine { code: string; label: string; useAmt: number }
 export interface CardListItem {
   calcNo: string; nm: string; totPayAmt: number; cardDdc: number
-  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  empNo: string; calcType: string; workStatus: string
+  calcProcTotal: string | null   // 목록에선 항상 null — 비대 CLOB(CALC_PROC_TOTAL)은 팝업/드로어에서 lazy 로드
+  hasProc: boolean               // 계산과정 존재 여부(계산과정 버튼 활성화용)
   lines: CardLine[]
 }
 
@@ -15,14 +17,15 @@ export async function getCardItems(year: string): Promise<CardListItem[]> {
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number
     OTO_CARD_ETC: number; CALC_PROC_CARD: string | null
-    CALC_METHOD: string | null; CALC_PROC_TOTAL: string | null
+    CALC_METHOD: string | null; HAS_PROC: number
     EMP_NO: string | null; KEEP_PS: string | null
   }>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
            c.TOT_PAY_AMT,
            NVL(c.OTO_CARD_ETC, 0) AS OTO_CARD_ETC,
-           c.CALC_PROC_CARD, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.CALC_PROC_CARD, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
@@ -49,7 +52,8 @@ export async function getCardItems(year: string): Promise<CardListItem[]> {
       empNo:     r.EMP_NO ?? "-",
       calcType:  calcMethodLabel(r.CALC_METHOD),
       workStatus: workStatusLabel(r.KEEP_PS),
-      calcProcTotal: r.CALC_PROC_TOTAL,
+      calcProcTotal: null,                    // lazy — 팝업/드로어 열 때 proc-total API로 단건 로드
+      hasProc:   Number(r.HAS_PROC) === 1,
       lines,
     }
   })

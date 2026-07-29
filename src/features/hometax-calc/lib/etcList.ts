@@ -7,7 +7,9 @@ export interface EtcLine { code: string; label: string; ytsInput: number; ytsDdc
 export interface EtcListItem {
   calcNo: string; nm: string; totPayAmt: number; etcDdc: number
   exhausted: boolean; exhaustLabel: string | null
-  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  empNo: string; calcType: string; workStatus: string
+  calcProcTotal: string | null   // 목록에선 항상 null — CLOB은 팝업/드로어에서 lazy 로드
+  hasProc: boolean               // 계산과정 존재 여부(버튼 활성화용)
   lines: EtcLine[]
 }
 
@@ -26,7 +28,8 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
   const rows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
-           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            ${ddcSel},
            NVL(m.HOUSE_RENT, 0) AS RENT_INPUT,
            (SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s
@@ -63,7 +66,8 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
       empNo:      (r.EMP_NO as string) ?? "-",
       calcType:   calcMethodLabel(r.CALC_METHOD as string | null),
       workStatus: workStatusLabel(r.KEEP_PS as string | null),
-      calcProcTotal: (r.CALC_PROC_TOTAL as string) ?? null,
+      calcProcTotal: null,
+      hasProc:    Number(r.HAS_PROC) === 1,
       lines,
     }
   })

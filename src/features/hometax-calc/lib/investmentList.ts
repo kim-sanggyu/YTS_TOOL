@@ -13,12 +13,13 @@ export async function getInvestmentItems(year: string, ntsYear: string): Promise
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
-    CALC_METHOD: string | null; CALC_PROC_TOTAL: string | null; EMP_NO: string | null; KEEP_PS: string | null
+    CALC_METHOD: string | null; HAS_PROC: number; EMP_NO: string | null; KEEP_PS: string | null
     INVST_CLS: string; INVST_YY: string; PEN_SAVE_PMT_AMT: number; PEN_SAVE_SUB_AMT: number
   }>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
-           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS,
            p.INVST_CLS, p.INVST_YY, p.PEN_SAVE_PMT_AMT, p.PEN_SAVE_SUB_AMT
     FROM YTS39.PAY_WRK_CALC c
@@ -40,7 +41,7 @@ export async function getInvestmentItems(year: string, ntsYear: string): Promise
         calcNo: r.CALC_NO, nm: r.NM, totPayAmt: Number(r.TOT_PAY_AMT),
         exhausted: ex.exhausted, exhaustLabel: ex.exhaustLabel,
         empNo: r.EMP_NO ?? "-", calcType: calcMethodLabel(r.CALC_METHOD), workStatus: workStatusLabel(r.KEEP_PS),
-        calcProcTotal: r.CALC_PROC_TOTAL, lines: [],
+        calcProcTotal: null, hasProc: Number(r.HAS_PROC) === 1, lines: [],
       }
       map.set(r.CALC_NO, item)
     }

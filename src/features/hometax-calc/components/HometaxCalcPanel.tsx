@@ -118,6 +118,7 @@ interface ListItem {
 // 리스트 아이템도 전부 이 필드는 갖고 있어서, 어느 탭에서 열든 계산과정·이름을 채울 수 있다.
 interface DetailRowLike {
   nm: string; totPayAmt: number; calcProcTotal: string | null
+  hasProc?: boolean   // 목록이 계산과정 텍스트를 lazy로 두는 탭(카드)에서 존재여부만 표시
   prodTaxAmt?: number; resIncmTax?: number
 }
 interface GiftLine {
@@ -165,11 +166,14 @@ function ExhaustBadge({ item }: { item: Exhaustable }) {
 interface PersonInfo extends Exhaustable {
   calcNo: string; nm: string
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  hasProc?: boolean   // 목록이 계산과정 텍스트를 lazy로 두는 탭(카드)에서 존재여부만 표시
 }
 function PersonMainCells({ item, onShowProc }: {
   item: PersonInfo
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
 }) {
+  // 계산과정 텍스트가 목록에 실려오면(대부분 탭) 그대로, lazy 탭(카드)은 hasProc로 존재여부 판단.
+  const hasProc = item.calcProcTotal != null || !!item.hasProc
   return (
     <>
       <td className={`px-3 py-2 text-left ${item.calcType === "표준" ? "text-red-400" : "text-muted-foreground"}`}>{item.calcType}</td>
@@ -177,9 +181,9 @@ function PersonMainCells({ item, onShowProc }: {
       <td className="px-1 py-2 text-center">
         <Button
           size="sm" variant="ghost" className="h-6 w-6 p-0"
-          disabled={!item.calcProcTotal}
+          disabled={!hasProc}
           title="계산과정" aria-label="계산과정"
-          onClick={() => item.calcProcTotal && onShowProc({ calcNo: item.calcNo, nm: item.nm, text: item.calcProcTotal })}
+          onClick={() => hasProc && onShowProc({ calcNo: item.calcNo, nm: item.nm, text: item.calcProcTotal })}
         >
           <FileText className="h-4 w-4" />
         </Button>
@@ -472,6 +476,9 @@ export function HometaxCalcPanel() {
   const [batchError,     setBatchError]     = useState<string | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
+  const [procTexts,      setProcTexts]      = useState<Record<string, string>>({})   // 계산과정 텍스트 lazy 캐시(calcNo→text) — 카드 등 목록에서 CLOB 뺀 탭용
+  const listLoaded       = useRef<Set<string>>(new Set())    // 이미 fetch한 목록(`tab|year|ntsYear`) — 탭 재진입 시 재조회 스킵
+  const cacheLoadedKey   = useRef<string | null>(null)       // 이미 읽은 캐시 (`year|ntsYear`) — 탭 전환마다 24MB 재읽기 방지
 
   // 세션 상태 30초마다 폴링 — 드롭다운 연도(ntsYear)별 세션을 조회(연도 바뀌면 재폴링)
   useEffect(() => {
@@ -539,18 +546,46 @@ export function HometaxCalcPanel() {
     setCachedAt(null)
   }
 
+  // 계산과정 텍스트 lazy 로드 — 목록 쿼리에서 뺀 CLOB(CALC_PROC_TOTAL)을 그 한 명치만 조회해 캐시.
+  async function ensureProcText(calcNo: string): Promise<string | null> {
+    if (procTexts[calcNo] != null) return procTexts[calcNo]
+    try {
+      const d = await fetch(`/api/tools/hometax-calc/proc-total?calcNo=${calcNo}`).then(r => r.json())
+      if (d.text != null) setProcTexts(prev => (prev[calcNo] != null ? prev : { ...prev, [calcNo]: d.text }))
+      return d.text ?? null
+    } catch { return null }
+  }
+
+  // 계산과정 팝업 열기 — 목록에 텍스트가 실려오면(대부분 탭) 즉시, 없으면(카드 등 lazy 탭) 단건 조회 후 표시.
+  async function showProc(info: { calcNo: string; nm: string; text: string | null }) {
+    const text = info.text ?? await ensureProcText(info.calcNo)
+    if (text != null) setProcTotalFor({ calcNo: info.calcNo, nm: info.nm, text })
+  }
+
+  // year/ntsYear 변경 → 전 탭 목록·결과·캐시 무효화(탭 전환만으론 유지 = 재조회/재읽기 방지).
   useEffect(() => {
+    setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({})
+    listLoaded.current = new Set()
+    cacheLoadedKey.current = null
+  }, [year, ntsYear])
+
+  // 현재 탭 목록 로드 — 이미 로드한 (tab,year,ntsYear)면 재조회 스킵(탭 전환마다 DB 재조회 방지).
+  useEffect(() => {
+    setDiffOnly(false)
+    if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
+    if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
+    const key = `${tab}|${year}|${ntsYear}`
+    if (listLoaded.current.has(key)) { setLoading(false); return }
     let cancelled = false
+    setLoading(true)
     const load = async () => {
-      setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({}); setLoading(true); setDiffOnly(false)
-      if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
-      if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
       const url = tab === "all"
         ? `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}`
         : `/api/tools/hometax-calc/list?year=${year}&ntsYear=${ntsYear}&type=${tab}`
       try {
         const d = await fetch(url).then(r => r.json())
         if (cancelled) return
+        listLoaded.current.add(key)
         if (tab === "gift")         setGiftItems(d.items ?? [])
         else if (tab === "card")    setCardItems(d.items ?? [])
         else if (tab === "medi")    setMediItems(d.items ?? [])
@@ -563,7 +598,7 @@ export function HometaxCalcPanel() {
     }
     load()
     return () => { cancelled = true }
-  }, [tab, year, ntsYear])
+  }, [tab, year, ntsYear, ntsAvailable])
 
   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
   //   이 fetch는 목록 loading(effect1, type=etc)과 별도라 groupLoading으로 조회중 표시 → 빈-메시지 깜빡임 방지.
@@ -583,6 +618,9 @@ export function HometaxCalcPanel() {
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
   useEffect(() => {
     if (tab !== "all" && tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension" && tab !== "etc") return
+    const key = `${year}|${ntsYear}`
+    if (cacheLoadedKey.current === key) return   // 이 (year,ntsYear) 캐시를 이미 읽음 → 탭 전환마다 24MB 재읽기 방지
+    cacheLoadedKey.current = key
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
@@ -601,7 +639,7 @@ export function HometaxCalcPanel() {
         })
         setCachedAt(d.savedAt)
       })
-      .catch(() => { /* 캐시 없음/오류 무시 */ })
+      .catch(() => { cacheLoadedKey.current = null /* 오류 시 다음 탭 진입에서 재시도 허용 */ })
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
 
@@ -712,6 +750,18 @@ export function HometaxCalcPanel() {
     ?? groupItems.find(i => i.calcNo === detailFor)
     ?? null
   ) : null
+
+  // 계산과정 텍스트 — 목록에 실려온 값(대부분 탭) 우선, 없으면(카드 등 lazy 탭) 캐시(procTexts)에서.
+  const detailProcText: string | null =
+    detailRow?.calcProcTotal ?? (detailFor ? procTexts[detailFor] ?? null : null)
+
+  // 드로어를 lazy 탭(카드 등)에서 열면 목록에 없는 계산과정 텍스트를 단건 로드
+  useEffect(() => {
+    if (detailFor && detailRow && detailRow.calcProcTotal == null && detailRow.hasProc) {
+      ensureProcText(detailFor)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailFor])
 
   // 모순 감지기(dev)용 — 이 사람 리스트 라인 코드 합집합(탭별 lines). 드로어 diff 가 이 밖이면 경고.
   const detailListCodes: string[] = detailFor
@@ -940,14 +990,14 @@ export function HometaxCalcPanel() {
             <span>국세청 서비스가 개시되면 지원 예정입니다.</span>
           </div>
         ) : (<>
-        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
-        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "all"  && <AllTable  items={shownAllItems}  loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "gift" && <GiftTable items={shownGiftItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "card" && <CardTable items={shownCardItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "medi" && <MediTable items={shownMediItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
+        {tab === "pension" && <PensionTable items={shownPensionItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />}
         {tab === "etc" && (isGroup
-          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
-          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={setProcTotalFor} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
+          ? <PersonalTable items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
+          : <EtcTable items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
         {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
         </>)}
       </div>
@@ -968,15 +1018,15 @@ export function HometaxCalcPanel() {
             {execDrawerFull ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
           <div ref={detailPanelRef} className="flex min-w-0 flex-1">
-            {detailRow?.calcProcTotal && (
+            {detailProcText && (
               <div
                 className="flex min-w-0 flex-col border-r"
                 style={{ width: detailRes ? `${detailLeftPct}%` : "100%" }}
               >
-                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow.nm, text: detailRow.calcProcTotal }} ntsMap={detailRes?.ntsMap} ntsYear={ntsYear} />
+                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow!.nm, text: detailProcText }} ntsMap={detailRes?.ntsMap} ntsYear={ntsYear} />
               </div>
             )}
-            {detailRow?.calcProcTotal && detailRes && (
+            {detailProcText && detailRes && (
               <div
                 className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors"
                 onMouseDown={e => { e.preventDefault(); detailDragRef.current = true }}
@@ -986,7 +1036,7 @@ export function HometaxCalcPanel() {
               <div className="flex min-w-0 flex-1 flex-col">
                 <DetailView
                   res={detailRes} row={detailRow} calcNo={detailFor!}
-                  procOrder={detailRow?.calcProcTotal ? procCodeOrder(detailRow.calcProcTotal) : undefined}
+                  procOrder={detailProcText ? procCodeOrder(detailProcText) : undefined}
                   listCodes={detailListCodes} ntsYear={ntsYear}
                 />
               </div>
@@ -1023,7 +1073,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   items: ListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
@@ -1126,7 +1176,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
   items: GiftListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { hiddenDiffCodes } = useYearVerdict()
@@ -1233,7 +1283,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
   items: CardListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
@@ -1334,7 +1384,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
   items: MediListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
@@ -1437,7 +1487,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
   items: EtcListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { hiddenDiffCodes } = useYearVerdict()
@@ -1544,7 +1594,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
   items: PensionListItem[]; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { hiddenDiffCodes } = useYearVerdict()
@@ -1650,7 +1700,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   items: PersonalListItem[]; title: string; loading: boolean; onSelect: (calcNo: string) => void; selectedCalcNo: string | null
   results: Record<string, RowResult>; running: Set<string>
   onRun: (calcNo: string) => void; onDetail: (calcNo: string) => void
-  onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
+  onShowProc: (info: { calcNo: string; nm: string; text: string | null }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
   const { hiddenDiffCodes } = useYearVerdict()

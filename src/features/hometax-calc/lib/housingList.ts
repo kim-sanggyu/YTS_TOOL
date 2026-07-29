@@ -7,7 +7,9 @@ export interface HousingLine { code: string; label: string; kind: string; ytsDdc
 export interface HousingListItem {
   calcNo: string; nm: string; totPayAmt: number
   exhausted: boolean; exhaustLabel: string | null
-  empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  empNo: string; calcType: string; workStatus: string
+  calcProcTotal: string | null   // 목록에선 항상 null — CLOB은 팝업/드로어에서 lazy 로드
+  hasProc: boolean               // 계산과정 존재 여부(버튼 활성화용)
   lines: HousingLine[]
 }
 
@@ -29,7 +31,8 @@ async function getGroupItems(
   const dbRows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
-           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS,
            ${ddcSel}${inSel}
     FROM YTS39.PAY_WRK_CALC c
@@ -56,7 +59,8 @@ async function getGroupItems(
       empNo:      (r.EMP_NO as string) ?? "-",
       calcType:   calcMethodLabel(r.CALC_METHOD as string | null),
       workStatus: workStatusLabel(r.KEEP_PS as string | null),
-      calcProcTotal: (r.CALC_PROC_TOTAL as string) ?? null,
+      calcProcTotal: null,
+      hasProc:    Number(r.HAS_PROC) === 1,
       lines,
     }
   })
@@ -140,7 +144,8 @@ export async function getEducationItems(year: string): Promise<HousingListItem[]
   const dbRows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
-           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD, c.CALC_PROC_TOTAL,
+           c.TOT_PAY_AMT, c.EXHAUSTED_POINT, c.CALC_METHOD,
+           CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC,
            m.EMP_NO, m.KEEP_PS,
            NVL(c.RT_EDU_AMT, 0) AS DDC, NVL(c.SPCL_EDU_AMT, 0) AS INAMT
     FROM YTS39.PAY_WRK_CALC c
@@ -161,7 +166,8 @@ export async function getEducationItems(year: string): Promise<HousingListItem[]
       empNo:      (r.EMP_NO as string) ?? "-",
       calcType:   calcMethodLabel(r.CALC_METHOD as string | null),
       workStatus: workStatusLabel(r.KEEP_PS as string | null),
-      calcProcTotal: (r.CALC_PROC_TOTAL as string) ?? null,
+      calcProcTotal: null,
+      hasProc:    Number(r.HAS_PROC) === 1,
       lines: [{ code: "8735", label: "교육비 세액공제", kind: "세액공제", ytsDdc: Number(r.DDC ?? 0), ytsInput: Number(r.INAMT ?? 0) }],
     }
   })
