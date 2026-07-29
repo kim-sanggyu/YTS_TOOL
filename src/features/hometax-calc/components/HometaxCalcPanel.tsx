@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, createContext, useContext, Fragment, type ReactNode } from "react"
+import { useState, useEffect, useRef, useMemo, useTransition, createContext, useContext, Fragment, type ReactNode } from "react"
 import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -444,7 +444,16 @@ export function HometaxCalcPanel() {
   const verdict = useMemo(() => makeYearVerdict(cfg.mapping), [cfg])
   const codeLabel = useMemo(() => makeCodeLabel(cfg.mapping), [cfg])
   const etcTabItems = useMemo(() => makeEtcTabItems(cfg.mapping), [cfg])
-  const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc" | "status">("all")
+  type Tab = "all" | "gift" | "card" | "medi" | "pension" | "etc" | "status"
+  const [tab,            setTab]            = useState<Tab>("all")   // 콘텐츠 구동(무거운 렌더) — 전환은 백그라운드
+  const [selectedTab,    setSelectedTab]   = useState<Tab>("all")   // 탭 하이라이트 전용 — 클릭 즉시 반영(체감 반응성)
+  const [isTabPending,   startTabTransition] = useTransition()
+  // 탭 클릭: 하이라이트(색)는 즉시, 무거운 목록 렌더는 transition으로 미뤄 클릭 반응이 막히지 않게 한다.
+  const selectTab = (t: Tab) => {
+    if (t === selectedTab) return
+    setSelectedTab(t)
+    startTabTransition(() => setTab(t))
+  }
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
   const [cardItems,      setCardItems]      = useState<CardListItem[]>([])
@@ -855,38 +864,38 @@ export function HometaxCalcPanel() {
         <div className="w-px h-5 bg-border mx-1" />
         <div className="flex rounded-md border overflow-hidden text-xs font-medium">
           <button
-            className={`px-3 py-1.5 transition-colors ${tab === "all" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("all")}
+            className={`px-3 py-1.5 transition-colors ${selectedTab === "all" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("all")}
           >전체 비교</button>
         </div>
 
         <div className="flex rounded-md border overflow-hidden text-xs font-medium">
           <button
-            className={`px-3 py-1.5 transition-colors ${tab === "gift" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("gift")}
+            className={`px-3 py-1.5 transition-colors ${selectedTab === "gift" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("gift")}
           >기부금</button>
           <button
-            className={`px-3 py-1.5 border-l transition-colors ${tab === "card" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("card")}
+            className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "card" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("card")}
           >신용카드</button>
           <button
-            className={`px-3 py-1.5 border-l transition-colors ${tab === "medi" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("medi")}
+            className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "medi" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("medi")}
           >의료비</button>
           <button
-            className={`px-3 py-1.5 border-l transition-colors ${tab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("pension")}
+            className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("pension")}
           >연금계좌</button>
           {/* 기타 = 드롭다운: 잡다 세액공제 항목 중 하나를 골라 본문 리스트 필터로 사용 */}
           <DropdownMenu open={etcMenuOpen} onOpenChange={setEtcMenuOpen}>
             <DropdownMenuTrigger
-              className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${tab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${selectedTab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             >
               기타{etcLabel ? `: ${etcLabel}` : ""}
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); setTab("etc"); setEtcMenuOpen(false) }}>
+              <DropdownMenuRadioGroup value={etcCode} onValueChange={c => { setEtcCode(c); selectTab("etc"); setEtcMenuOpen(false) }}>
                 {etcTabItems.map(it => {
                   const members = etcGroupMembers(it.code, cfg.mapping)
                   return (
@@ -935,8 +944,8 @@ export function HometaxCalcPanel() {
           </>
         )}
 
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        {!loading && currentCount > 0 && (
+        {(loading || isTabPending) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        {!loading && !isTabPending && currentCount > 0 && (
           <span className="text-xs text-muted-foreground flex items-center gap-1">
             {currentCount}명 조회됨
             {diffCount > 0 && (
@@ -953,8 +962,8 @@ export function HometaxCalcPanel() {
         {/* 현황 탭 — NTS 세션 영역 바로 앞(우측) */}
         <div className="ml-auto flex rounded-md border overflow-hidden text-xs font-medium">
           <button
-            className={`px-3 py-1.5 transition-colors ${tab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => setTab("status")}
+            className={`px-3 py-1.5 transition-colors ${selectedTab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            onClick={() => selectTab("status")}
           >현황</button>
         </div>
 
