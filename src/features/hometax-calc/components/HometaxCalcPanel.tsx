@@ -29,7 +29,7 @@ function useYearCtx(): YearCtxValue {
 function useYearVerdict(): YearVerdict { return useYearCtx().verdict }
 function useCodeLabel(): Record<string, string> { return useYearCtx().codeLabel }
 
-const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
+const NTS_SELECTABLE = ["2026", "2025"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택 — 최신연도(2026) 우선.
 const NTS_AVAILABLE  = availableYears()   // 실제 제공되는(=registry 등록된) 연도 — 단일원천. 미등록 연도는 "아직 없음" 안내.
 
 const NTS_FLOW: { code: string; label: string }[] = [
