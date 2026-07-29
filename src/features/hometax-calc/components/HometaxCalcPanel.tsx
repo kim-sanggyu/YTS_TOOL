@@ -289,6 +289,7 @@ interface NtsResult {
 interface YtsResult {
   totPayAmt: number; workTax: number; workAmt: number; taxBase: number
   prodTaxAmt: number; wiaCredit: number; resIncmTax: number
+  taxCut: number; rtSum: number   // 세액감면 계(TAX_CUT)·세액공제 계(RT_SUM)
 }
 interface InputRow {
   code: string; label: string; group: string; ytsCol: string | null; valueKey: string; sent: number; outCode?: string
@@ -1854,14 +1855,20 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
   const totPayNts = res.ntsOut.find(r => r.code === "8900")?.useAmt ?? null
 
   // 계산 흐름 순서(총급여→결정세액) 그대로 YTS39·NTS 값을 나란히 대조 — 어느 단계에서 갈렸는지 바로 보임
+  //   소득공제 = 총급여−과세표준(양변 직접 계산, 자기정합). 단일 컬럼/코드가 없어 파생: 근로소득공제+종합소득공제 포함(실데이터 485/485 검증).
+  const ytsTotPay   = yts?.totPayAmt ?? row?.totPayAmt ?? null
+  const ytsTaxBase  = yts?.taxBase ?? null
+  const ntsTaxBase  = res.ntsMap["8903"] ?? null
+  const ytsIncomeDdc = ytsTotPay != null && ytsTaxBase != null ? ytsTotPay - ytsTaxBase : null
+  const ntsIncomeDdc = totPayNts != null && ntsTaxBase != null ? totPayNts - ntsTaxBase : null
   const compareRows: { label: string; code: string; ytsCol: string; yts: number | null; nts: number | null }[] = [
-    { label: "총급여",          code: "8900", ytsCol: "TOT_PAY_AMT", yts: yts?.totPayAmt   ?? row?.totPayAmt  ?? null, nts: totPayNts },
-    { label: "근로소득공제",     code: "8901", ytsCol: "WORK_TAX",    yts: yts?.workTax     ?? null,                    nts: res.ntsMap["8901"] ?? null },
-    { label: "근로소득금액",     code: "8902", ytsCol: "WORK_AMT",    yts: yts?.workAmt     ?? null,                    nts: res.ntsMap["8902"] ?? null },
-    { label: "종합소득 과세표준", code: "8903", ytsCol: "TOT_PTB",     yts: yts?.taxBase     ?? null,                    nts: res.ntsMap["8903"] ?? null },
-    { label: "산출세액",         code: "8990", ytsCol: "PROD_TAX_AMT",yts: yts?.prodTaxAmt  ?? row?.prodTaxAmt ?? null, nts: res.ntsMap["8990"] ?? null },
-    { label: "근로소득세액공제", code: "8700", ytsCol: "RT_WIA",      yts: yts?.wiaCredit   ?? null,                    nts: res.ntsMap["8700"] ?? null },
-    { label: "결정세액",         code: "8999", ytsCol: "RES_INCM_TAX",yts: yts?.resIncmTax  ?? row?.resIncmTax ?? null, nts: res.ntsMap["8999"] ?? null },
+    { label: "총급여",   code: "8900", ytsCol: "TOT_PAY_AMT",    yts: ytsTotPay,                                  nts: totPayNts },
+    { label: "소득공제", code: "",     ytsCol: "총급여−과세표준", yts: ytsIncomeDdc,                               nts: ntsIncomeDdc },
+    { label: "과세표준", code: "8903", ytsCol: "TOT_PTB",        yts: ytsTaxBase,                                 nts: ntsTaxBase },
+    { label: "산출세액", code: "8990", ytsCol: "PROD_TAX_AMT",   yts: yts?.prodTaxAmt ?? row?.prodTaxAmt ?? null, nts: res.ntsMap["8990"] ?? null },
+    { label: "세액감면", code: "8924", ytsCol: "TAX_CUT",        yts: yts?.taxCut ?? null,                        nts: res.ntsMap["8924"] ?? null },
+    { label: "세액공제", code: "8923", ytsCol: "RT_SUM",         yts: yts?.rtSum ?? null,                         nts: res.ntsMap["8923"] ?? null },
+    { label: "결정세액", code: "8999", ytsCol: "RES_INCM_TAX",   yts: yts?.resIncmTax ?? row?.resIncmTax ?? null, nts: res.ntsMap["8999"] ?? null },
   ]
   const compareCodes = new Set(compareRows.map(r => r.code))   // ①결과비교에 나오는 계산흐름 코드(8900~8999) — ③표에서 중복 제거
 

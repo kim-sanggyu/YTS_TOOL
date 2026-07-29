@@ -10,7 +10,7 @@ import { pensionNtsCode } from "@/features/hometax-calc/mapping/pension"
 import { investmentCode } from "@/features/hometax-calc/mapping/investment"
 
 // 결과대사·body 에 항상 필요한 기본 컬럼
-const BASE_COLS = ["TOT_PAY_AMT", "WORK_TAX", "WORK_AMT", "TOT_PTB", "PROD_TAX_AMT", "RT_WIA", "RES_INCM_TAX"]
+const BASE_COLS = ["TOT_PAY_AMT", "WORK_TAX", "WORK_AMT", "TOT_PTB", "PROD_TAX_AMT", "RT_WIA", "RES_INCM_TAX", "TAX_CUT", "RT_SUM"]
 
 // PAY_WRK_CALC 실제 컬럼 캐시 — 매핑 오타/타테이블 컬럼을 SELECT 에서 제외해 쿼리 붕괴 방지
 let calcColsCache: Set<string> | null = null
@@ -253,6 +253,7 @@ export interface CompareRunResult {
   yts: {
     totPayAmt: number; workTax: number; workAmt: number; taxBase: number
     prodTaxAmt: number; wiaCredit: number; resIncmTax: number
+    taxCut: number; rtSum: number   // 세액감면 계(TAX_CUT)·세액공제 계(RT_SUM) — ①결과비교 대조용
   }
   nts:          HometaxCompareResult["nts"]
   coveredCodes: HometaxCompareResult["coveredCodes"]
@@ -378,6 +379,8 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
       prodTaxAmt: vals.PROD_TAX_AMT,
       wiaCredit:  vals.RT_WIA,
       resIncmTax: vals.RES_INCM_TAX,
+      taxCut:     vals.TAX_CUT,
+      rtSum:      vals.RT_SUM,
     },
     nts:          compare.nts,
     coveredCodes: compare.coveredCodes,
