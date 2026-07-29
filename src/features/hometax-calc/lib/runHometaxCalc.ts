@@ -207,13 +207,16 @@ const ALL_CODES = [
   "8831","8832","8833","8834","8835",
 ]
 
-function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping: MappingRow[], marriageCredit: number, omitCodes: string[] = []): { body: object; coveredCodes: string[] } {
+function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping: MappingRow[], marriageCredit: number, omitCodes: string[] = [], detailRowExtra: Record<string, string> = {}): { body: object; coveredCodes: string[] } {
   // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑코드 (미래에 send flip 해도 항상 포함)
   // omitCodes: 계약 A/B 프로브용 — 특정 amtClusCd 를 payload 에서 아예 제외(0 전송조차 안 함)
   const codes = Array.from(new Set([...ALL_CODES, ...mapping.filter(m => m.send).map(m => m.ntsCode)]))
     .filter(c => !omitCodes.includes(c))
+  // detailRowExtra: 연도 프로파일(PROFILE_2026 등)이 각 detail 행에 병합할 신규필드(ereClCd/yrsSrvcClCd/statusValue/ddcRtnId).
+  //   2025는 detailRowExtra 없음(={}) → 스프레드가 no-op이라 동작 불변. 이것이 C 방식의 유일한 엔진 확장.
   const detail = codes.map(code => ({
     amtClusCd: code, useAmt: "0", ddcLmtAmt: "0", incDdcNfpCnt: "0", ddcTrgtAmt: "0", ddcAmt: "0",
+    ...detailRowExtra,
   }))
 
   const setAmt = (code: string, field: string, val: number) => {
@@ -275,7 +278,7 @@ export async function runHometaxCompare(vals: Record<string, number>, attrYr: st
       status: i.status,
     }))
 
-  const { body, coveredCodes } = buildCompareBody(vals, attrYr, cfg.mapping, cfg.marriageCredit, opts.omitCodes ?? [])
+  const { body, coveredCodes } = buildCompareBody(vals, attrYr, cfg.mapping, cfg.marriageCredit, opts.omitCodes ?? [], cfg.profile.detailRowExtra ?? {})
 
   // 세션 재사용 — 없으면 생성 (첫 실행 ~30초, 이후 재사용)
   const page = await getOrCreateSession(attrYr)

@@ -9,6 +9,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { MAPPING_2025, PROC_LABEL_CODE_2025, coverageOf, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
+import { availableYears } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
@@ -16,7 +17,7 @@ import { outCodeOf, SUBTOTAL_CODES, SUBTOTAL_OF, MAP_ORDER, DDC_DOMAIN, ddcVerdi
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
-const NTS_AVAILABLE  = ["2025"]           // 실제 제공되는 연도. 그 외(2026 등)는 국세청 미개시 → "아직 없음" 안내(개시되면 여기에 추가하면 풀린다).
+const NTS_AVAILABLE  = availableYears()   // 실제 제공되는(=registry 등록된) 연도 — 단일원천. 미등록 연도는 "아직 없음" 안내.
 
 const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8900", label: "총급여" },

@@ -28,3 +28,18 @@ export const PROFILE_2025: NtsProfile = {
   screenId:   "UTEYSEJF01",
   l03Url:     "https://teys.hometax.go.kr/wqAction.do?actionId=ATEYSEAA001L03&screenId=UTEYSEJF01&popupYn=false&realScreenId=",
 }
+
+// 2026 — 2026-07-29 라이브 캡처(data/capture/io-2026-catalog-20260729.jsonl) 실측.
+//   ▶ 2025 대비 바뀐 것 = actionId·screenId·연도 드롭다운 id·L03 URL·detail 행별 추가필드뿐.
+//     코드체계(amtClusCd 카탈로그)·payload 구조는 동일 → 매핑 데이터는 2026.ts 가 2025 물리복사.
+//   ▶ detailRowExtra = detail 각 행에 병합할 신규필드(2025엔 없음). attrYr 는 buildCompareBody 가
+//     연도값(smltClcClCd)으로 각 행에 이미 주입하므로 여기 제외. 나머지 4필드는 캡처 고정값.
+//     ※ 행별필드 필수여부(없어도 계산되는지)는 ③단계 with/without 프로브로 확정 예정.
+export const PROFILE_2026: NtsProfile = {
+  year:       "2026",
+  dropdownId: "a_1905130000",
+  actionId:   "ATEYSEDA001L01",
+  screenId:   "UTEYSEJ0E001",
+  l03Url:     "https://teys.hometax.go.kr/wqAction.do?actionId=ATEYSEDA001L01&screenId=UTEYSEJ0E001&popupYn=false&realScreenId=UTEYSEJ0E001",
+  detailRowExtra: { ereClCd: "01", yrsSrvcClCd: "01", statusValue: "R", ddcRtnId: "" },
+}

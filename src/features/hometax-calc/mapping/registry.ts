@@ -6,8 +6,9 @@
  *   엔진 코드는 건드리지 않는다(C 방식: 엔진 단일, 데이터/프로파일만 연도별).
  */
 import type { Coverage, MappingRow } from "./types"
-import { PROFILE_2025, type NtsProfile } from "./ntsProfile"
+import { PROFILE_2025, PROFILE_2026, type NtsProfile } from "./ntsProfile"
 import { MAPPING_2025, COVERAGE_2025, PROC_LABEL_CODE_2025, NTS_RESULT_CODES, MARRIAGE_CREDIT } from "./2025"
+import { MAPPING_2026, COVERAGE_2026, PROC_LABEL_CODE_2026, NTS_RESULT_CODES_2026, MARRIAGE_CREDIT_2026 } from "./2026"
 
 export interface YearConfig {
   year:           string
@@ -28,6 +29,15 @@ const CONFIGS: Record<string, YearConfig> = {
     ntsResultCodes: NTS_RESULT_CODES,
     marriageCredit: MARRIAGE_CREDIT,
     profile:        PROFILE_2025,
+  },
+  "2026": {
+    year:           "2026",
+    mapping:        MAPPING_2026,
+    coverage:       COVERAGE_2026,
+    procLabelCode:  PROC_LABEL_CODE_2026,
+    ntsResultCodes: NTS_RESULT_CODES_2026,
+    marriageCredit: MARRIAGE_CREDIT_2026,
+    profile:        PROFILE_2026,
   },
 }
 
