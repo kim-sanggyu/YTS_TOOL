@@ -1,5 +1,9 @@
 import { describe, test, expect } from "vitest"
-import { ddcVerdict, diffCodesOf, SUBTOTAL_OF, type DdcCells } from "../ddcVerdict"
+import { makeYearVerdict, type DdcCells } from "../ddcVerdict"
+import { MAPPING_2025 } from "@/features/hometax-calc/mapping/2025"
+
+// 2025 매핑으로 판정 인스턴스 생성(연도화 이후: 팩토리 → 인스턴스). 판정 로직은 연도 무관하게 이 인스턴스로 검증.
+const { ddcVerdict, diffCodesOf, SUBTOTAL_OF } = makeYearVerdict(MAPPING_2025)
 
 // ────────────────────────────────────────────────────────────
 // ddcVerdict / diffCodesOf — 코드별 대조 판정 단일원천.

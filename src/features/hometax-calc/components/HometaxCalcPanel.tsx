@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, Fragment, type ReactNode } from "react"
+import { useState, useEffect, useRef, useMemo, createContext, useContext, Fragment, type ReactNode } from "react"
 import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,8 +14,17 @@ import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/r
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
-import { outCodeOf, SUBTOTAL_CODES, SUBTOTAL_OF, MAP_ORDER, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes } from "@/features/hometax-calc/lib/ddcVerdict"
+import { outCodeOf, SUBTOTAL_CODES, makeYearVerdict, type YearVerdict } from "@/features/hometax-calc/lib/ddcVerdict"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
+
+// 연도별 판정 인스턴스(makeYearVerdict) 컨텍스트 — 리스트 Table·드로어가 드롭다운 연도의 판정기를 공유.
+//   HometaxCalcPanel 이 ntsYear 로 인스턴스를 만들어 Provider 로 공급, 하위(Table·DetailView)는 useYearVerdict() 로 받는다.
+const YearVerdictContext = createContext<YearVerdict | null>(null)
+function useYearVerdict(): YearVerdict {
+  const v = useContext(YearVerdictContext)
+  if (!v) throw new Error("YearVerdictContext 밖에서 useYearVerdict 호출")
+  return v
+}
 
 const NTS_SELECTABLE = ["2025", "2026"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택.
 const NTS_AVAILABLE  = availableYears()   // 실제 제공되는(=registry 등록된) 연도 — 단일원천. 미등록 연도는 "아직 없음" 안내.
@@ -412,6 +421,8 @@ export function HometaxCalcPanel() {
   const [ntsYear,        setNtsYear]        = useState(NTS_SELECTABLE[0])       // 국세청 모의계산 귀속연도 (중심축)
   const [year,           setYear]           = useState(NTS_SELECTABLE[0])       // YTS 데이터 연도 = 국세청 연도에 자동 연동(항상 동일, 수정 불가)
   const ntsAvailable = NTS_AVAILABLE.includes(ntsYear)                          // 국세청 모의계산 제공 연도 여부
+  // 판정 인스턴스 — 드롭다운 연도(ntsYear)의 매핑으로 생성. 헬퍼는 클로저로, Table·드로어는 Provider 로 공유.
+  const verdict = useMemo(() => makeYearVerdict(getYearConfig(ntsYear).mapping), [ntsYear])
   const [tab,            setTab]            = useState<"all" | "gift" | "card" | "medi" | "pension" | "etc" | "status">("all")
   const [allItems,       setAllItems]       = useState<ListItem[]>([])
   const [giftItems,      setGiftItems]      = useState<GiftListItem[]>([])
@@ -708,7 +719,7 @@ export function HometaxCalcPanel() {
   //   과거 합/소계/?? 0 파편화 제거 → 리스트 배지 = 드로어 ✗ 개수 항상 일치.
   const rowHasDiff = (calcNo: string, codes: Iterable<string | null>): boolean => {
     const res = results[calcNo]
-    return !!res && diffCodesOf(res, codes).length > 0
+    return !!res && verdict.diffCodesOf(res, codes).length > 0
   }
   // 기부: YTS 라인 없는 국세청 자체생성 코드(고향특별 8784 등)도 잡도록 기부 전체 도메인으로 대조
   const giftHasDiff    = (i: GiftListItem)     => rowHasDiff(i.calcNo, GIFT_CODES)
@@ -718,7 +729,7 @@ export function HometaxCalcPanel() {
   // 소계형(카드8430·의료8726): per-code 불가라 소계코드 한 점이 유일 대조점(구조적 예외)
   const subtotalHasDiff = (calcNo: string, code: string): boolean => {
     const res = results[calcNo]
-    return !!res && ddcVerdict(res, code) === "diff"
+    return !!res && verdict.ddcVerdict(res, code) === "diff"
   }
   // 전체탭은 계(세액) 층위 대조 — 항목층과 별개(총급여→결정세액 최종 결과 검증)
   function allHasDiff(i: ListItem): boolean {
@@ -746,6 +757,7 @@ export function HometaxCalcPanel() {
   const shownGroupItems = showDiffOnly ? groupItems.filter(groupHasDiff) : groupItems
 
   return (
+    <YearVerdictContext.Provider value={verdict}>
     <div className="flex flex-col h-full min-h-0">
       {/* 헤더 */}
       <div className="shrink-0 flex items-center gap-2 p-4 border-b">
@@ -981,6 +993,7 @@ export function HometaxCalcPanel() {
         </SheetContent>
       </Sheet>
     </div>
+    </YearVerdictContext.Provider>
   )
 }
 
@@ -1092,6 +1105,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
+  const { hiddenDiffCodes } = useYearVerdict()
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
@@ -1402,6 +1416,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
+  const { hiddenDiffCodes } = useYearVerdict()
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
@@ -1508,6 +1523,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
+  const { hiddenDiffCodes } = useYearVerdict()
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
@@ -1613,6 +1629,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   onShowProc: (info: { calcNo: string; nm: string; text: string }) => void
   listSort: SortState | null; onListSort: (s: SortState | null) => void
 }) {
+  const { hiddenDiffCodes } = useYearVerdict()
   const showInput = items.some(it => it.lines.some(l => l.ytsInput != null))   // 전송 사용액(납입액) 있는 그룹만 컬럼 표시
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
@@ -1776,6 +1793,8 @@ function MismatchBadge({ n }: { n: number }) {
 // ── 상세조회 뷰 ──────────────────────────────────────────────────────────────
 function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { res: RowResult; row: DetailRowLike | null; calcNo: string; procOrder?: string[]; nm?: string; listCodes?: string[]; ntsYear: string }) {
   const { mapping, procLabelCode } = getYearConfig(ntsYear)   // ②표 원천컬럼·③표 로스터 순서를 드롭다운 연도로 라우팅
+  // 판정·정렬 단일원천(연도별 인스턴스) — 이름을 그대로 구조분해해 이하 코드는 무변경.
+  const { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes } = useYearVerdict()
   const yts = res.yts
   const nts = res.nts
   const ok  = nts.resultCode === "S" || nts.resultCode === null
