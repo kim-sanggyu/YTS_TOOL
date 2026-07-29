@@ -472,7 +472,7 @@ export function HometaxCalcPanel() {
   const [listSort, setListSort] = useState<SortState | null>({ key: "nm", dir: "asc" })   // 목록 정렬(전 탭 공유, 기본 이름순) — 전체실행 처리순서를 화면 정렬순과 일치시킴
   const [procTotalFor,   setProcTotalFor]   = useState<{ calcNo: string; nm: string; text: string } | null>(null)
   // 상세조회 드로어 좌우 패널 리사이즈 (계산과정 ↔ 실행과정)
-  const [detailLeftPct,  setDetailLeftPct]  = useState(50)
+  const [detailLeftPct,  setDetailLeftPct]  = useState(40)   // 좌 계산과정 40% / 우 실행과정 60% (3:2)
   const detailDragRef    = useRef(false)
   const detailPanelRef   = useRef<HTMLDivElement>(null)
   // 계산과정·실행과정 드로어 전체보기(최대폭) 토글 — 드로어별로 독립
@@ -764,6 +764,9 @@ export function HometaxCalcPanel() {
   // 계산과정 텍스트 — 목록에 실려온 값(대부분 탭) 우선, 없으면(카드 등 lazy 탭) 캐시(procTexts)에서.
   const detailProcText: string | null =
     detailRow?.calcProcTotal ?? (detailFor ? procTexts[detailFor] ?? null : null)
+  // 계산과정 패널 자리 확보 여부 — 텍스트가 lazy 로드되기 전에도 hasProc면 좌패널을 그려
+  // 첫 열림부터 최종 레이아웃(좌 계산 / 우 실행)으로 뜨게 한다(실행과정 100%→축소 깜빡임 제거).
+  const hasProcPanel = !!detailProcText || !!detailRow?.hasProc
 
   // 드로어를 lazy 탭(카드 등)에서 열면 목록에 없는 계산과정 텍스트를 단건 로드
   useEffect(() => {
@@ -1028,15 +1031,19 @@ export function HometaxCalcPanel() {
             {execDrawerFull ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
           <div ref={detailPanelRef} className="flex min-w-0 flex-1">
-            {detailProcText && (
+            {hasProcPanel && (
               <div
                 className="flex min-w-0 flex-col border-r"
                 style={{ width: detailRes ? `${detailLeftPct}%` : "100%" }}
               >
-                <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow!.nm, text: detailProcText }} ntsMap={detailRes?.ntsMap} ntsYear={ntsYear} />
+                {detailProcText
+                  ? <ProcTotalView info={{ calcNo: detailFor!, nm: detailRow!.nm, text: detailProcText }} ntsMap={detailRes?.ntsMap} ntsYear={ntsYear} />
+                  : <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />계산과정 불러오는 중…
+                    </div>}
               </div>
             )}
-            {detailProcText && detailRes && (
+            {hasProcPanel && detailRes && (
               <div
                 className="w-1.5 shrink-0 cursor-col-resize bg-border hover:bg-primary/40 transition-colors"
                 onMouseDown={e => { e.preventDefault(); detailDragRef.current = true }}
