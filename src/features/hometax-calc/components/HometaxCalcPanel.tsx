@@ -8,8 +8,9 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRad
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
-import { MAPPING_2025, PROC_LABEL_CODE_2025, coverageOf, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
-import { availableYears } from "@/features/hometax-calc/mapping/registry"
+import { MAPPING_2025, PROC_LABEL_CODE_2025, type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
+import { coverageOf } from "@/features/hometax-calc/mapping/engine"
+import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
@@ -2243,6 +2244,8 @@ function VerdictBadge({ verdict }: { verdict?: Coverage["verdict"] }) {
 
 function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const yy = Number(ntsYear)
+  // 연도 설정(매핑·커버리지·로스터)은 registry 단일원천에서 라우팅 — 드롭다운 연도(ntsYear)를 그대로 따라간다.
+  const { mapping, coverage, procLabelCode } = getYearConfig(ntsYear)
   // 두 영역(매핑 현황 / 계산과정 로스터)을 실행과정 드로어처럼 접기·최대화
   const [collapsed, setCollapsed] = useState({ mapping: false, roster: false })
   const [focused, setFocused] = useState<"mapping" | "roster" | null>(null)
@@ -2250,19 +2253,19 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const expandOnlyP = (k: "mapping" | "roster") => setFocused(p => (p === k ? null : k))
   const isCollP = (k: "mapping" | "roster") => (focused ? k !== focused : collapsed[k])
   const groups: { name: string; rows: MappingRow[] }[] = []
-  for (const m of MAPPING_2025) {
+  for (const m of mapping) {
     let g = groups.find(x => x.name === m.group)
     if (!g) { g = { name: m.group, rows: [] }; groups.push(g) }
     g.rows.push(m)
   }
-  const totCnt  = MAPPING_2025.length
-  const totConf = MAPPING_2025.filter(m => m.status === "확정").length
-  const totSend = MAPPING_2025.filter(m => m.send).length
+  const totCnt  = mapping.length
+  const totConf = mapping.filter(m => m.status === "확정").length
+  const totSend = mapping.filter(m => m.send).length
 
   // 검증 커버리지 롤업 — 판정별 개수 + 미분류(send:true 인데 COVERAGE 누락) + 검토중 진행도
   const cov = { 안전: 0, 사각: 0, 미검증: 0, 해당없음: 0, 미분류: 0, 검토중: 0, 총: 0 }
-  for (const m of MAPPING_2025) {
-    const c = coverageOf(m.ntsCode)
+  for (const m of mapping) {
+    const c = coverageOf(m.ntsCode, coverage)
     if (!c) { if (m.send) cov.미분류++; continue }
     cov[c.verdict]++
     cov.총++
@@ -2273,11 +2276,11 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   //   판정 3분류로 오탐 차단: 입력(MAPPING ntsCode) / 소계·결과·내부 OUT / 미등록(진짜 신규=세법개정 신호).
   //   흐름코드(8700 등 국세청 자체계산)·의도적 미사용 내부코드(8741=정치 10만이하, 8740만 대조)는 미등록 아님.
   const outCodes = new Set<string>()
-  for (const m of MAPPING_2025) if (m.outCode) outCodes.add(m.outCode)
+  for (const m of mapping) if (m.outCode) outCodes.add(m.outCode)
   const flowCodes = new Set(NTS_FLOW.map(f => f.code))   // 국세청이 산출세액서 자체계산하는 결과·흐름 코드
   const internalUnused = new Set(["8741"])               // NTS 내부 중간값이라 의도적 미사용(8740만 self 대조)
-  const rosterRows = Object.entries(PROC_LABEL_CODE_2025).map(([label, code], i) => {
-    const hit = MAPPING_2025.find(m => m.ntsCode === code)
+  const rosterRows = Object.entries(procLabelCode).map(([label, code], i) => {
+    const hit = mapping.find(m => m.ntsCode === code)
     const kind: "input" | "sub" | "flow" | "internal" | "unknown" =
         hit ? "input" : outCodes.has(code) ? "sub" : flowCodes.has(code) ? "flow"
       : internalUnused.has(code) ? "internal" : "unknown"
@@ -2290,7 +2293,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
       {/* 매핑 현황 — 그룹별 진도판 */}
       <DetailPanel
         title={`매핑 현황 (전체 ${totCnt} · 확정 ${totConf} · 전송 ${totSend}) — 실행과정 ②표 정렬·원천 기준`}
-        extra={<span className="text-[10px] font-normal text-muted-foreground">국세청 in-out 정리 진도 · <span className="font-mono">mapping/2025.ts › MAPPING_2025</span></span>}
+        extra={<span className="text-[10px] font-normal text-muted-foreground">국세청 in-out 정리 진도 · <span className="font-mono">mapping/{ntsYear}.ts › MAPPING_{ntsYear}</span></span>}
         collapsed={isCollP("mapping")} onToggle={() => toggleP("mapping")} onExpandOnly={() => expandOnlyP("mapping")} maximized={focused === "mapping"}
       >
         {/* 검증 커버리지 롤업 범례 — 각 항목이 국세청 대조로 검증되는 깊이(mapping/2025.ts COVERAGE_2025) */}
@@ -2354,7 +2357,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`} title={r.ytsOut}>{r.ytsOut}</td>
                     {(() => {
-                      const c = coverageOf(r.code.split(" ")[0])
+                      const c = coverageOf(r.code.split(" ")[0], coverage)
                       // 소계 합성행(자기 send 경로 없음)은 커버리지 대상 아님 → —. 미등록(send:true 누락)은 "미분류"(적색).
                       const noCov = !c && r.isSubtotal
                       return (
@@ -2381,7 +2384,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
       {/* 계산과정 순서 로스터 — 실행과정 ③표 정렬 기준 */}
       <DetailPanel
         title={`계산과정 순서 로스터 (${rosterRows.length}) — 실행과정 ③표 정렬 기준`}
-        extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="font-mono">mapping/2025.ts › PROC_LABEL_CODE_2025</span>{rosterUnknown > 0 && <span className="text-red-600 font-semibold"> · 미등록 {rosterUnknown}</span>}</span>}
+        extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="font-mono">mapping/{ntsYear}.ts › PROC_LABEL_CODE_{ntsYear}</span>{rosterUnknown > 0 && <span className="text-red-600 font-semibold"> · 미등록 {rosterUnknown}</span>}</span>}
         collapsed={isCollP("roster")} onToggle={() => toggleP("roster")} onExpandOnly={() => expandOnlyP("roster")} maximized={focused === "roster"}
       >
         <table className="w-full text-xs border-collapse">
