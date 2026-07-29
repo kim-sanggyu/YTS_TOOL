@@ -1280,7 +1280,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">카드공제 소계</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap font-bold">카드공제 소계</td>
                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.cardDdc)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
@@ -1381,7 +1381,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     </Button>
                   </div>
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">의료비공제 소계</td>
+                <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap font-bold">의료비공제 소계</td>
                 <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.mediDdc)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
