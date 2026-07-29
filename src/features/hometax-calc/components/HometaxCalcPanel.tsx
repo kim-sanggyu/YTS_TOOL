@@ -629,12 +629,13 @@ export function HometaxCalcPanel() {
     if (tab !== "all" && tab !== "gift" && tab !== "card" && tab !== "medi" && tab !== "pension" && tab !== "etc") return
     const key = `${year}|${ntsYear}`
     if (cacheLoadedKey.current === key) return   // 이 (year,ntsYear) 캐시를 이미 읽음 → 탭 전환마다 24MB 재읽기 방지
-    cacheLoadedKey.current = key
     let cancelled = false
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
       .then((d: { savedAt: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
-        if (cancelled || !d.rows?.length) return
+        if (cancelled) return                    // 취소(로딩 중 탭·연도 전환)면 잠그지 않음 → 다음 진입에서 재조회
+        cacheLoadedKey.current = key              // ★성공 로드 후에만 잠금(취소된 fetch가 재조회를 막지 않게)
+        if (!d.rows?.length) return
         setResults(prev => {
           const next = { ...prev }
           for (const row of d.rows) {
@@ -648,7 +649,7 @@ export function HometaxCalcPanel() {
         })
         setCachedAt(d.savedAt)
       })
-      .catch(() => { cacheLoadedKey.current = null /* 오류 시 다음 탭 진입에서 재시도 허용 */ })
+      .catch(() => { /* 실패 시 key 미설정 → 다음 진입에서 재시도 */ })
     return () => { cancelled = true }
   }, [tab, year, ntsYear])
 
