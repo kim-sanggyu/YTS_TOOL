@@ -1147,7 +1147,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           const ntsIncomeDdc  = res && res.nts.taxBase != null ? row.totPayAmt - res.nts.taxBase : null
           const incomeDdcDiff = ntsIncomeDdc != null ? ntsIncomeDdc - (row.incomeDdc ?? 0) : null
           return (
-            <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-pointer border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+            <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-default border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
               <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
               <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
               <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1233,7 +1233,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 유형×연도 self 대조가 담당. */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1341,7 +1341,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 카드공제 소계 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1442,7 +1442,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1544,7 +1544,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 항목별 self 대조가 담당. */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1651,7 +1651,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 그룹 헤더(항목수만). 총액·판정은 검증화면에 불필요(시선 분산) → 검증정보는 세부행 self 대조가 담당. */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
@@ -1758,7 +1758,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 대상 요약(항목수). 소득/세액 혼재라 공제액 합산은 표시 안 함 → 비교값이 없어 일치/차이 판정도 비움(세부행이 항목별 판정 담당). */}
-              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-pointer [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
+              <tr onClick={() => onSelect(row.calcNo)} className={`cursor-default [&>td]:py-0 [&_button]:h-5 ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
                 <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
                 <td className="px-3 py-2 text-center tabular-nums text-muted-foreground">{row.empNo}</td>
                 <td className="px-3 py-2 font-mono text-xs">{row.calcNo}</td>
