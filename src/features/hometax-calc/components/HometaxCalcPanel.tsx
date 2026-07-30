@@ -10,6 +10,7 @@ import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
 import { coverageOf } from "@/features/hometax-calc/mapping/engine"
+import { checkMappingConsistency, type ConsistencyResult } from "@/features/hometax-calc/mapping/consistency"
 import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
@@ -2461,6 +2462,9 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   // 두 영역(매핑 현황 / 계산과정 로스터)을 실행과정 드로어처럼 접기·최대화
   const [collapsed, setCollapsed] = useState({ mapping: false, roster: false })
   const [focused, setFocused] = useState<"mapping" | "roster" | null>(null)
+  // 정합성 검사 결과(파생매핑↔MAPPING 코드셋). 검사한 연도를 함께 기록해, 연도가 바뀌면 렌더에서 자동 무효화.
+  const [consistency, setConsistency] = useState<{ year: string; result: ConsistencyResult } | null>(null)
+  const consResult = consistency && consistency.year === ntsYear ? consistency.result : null
   const toggleP = (k: "mapping" | "roster") => { setFocused(null); setCollapsed(c => ({ ...c, [k]: !c[k] })) }
   const expandOnlyP = (k: "mapping" | "roster") => setFocused(p => (p === k ? null : k))
   const isCollP = (k: "mapping" | "roster") => (focused ? k !== focused : collapsed[k])
@@ -2517,7 +2521,24 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
           <span className="inline-flex items-center gap-1"><span className="px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">해당없음</span>{cov.해당없음}</span>
           {cov.미분류 > 0 && <span className="inline-flex items-center gap-1 font-semibold text-red-600"><span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 text-red-700">미분류</span>{cov.미분류}</span>}
           <span className="text-muted-foreground">· 검토중 {cov.검토중}/{cov.총} (나머지 확정)</span>
+          {/* 내부 정합성 검사 — 파생매핑(gift/card/…)↔MAPPING 코드셋 대조(vitest 와 동일 순수함수 공유) */}
+          <button
+            type="button"
+            onClick={() => setConsistency({ year: ntsYear, result: checkMappingConsistency(mapping) })}
+            className="ml-auto px-2 py-0.5 rounded border text-[10px] font-semibold hover:bg-muted"
+            title="파생매핑(gift/card/medi/pension/investment/personal)이 참조하는 amtClusCd 와 MAPPING 코드셋이 어긋나는지 대조"
+          >정합성 검사</button>
+          {consResult && (consResult.ok
+            ? <span className="inline-flex items-center gap-1 font-semibold text-green-700"><CheckCircle2 className="w-3.5 h-3.5" />일치</span>
+            : <span className="inline-flex items-center gap-1 font-semibold text-red-600"><XCircle className="w-3.5 h-3.5" />불일치 {consResult.issues.length}건</span>)}
         </div>
+        {consResult && !consResult.ok && (
+          <ul className="px-1 pb-2 -mt-1 text-[10px] text-red-600 space-y-0.5">
+            {consResult.issues.map((iss, i) => (
+              <li key={i}><span className="font-mono font-semibold">{iss.code}</span> · {iss.direction} · {iss.detail}</li>
+            ))}
+          </ul>
+        )}
         <table className="w-full border-collapse table-fixed text-xs">
           <colgroup>
             {/* 항목 (고정·truncate) — w-56(14rem)에서 확대(20%→추가 10%) */}
