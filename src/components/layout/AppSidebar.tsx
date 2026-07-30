@@ -38,25 +38,30 @@ const navMain = [
 
 const navGroups: NavGroup[] = [
   {
-    label: "전산매체",
+    label: "검증환경 구성",
+    children: [
+      { title: "공제요건 경계나이 관리", href: "/tools/fmly-age-check", icon: Calculator },
+      { title: "차년도 데이터 생성",    href: "/tools/data-migration", icon: GitCompare },
+      { title: "세액계산 회귀검증",    href: "/tools/tax-regression", icon: GitCompare },
+    ],
+  },
+  {
+    label: "세액계산 검증",
+    children: [
+      { title: "국세청 모의계산 비교", href: "/tools/hometax-calc",  icon: Calculator },
+      { title: "연말정산 대시보드",    href: "/tools/tax-dashboard", icon: LayoutDashboard },
+      { title: "계산결과 해설 보기",   href: "/tools/tax-insight",   icon: FileOutput },
+      { title: "세액계산 로직 검증",   href: "/tools/tax-calc",      icon: Calculator, disabled: true },
+    ],
+  },
+  {
+    label: "전산매체 생성",
     children: [
       { title: ".hwp파일 업로드",    href: "/tools/hwp-layout",    icon: FileSearch },
       { title: ".java소스 업로드",   href: "/tools/java-layout",   icon: FileCode },
       { title: "전산매체 비교·편집", href: "/tools/media-layout",  icon: GitCompare },
       { title: "전산매체 소스 생성", href: "/tools/media-generate", icon: Code2 },
       { title: "전산매체 파일 검증", href: "/tools/data-verify",   icon: Database,  disabled: true },
-    ],
-  },
-  {
-    label: "세액계산",
-    children: [
-      { title: "공제요건 경계나이 관리", href: "/tools/fmly-age-check",  icon: Calculator },
-      { title: "차년도 데이터 생성",    href: "/tools/data-migration",  icon: GitCompare },
-      { title: "세액계산 회귀검증",    href: "/tools/tax-regression",  icon: GitCompare, dividerAfter: true },
-      { title: "연말정산 대시보드",     href: "/tools/tax-dashboard",   icon: LayoutDashboard },
-      { title: "계산결과 해설 보기",      href: "/tools/tax-insight",     icon: FileOutput, dividerAfter: true },
-      { title: "국세청 모의계산 비교",  href: "/tools/hometax-calc",    icon: Calculator, dividerAfter: true },
-      { title: "세액계산 로직 검증",    href: "/tools/tax-calc",        icon: Calculator, disabled: true },
     ],
   },
   {
@@ -100,7 +105,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const router   = useRouter()
 
   const defaultGroups: Record<string, boolean> = {
-    "전산매체": true, "세액계산": true, "운영지원": true, "파일배포": true, "과제관리": true,
+    "검증환경 구성": true, "세액계산 검증": true, "전산매체 생성": true, "운영지원": true, "파일배포": true, "과제관리": true,
   }
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(defaultGroups)
   const [workflowOpen, setWorkflowOpen] = useState(false)
@@ -214,7 +219,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>
-                {group.label === "세액계산" && (
+                {group.label === "세액계산 검증" && (
                   <span
                     ref={infoRef}
                     role="button"
