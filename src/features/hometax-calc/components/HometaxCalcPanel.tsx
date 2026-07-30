@@ -1113,7 +1113,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1208,7 +1208,7 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1315,7 +1315,7 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1416,7 +1416,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1520,7 +1520,7 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1627,7 +1627,7 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -1734,7 +1734,7 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   return (
     <table className="w-full min-w-max text-sm border-collapse">
-      <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+      <thead className="sticky top-0 z-10 bg-muted">
         <tr className="border-b text-xs text-muted-foreground">
           <SortableTh label="이름" k="nm" sort={sort} onSort={onSort} className="text-left w-20" />
           <SortableTh label="사번" k="empNo" sort={sort} onSort={onSort} className="text-center w-20" />
@@ -2097,7 +2097,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
           collapsed={isCollapsed("inputs")} onToggle={() => toggle("inputs")} onExpandOnly={() => expandOnly("inputs")} maximized={focusedPanel === "inputs"}
         >
           <table className="min-w-full text-xs border-collapse whitespace-nowrap">
-            <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+            <thead className="sticky top-0 z-10 bg-muted">
               <tr className="text-[10px] text-muted-foreground">
                 <th className="px-2 py-1.5 text-left font-medium">코드</th>
                 <th className="px-2 py-1.5 text-left font-medium">항목</th>
@@ -2155,7 +2155,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
             collapsed={isCollapsed("io")} onToggle={() => toggle("io")} onExpandOnly={() => expandOnly("io")} maximized={focusedPanel === "io"}
           >
             <table className="min-w-full text-xs border-collapse whitespace-nowrap">
-              <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-sm">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr className="text-[10px] text-muted-foreground">
                   <th className="px-2 py-1.5 text-left font-medium">코드</th>
                   <th className="px-2 py-1.5 text-left font-medium">항목</th>
