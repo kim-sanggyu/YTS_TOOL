@@ -689,10 +689,30 @@ export function HometaxCalcPanel() {
     all: allItems.length, gift: giftItems.length, card: cardItems.length, medi: mediItems.length, pension: pensionItems.length, etc: etcItems.length,
   }
   const batchEsRef = useRef<EventSource | null>(null)
+  // 배치 결과 throttle 버퍼 — row마다 setResults(거대객체+테이블 전체 리렌더) 대신 0.5초마다 모아 flush.
+  //   렌더 폭주(캐시 스킵 대량 시 수백 row가 순식간)를 막아 메인스레드가 안 멈춤 → 중단 클릭이 먹힌다.
+  const batchBufRef   = useRef<{ calcNo: string; ok: boolean; result: unknown; duration: number }[]>([])
+  const batchFlushRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  function flushBatchRows() {
+    const buf = batchBufRef.current
+    if (buf.length === 0) return
+    batchBufRef.current = []
+    setResults(prev => {
+      const next = { ...prev }
+      for (const d of buf) next[d.calcNo] = d.ok ? buildRowResult(d.result, d.duration) : errorRowResult(d.duration)
+      return next
+    })
+  }
+  function stopBatchFlush() {
+    if (batchFlushRef.current) { clearInterval(batchFlushRef.current); batchFlushRef.current = null }
+    flushBatchRows()   // 남은 버퍼 최종 반영(중단 시 부분결과 표시)
+  }
+  useEffect(() => () => { if (batchFlushRef.current) clearInterval(batchFlushRef.current) }, [])   // 언마운트 시 타이머 정리
 
   function stopBatch() {
     batchEsRef.current?.close()
     batchEsRef.current = null
+    stopBatchFlush()
     setBatchRunning(false)
     setBatchError("사용자가 중단했습니다.")
   }
@@ -703,6 +723,8 @@ export function HometaxCalcPanel() {
     setBatchRunning(true)
     setBatchProgress({ done: 0, total, skipped: 0 })
     setBatchError(null)
+    batchBufRef.current = []
+    batchFlushRef.current = setInterval(flushBatchRows, 500)   // row는 버퍼에 쌓고 0.5초마다 반영
 
     const sep = endpoint.includes("?") ? "&" : "?"
     const es = new EventSource(`/api/tools/hometax-calc/${endpoint}${sep}year=${year}&ntsYear=${ntsYear}&sortKey=${encodeURIComponent(listSort?.key ?? "")}&sortDir=${listSort?.dir ?? "asc"}`)
@@ -716,10 +738,7 @@ export function HometaxCalcPanel() {
     es.addEventListener("row", (e) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = JSON.parse((e as MessageEvent).data) as { calcNo: string; ok: boolean; result?: any; error?: string; duration: number; cached?: boolean }
-      setResults(prev => ({
-        ...prev,
-        [data.calcNo]: data.ok ? buildRowResult(data.result, data.duration) : errorRowResult(data.duration),
-      }))
+      batchBufRef.current.push({ calcNo: data.calcNo, ok: data.ok, result: data.result, duration: data.duration })   // flush는 타이머가(0.5초)
       setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1, skipped: prev.skipped + (data.cached ? 1 : 0) } : prev)
     })
 
@@ -729,6 +748,7 @@ export function HometaxCalcPanel() {
     })
 
     es.addEventListener("done", () => {
+      stopBatchFlush()   // 타이머 정지 + 남은 버퍼 최종 반영
       setCachedAt(new Date().toISOString())   // 방금 돌린 결과도 캐시에 저장됨 → "저장된 결과 한 벌"로 통일 표시
       setBatchRunning(false)
       es.close()
@@ -737,6 +757,7 @@ export function HometaxCalcPanel() {
     })
 
     es.addEventListener("error", (e) => {
+      stopBatchFlush()
       try {
         const { message } = JSON.parse((e as MessageEvent).data) as { message: string }
         setBatchError(message)
@@ -749,6 +770,7 @@ export function HometaxCalcPanel() {
     })
 
     es.onerror = () => {
+      stopBatchFlush()
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null

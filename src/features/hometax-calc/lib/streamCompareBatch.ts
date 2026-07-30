@@ -44,7 +44,9 @@ export function streamCompareBatch<T extends { calcNo: string }>(
         try {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
         } catch {
-          /* 클라이언트가 이미 연결을 끊은 경우 enqueue 실패 — 무시 */
+          // enqueue 실패 = 클라이언트 연결 끊김(중단·새로고침·탭닫기). Next.js는 stream cancel()을
+          // 안정적으로 안 불러줄 때가 많아, 여기서 끊김을 감지해 취소로 간주 → 남은 인원 즉시 중단.
+          cancelled = true
         }
       }
 
