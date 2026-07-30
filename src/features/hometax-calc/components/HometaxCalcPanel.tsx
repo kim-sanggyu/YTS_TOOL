@@ -1858,12 +1858,15 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
-                // 세부행 강조색: 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan — 리스트에서 한눈에 구분.
+                // 세부행 강조색: 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan,
+                //   인적 추가공제 부녀자(8103)·한부모(8104)=pink(배타관계 쌍) — 리스트에서 한눈에 구분.
                 //   (리터럴 클래스 유지 — Tailwind JIT 퍼지 안전)
                 const hiText = line.code === "8711" ? "text-violet-600 font-semibold"
-                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600 font-semibold" : ""
+                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600 font-semibold"
+                             : (line.code === "8103" || line.code === "8104") ? "text-pink-600 font-semibold" : ""
                 const hiCode = line.code === "8711" ? "text-violet-600/60"
-                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600/60" : ""
+                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600/60"
+                             : (line.code === "8103" || line.code === "8104") ? "text-pink-600/60" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
