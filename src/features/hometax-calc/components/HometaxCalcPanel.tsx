@@ -1447,7 +1447,6 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                     </td>
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.useAmt)}</td>
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
@@ -1550,7 +1549,6 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                     <td colSpan={9} />
                     <td className={`px-3 py-1 whitespace-nowrap ${hi || "text-muted-foreground"}`}>
                       {line.label}
-                      <span className={`ml-1.5 font-mono text-[10px] ${hi ? "opacity-60" : "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
                     <td className={`px-3 py-1 text-right tabular-nums ${hi}`}>{won(line.useAmt)}</td>
                     <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
@@ -1649,7 +1647,6 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                     <td colSpan={9} />
                     <td className="px-3 py-1 text-muted-foreground whitespace-nowrap">
                       {line.label}
-                      <span className="ml-1.5 font-mono text-[10px] text-muted-foreground/40">{line.code}</span>
                     </td>
                     <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.ytsInput)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
@@ -1757,7 +1754,6 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                     <td colSpan={9} />
                     <td className={`px-3 py-1 whitespace-nowrap ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>
                       {line.label}
-                      <span className={`ml-1.5 font-mono text-[10px] ${isa ? "text-indigo-600/60" : "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
                     <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>{won(line.useAmt)}</td>
                     <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : ""}`}>{won(line.ytsDdc)}</td>
@@ -1858,21 +1854,17 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
-                // 세부행 강조색: 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan,
+                // 세부행 강조색(라벨): 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan,
                 //   인적 추가공제 부녀자(8103)·한부모(8104)=pink(배타관계 쌍) — 리스트에서 한눈에 구분.
                 //   (리터럴 클래스 유지 — Tailwind JIT 퍼지 안전)
                 const hiText = line.code === "8711" ? "text-violet-600 font-semibold"
                              : (line.code === "8311" || line.code === "8312") ? "text-cyan-600 font-semibold"
                              : (line.code === "8103" || line.code === "8104") ? "text-pink-600 font-semibold" : ""
-                const hiCode = line.code === "8711" ? "text-violet-600/60"
-                             : (line.code === "8311" || line.code === "8312") ? "text-cyan-600/60"
-                             : (line.code === "8103" || line.code === "8104") ? "text-pink-600/60" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
                     <td className={`px-3 py-1 whitespace-nowrap ${hiText || "text-muted-foreground"}`}>
                       {line.label}
-                      <span className={`ml-1.5 font-mono text-[10px] ${hiCode || "text-muted-foreground/40"}`}>{line.code}</span>
                     </td>
                     {showInput && <td className={`px-3 py-1 text-right tabular-nums ${hiText || "text-muted-foreground"}`}>{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
                     <td className={`px-3 py-1 text-right tabular-nums ${hiText}`}>{won(line.ytsDdc)}</td>
