@@ -2092,6 +2092,23 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
 
   // ① 결과비교 불일치 건수 (계산흐름 7행 중 차이≠0)
   const compareDiffCount = compareRows.filter(r => r.yts != null && r.nts != null && r.nts - r.yts !== 0).length
+
+  // 백단위(코드 8XYZ 의 XY, 예 8201→82) 그룹이 바뀌는 행 = 굵은 윗선 대상. ②③표에서 그룹 경계 시각 구분.
+  //   ②③ map 과 동일한 표시 조건(계산흐름 중복·매핑밖·접힌 소계 제외)으로 실제 보이는 행만 대상.
+  const bucketBreaks = (rows: { code: string }[]): Set<string> => {
+    const set = new Set<string>(); let prev: number | null = null
+    for (const { code } of rows) {
+      if (compareCodes.has(code)) continue
+      if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) continue
+      const sp = SUBTOTAL_OF.get(code); if (sp && !openSubs.has(sp)) continue
+      const b = Math.floor(Number(code) / 100)
+      if (prev != null && b !== prev) set.add(code)
+      prev = b
+    }
+    return set
+  }
+  const ioBreakMap = bucketBreaks(ioRowsByMap)   // ② 매핑순
+  const ioBreak    = bucketBreaks(ioRows)         // ③ 계산과정(로스터)순
   // ③ NTS IN/OUT 대조 불일치 건수 — ddcVerdict 단일원천(리스트 배지와 동일 규칙 → 항상 일치)
   const ioDiffCount = diffCodesOf(res, [...mapOrder.keys(), ...SUBTOTAL_CODES.keys()]).length
 
@@ -2181,7 +2198,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                 const resCol = resultColOf.get(code)
                 const ytsD   = res.ytsDdcMap[code]
                 return (
-                  <tr key={code} onClick={() => setSelRow(`i:${code}`)} className={`border-t ${rowCls(`i:${code}`)}`}>
+                  <tr key={code} onClick={() => setSelRow(`i:${code}`)} className={`${ioBreakMap.has(code) ? "border-t-2 border-muted-foreground/50" : "border-t"} ${rowCls(`i:${code}`)}`}>
                     <td className="px-2 py-1 font-mono">{code}</td>
                     <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                       {isSubtotal ? (
@@ -2254,7 +2271,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                           <td colSpan={11} className="px-2 py-1 text-[11px] font-bold text-foreground">기타 (계산과정 로스터 밖)</td>
                         </tr>
                       )}
-                      <tr onClick={() => setSelRow(`o:${code}`)} className={`border-t ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
+                      <tr onClick={() => setSelRow(`o:${code}`)} className={`${ioBreak.has(code) ? "border-t-2 border-muted-foreground/50" : "border-t"} ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
                       <td className="px-2 py-1 font-mono">{code}</td>
                       <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                         {isSubtotal ? (
