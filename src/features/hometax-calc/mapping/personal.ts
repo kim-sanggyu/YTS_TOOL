@@ -27,7 +27,7 @@ export interface PersonalRow {
 //   배우자·부녀자·한부모는 인원컬럼 없이 flag(해당 시 1명)로 전송 → 공제액컬럼>0 을 1로 환산.
 export const PERSONAL_ROWS: PersonalRow[] = [
   { code: "8002", label: "배우자",        ytsCol: "BASC_SUB_MATE_AMT",     kind: "소득공제", inputCol: "BASC_SUB_MATE_AMT",     inputMode: "flag"  },
-  { code: "8003", label: "부양가족(기본)", ytsCol: "BASC_SUB_FAMILY_AMT",   kind: "소득공제", inputCol: "BASC_SUB_FAMILY_CNT",   inputMode: "value" },
+  { code: "8003", label: "부양가족(통합)", ytsCol: "BASC_SUB_FAMILY_AMT",   kind: "소득공제", inputCol: "BASC_SUB_FAMILY_CNT",   inputMode: "value" },   // 8003=국세청 통합회신(=Σ8004~09) ↔ YTS 총액
   { code: "8101", label: "경로우대",      ytsCol: "ADD_SUB_OAT_AMT",       kind: "소득공제", inputCol: "ADD_SUB_OAT_CNT",       inputMode: "value" },
   { code: "8102", label: "장애인",        ytsCol: "ADD_SUB_HDC_PERS_AMT",  kind: "소득공제", inputCol: "ADD_SUB_HDC_PERS_CNT",  inputMode: "value" },
   { code: "8103", label: "부녀자",        ytsCol: "ADD_SUB_LADY_AMT",      kind: "소득공제", inputCol: "ADD_SUB_LADY_AMT",      inputMode: "flag"  },
