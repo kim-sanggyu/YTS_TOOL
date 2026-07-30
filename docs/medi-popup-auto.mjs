@@ -8,7 +8,9 @@
  * 총급여 #mf_txppWframe_iframe_sub_02_inputTotaSnwAmt / 팝업 계산 #mf_trigger31 적용 #mf_btnApply
  *
  * 사용법: node docs/medi-popup-auto.mjs [calcNo]   (기본 Y202500370)
+ *   calcNo 앞 4자리 연도로 모의계산 버전 자동 선택 (Y2025..→2025, X2026..→2026).
  * ⚠ 국세청 모의계산 입력. DB 읽기전용. headed 필수.
+ * ※ 팝업/그리드 셀렉터(UTEYSEJF19·#mf_gridMdxps_cell..)는 2025 화면 기준 — 2026 팝업이 다르면 조정 필요.
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -23,6 +25,11 @@ const DB_USER = "YTS39", DB_PASS = "Yts391234!"
 const START_URL = "https://hometax.go.kr/websquare/websquare.html?w2xPath=/ui/pp/index_pp.xml&menuCd=index3"
 const OUT_DIR = "data/capture", LOG = path.join(OUT_DIR, "io.jsonl")
 const CALC_NO = process.argv[2] || "Y202500370"
+// calcNo 앞 4자리 숫자 = 귀속연도(Y202500370→2025, X202600518→2026) → 해당 연도 모의계산으로 진입.
+// 연도 드롭다운 element id는 mapping/ntsProfile.ts 의 PROFILE_20xx.dropdownId 와 동일.
+const YEAR = /^[A-Za-z](\d{4})/.exec(CALC_NO)?.[1] ?? "2025"
+const DROPDOWN_ID = { "2025": "a_1905120000", "2026": "a_1905130000" }[YEAR]
+if (!DROPDOWN_ID) { console.error(`✗ 지원하지 않는 귀속연도: ${YEAR} (2025/2026만 지원)`); process.exit(1) }
 const SEL_PAY = "#mf_txppWframe_iframe_sub_02_inputTotaSnwAmt"
 const fmt = n => (n == null ? "—" : Number(n).toLocaleString("ko-KR"))
 
@@ -57,7 +64,7 @@ async function establishSession(page) {
   await page.waitForTimeout(7000); await clickText(page, "모의계산", true); await page.waitForTimeout(6000)
   try { await page.getByText("연말정산 자동계산하기", { exact: true }).first().click({ timeout: 8000 }) } catch {}
   await page.waitForTimeout(2000)
-  await page.evaluate(() => { const els = Array.from(document.querySelectorAll('[id="a_1905120000"]')); const vis = els.filter(e => e.offsetParent !== null); (vis[0] || els[0])?.click() })
+  await page.evaluate((id) => { const els = Array.from(document.querySelectorAll(`[id="${id}"]`)); const vis = els.filter(e => e.offsetParent !== null); (vis[0] || els[0])?.click() }, DROPDOWN_ID)
   await page.waitForTimeout(9000)
 }
 
@@ -147,7 +154,7 @@ async function main() {
   oracledb.initOracleClient({ libDir: ORACLE_LIB }); oracledb.fetchAsString = [oracledb.CLOB]
   fs.mkdirSync(OUT_DIR, { recursive: true }); fs.writeFileSync(LOG, "")
   TARGET = await fetchTarget(CALC_NO)
-  console.log(`[DB] ${CALC_NO} 총급여 ${fmt(TARGET.totPay)}`)
+  console.log(`[DB] ${CALC_NO} (${YEAR} 귀속 → ${YEAR} 모의계산) 총급여 ${fmt(TARGET.totPay)}`)
   console.log(`  [YTS 유형집계] 본인등 ${fmt(TARGET.agg["본인등배려자"])} · 그밖의 ${fmt(TARGET.agg["그밖의부양가족"])} · 난임 ${fmt(TARGET.agg["난임시술비"])} · 미숙아 ${fmt(TARGET.agg["미숙아등이상아"])} → 공제 ${fmt(TARGET.rtMedi)}`)
   console.table(TARGET.fams)
 
