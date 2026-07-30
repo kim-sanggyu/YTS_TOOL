@@ -486,6 +486,7 @@ export function HometaxCalcPanel() {
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
   const [procTexts,      setProcTexts]      = useState<Record<string, string>>({})   // 계산과정 텍스트 lazy 캐시(calcNo→text) — 카드 등 목록에서 CLOB 뺀 탭용
+  const [ioDetail,       setIoDetail]       = useState<Record<string, { ntsIn: NtsIoRow[]; ntsOut: NtsIoRow[] }>>({})   // 드로어 IN/OUT lazy 캐시 — 목록 페이로드에서 뺀 상세를 열 때 단건 로드
   const listLoaded       = useRef<Set<string>>(new Set())    // 이미 fetch한 목록(`tab|year|ntsYear`) — 탭 재진입 시 재조회 스킵
   const cacheLoadedKey   = useRef<string | null>(null)       // 이미 읽은 캐시 (`year|ntsYear`) — 탭 전환마다 24MB 재읽기 방지
 
@@ -755,7 +756,12 @@ export function HometaxCalcPanel() {
   }
 
 
-  const detailRes = detailFor ? results[detailFor] : null
+  // 목록 캐시는 IN/OUT을 뺀 슬림이라, 드로어용으로 lazy 로드한 ioDetail을 병합해 DetailView에 넘긴다.
+  // (라이브 실행 결과는 이미 ntsIn/ntsOut 보유 → 병합 불필요·fetch 스킵.) 병합은 드로어 한정이라 목록 테이블 리렌더에 영향 없음.
+  const detailResBase = detailFor ? results[detailFor] : null
+  const detailRes = detailResBase && detailFor && ioDetail[detailFor]
+    ? { ...detailResBase, ...ioDetail[detailFor] }
+    : detailResBase
   // all탭뿐 아니라 지금 켜져있지 않은 다른 탭에서 열었을 수도 있어 전 탭 리스트를 다 뒤진다.
   const detailRow: DetailRowLike | null = detailFor ? (
     allItems.find(i => i.calcNo === detailFor)
@@ -780,6 +786,23 @@ export function HometaxCalcPanel() {
     if (detailFor && detailRow && detailRow.calcProcTotal == null && detailRow.hasProc) {
       ensureProcText(detailFor)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailFor])
+
+  // 드로어 열림 → IN/OUT 상세 lazy 로드. 목록 캐시는 슬림(ntsIn 비어있음)이라 그 한 명치만 가져온다.
+  // 라이브 실행 결과(ntsIn 보유)·이미 로드한 건은 스킵.
+  useEffect(() => {
+    if (!detailFor) return
+    const r = results[detailFor]
+    if (!r || r.ntsIn.length > 0 || ioDetail[detailFor]) return
+    let cancelled = false
+    fetch(`/api/tools/hometax-calc/batch-results/detail?year=${year}&ntsYear=${ntsYear}&calcNo=${detailFor}`)
+      .then(res => res.json())
+      .then((d: { ntsIn?: NtsIoRow[]; ntsOut?: NtsIoRow[] }) => {
+        if (!cancelled) setIoDetail(prev => ({ ...prev, [detailFor]: { ntsIn: d.ntsIn ?? [], ntsOut: d.ntsOut ?? [] } }))
+      })
+      .catch(() => { /* 무시 */ })
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailFor])
 

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { auth } from "@/auth"
-import { loadBatchResults, deleteBatchResults } from "@/features/hometax-calc/lib/batchResultStore"
+import { loadBatchResults, deleteBatchResults, slimResultForList } from "@/features/hometax-calc/lib/batchResultStore"
 
 export const dynamic = "force-dynamic"
 
@@ -18,7 +18,11 @@ export async function GET(req: NextRequest) {
   const store = loadBatchResults(year, ntsYear)
   if (!store) return Response.json({ savedAt: null, rows: [] })
 
-  return Response.json({ savedAt: store.savedAt, rows: Object.values(store.rows) })
+  // 목록 페이로드 슬림화: 드로어 전용 IN/OUT·미사용 inputs 제거(24MB→수 MB). 상세는 batch-results/detail에서 lazy.
+  const rows = Object.values(store.rows).map(r =>
+    r.result ? { ...r, result: slimResultForList(r.result) } : r)
+
+  return Response.json({ savedAt: store.savedAt, rows })
 }
 
 // 저장된 이전 실행 결과(해당 year+ntsYear) 삭제.

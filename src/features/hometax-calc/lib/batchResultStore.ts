@@ -39,6 +39,22 @@ export function loadBatchResults(year: string, ntsYear: string): StoreFile | nul
   return read(year, ntsYear)
 }
 
+// 목록 복원용 슬림 결과 — 드로어 전용(ntsIn/ntsOut)·미사용(inputs) 대용량 필드를 제거.
+// 목록·판정은 yts/nts/ntsMap/ytsDdcMap/missing 만 쓴다(24MB→수 MB). 드로어 IN/OUT은 loadResultDetail로 lazy.
+export function slimResultForList(r: CompareRunResult): Omit<CompareRunResult, "ntsIn" | "ntsOut" | "inputs"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { ntsIn, ntsOut, inputs, ...rest } = r
+  return rest
+}
+
+// 드로어용 IN/OUT 상세 — 저장 파일에서 그 한 명치만 꺼낸다(목록 페이로드에선 뺐으므로 열 때 lazy 로드).
+export function loadResultDetail(
+  year: string, ntsYear: string, calcNo: string,
+): { ntsIn: CompareRunResult["ntsIn"]; ntsOut: CompareRunResult["ntsOut"] } | null {
+  const r = read(year, ntsYear)?.rows[calcNo]?.result
+  return r ? { ntsIn: r.ntsIn, ntsOut: r.ntsOut } : null
+}
+
 export function upsertBatchResults(year: string, ntsYear: string, rows: StoredRow[]): void {
   if (rows.length === 0) return
   fs.mkdirSync(DIR, { recursive: true })
