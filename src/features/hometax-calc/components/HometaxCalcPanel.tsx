@@ -873,11 +873,22 @@ export function HometaxCalcPanel() {
     const res = results[calcNo]
     return !!res && verdict.ddcVerdict(res, code) === "diff"
   }
-  // 전체탭은 계(세액) 층위 대조 — 항목층과 별개(총급여→결정세액 최종 결과 검증)
+  // 전체탭 "차이" = 표시되는 전 열(인적연금·특별·그밖의·감면·세액공제·산출·결정) 중 하나라도 diff.
+  //   각 열 셀의 diff 계산과 동일 로직 → 빨갛게 보이는 것이 곧 카운트·필터에 잡힌다(화면↔필터 일치).
   function allHasDiff(i: ListItem): boolean {
     const res = results[i.calcNo]
     if (!res) return false
-    return i.prodTaxAmt !== (res.nts.prodTax ?? -1) || i.resIncmTax !== (res.nts.decidedTax ?? -1)
+    const nm = res.ntsMap
+    const cellDiff = (code: string, yts?: number) => { const nts = nm[code]; return nts != null && nts !== (yts ?? 0) }
+    const persPenDiff = PERS_PEN_CODES.some(c => nm[c] != null)
+      && PERS_PEN_CODES.reduce((s, c) => s + (nm[c] ?? 0), 0) !== (i.persPen ?? 0)
+    return (
+      persPenDiff ||
+      cellDiff("8920", i.spclSubSum) || cellDiff("8921", i.otoSum) ||
+      cellDiff("8924", i.taxCut)     || cellDiff("8923", i.rtSum) ||
+      (res.nts.prodTax    != null && res.nts.prodTax    !== i.prodTaxAmt) ||
+      (res.nts.decidedTax != null && res.nts.decidedTax !== i.resIncmTax)
+    )
   }
 
   const diffCount =
@@ -1202,7 +1213,7 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
             return nts != null ? nts - (yts ?? 0) : null
           }
           // 인적+연금공제 — NTS는 개별 인적코드+연금계(PERS_PEN_CODES) 합. YTS(row.persPen)=WORK_AMT−특별−차감소득과 대응.
-          const ntsPersPen  = res ? PERS_PEN_CODES.reduce((s, c) => s + (res.ntsMap[c] ?? 0), 0) : null
+          const ntsPersPen  = res && PERS_PEN_CODES.some(c => res.ntsMap[c] != null) ? PERS_PEN_CODES.reduce((s, c) => s + (res.ntsMap[c] ?? 0), 0) : null
           const persPenDiff = ntsPersPen != null ? ntsPersPen - (row.persPen ?? 0) : null
           return (
             <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-default border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
