@@ -585,6 +585,7 @@ export function HometaxCalcPanel() {
   // 현재 탭 목록 로드 — 이미 로드한 (tab,year,ntsYear)면 재조회 스킵(탭 전환마다 DB 재조회 방지).
   useEffect(() => {
     setDiffOnly(false)
+    setBatchError(null)   // 배치 중단·오류 메시지("사용자가 중단했습니다" 등)는 탭 이동 시 지운다(중단 직후만 표시)
     if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
     if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
     const key = `${tab}|${year}|${ntsYear}`
