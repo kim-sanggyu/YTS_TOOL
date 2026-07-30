@@ -2193,7 +2193,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                 const resCol = resultColOf.get(code)
                 const ytsD   = res.ytsDdcMap[code]
                 return (
-                  <tr key={code} onClick={() => setSelRow(`i:${code}`)} className={`${ioBreakMap.has(code) ? "border-t-2 border-muted-foreground/50" : "border-t"} ${rowCls(`i:${code}`)}`}>
+                  <tr key={code} onClick={() => setSelRow(`i:${code}`)} className={`${ioBreakMap.has(code) ? "border-t-2 border-muted-foreground/40" : "border-t"} ${rowCls(`i:${code}`)}`}>
                     <td className="px-2 py-1 font-mono">{code}</td>
                     <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                       {isSubtotal ? (
@@ -2266,7 +2266,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                           <td colSpan={11} className="px-2 py-1 text-[11px] font-bold text-foreground">기타 (계산과정 로스터 밖)</td>
                         </tr>
                       )}
-                      <tr onClick={() => setSelRow(`o:${code}`)} className={`${ioBreak.has(code) ? "border-t-2 border-muted-foreground/50" : "border-t"} ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
+                      <tr onClick={() => setSelRow(`o:${code}`)} className={`${ioBreak.has(code) ? "border-t-2 border-muted-foreground/40" : "border-t"} ${rowCls(`o:${code}`, cmp === "diff" ? "bg-red-50/50" : "")}`}>
                       <td className="px-2 py-1 font-mono">{code}</td>
                       <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                         {isSubtotal ? (
