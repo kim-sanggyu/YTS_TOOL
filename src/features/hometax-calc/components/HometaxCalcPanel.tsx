@@ -32,6 +32,10 @@ function useCodeLabel(): Record<string, string> { return useYearCtx().codeLabel 
 const NTS_SELECTABLE = ["2026", "2025"]   // 국세청 모의계산 연도 드롭다운(중심축). 앞이 기본선택 — 최신연도(2026) 우선.
 const NTS_AVAILABLE  = availableYears()   // 실제 제공되는(=registry 등록된) 연도 — 단일원천. 미등록 연도는 "아직 없음" 안내.
 
+// 인적+연금공제 NTS 대조 코드 — 개별 인적(본인8001·배우자8002·부양가족통합8003·경로8101·장애8102·부녀자8103·한부모8104) + 연금보험료계8919.
+//   YTS 인적+연금(WORK_AMT−SPCL_SUB_AMT_SUM−BIA_AMT)과 같은 양을 NTS가 직접 계산한 값(부양가족은 8003 통합 회신, 연금은 8919 소계).
+const PERS_PEN_CODES = ["8001", "8002", "8003", "8101", "8102", "8103", "8104", "8919"]
+
 const NTS_FLOW: { code: string; label: string }[] = [
   { code: "8900", label: "총급여" },
   { code: "8901", label: "근로소득공제" },
@@ -111,8 +115,8 @@ interface ListItem {
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
   exhausted?: boolean; exhaustLabel?: string | null
   // 중간 계(YTS) — NTS 대조로 단계별 차이 진단. NTS 코드: 특별8920·그밖의8921·감면계8924·세액공제계8923
-  //   소득공제 = 총급여−과세표준(파생, 단일 코드 없음)
-  spclSubSum?: number; otoSum?: number; incomeDdc?: number; taxCut?: number; rtSum?: number
+  //   인적+연금공제 = 근로소득금액−특별−차감소득(WORK_AMT−SPCL_SUB_AMT_SUM−BIA_AMT). NTS 대조=PERS_PEN_CODES 합
+  spclSubSum?: number; otoSum?: number; persPen?: number; taxCut?: number; rtSum?: number
 }
 // 상세조회 드로어(DetailView)가 실제로 쓰는 최소 필드 — all탭 외 다른 탭(기부금/카드/의료비/연금/기타)
 // 리스트 아이템도 전부 이 필드는 갖고 있어서, 어느 탭에서 열든 계산과정·이름을 채울 수 있다.
@@ -1170,9 +1174,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
           <th className="px-1 py-2 text-left font-medium w-16">소진지점</th>
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right w-32" />
           <th className="px-3 py-2 text-center font-medium w-24">실행 / 분석</th>
+          <SortableTh label="인적·연금공제(차이)" k="persPen" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="특별소득공제(차이)" k="spclSubSum" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="그밖의소득공제(차이)" k="otoSum" sort={sort} onSort={onSort} className="text-right" />
-          <SortableTh label="소득공제(차이)" k="incomeDdc" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="산출세액(차이)" k="prodTaxAmt" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="세액감면(차이)" k="taxCut" sort={sort} onSort={onSort} className="text-right" />
           <SortableTh label="세액공제(차이)" k="rtSum" sort={sort} onSort={onSort} className="text-right" />
@@ -1197,9 +1201,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
             const nts = res ? (res.ntsMap[code] ?? null) : null
             return nts != null ? nts - (yts ?? 0) : null
           }
-          // 소득공제 = 총급여 − 과세표준(드로어 ①과 동일 파생). NTS 소득공제 = 총급여(echo=보낸 totPay=YTS총급여) − NTS 과세표준.
-          const ntsIncomeDdc  = res && res.nts.taxBase != null ? row.totPayAmt - res.nts.taxBase : null
-          const incomeDdcDiff = ntsIncomeDdc != null ? ntsIncomeDdc - (row.incomeDdc ?? 0) : null
+          // 인적+연금공제 — NTS는 개별 인적코드+연금계(PERS_PEN_CODES) 합. YTS(row.persPen)=WORK_AMT−특별−차감소득과 대응.
+          const ntsPersPen  = res ? PERS_PEN_CODES.reduce((s, c) => s + (res.ntsMap[c] ?? 0), 0) : null
+          const persPenDiff = ntsPersPen != null ? ntsPersPen - (row.persPen ?? 0) : null
           return (
             <tr key={row.calcNo} onClick={() => onSelect(row.calcNo)} className={`cursor-default border-b ${rowBg(res, row.calcNo === selectedCalcNo)}`}>
               <td className="px-3 py-2 whitespace-nowrap">{row.nm}</td>
@@ -1217,9 +1221,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
                   </Button>
                 </div>
               </td>
+              {calcCell(row.persPen,    persPenDiff)}
               {calcCell(row.spclSubSum, subDiff("8920", row.spclSubSum))}
               {calcCell(row.otoSum,     subDiff("8921", row.otoSum))}
-              {calcCell(row.incomeDdc,  incomeDdcDiff)}
               {calcCell(row.prodTaxAmt, prodDiff)}
               {calcCell(row.taxCut,     subDiff("8924", row.taxCut))}
               {calcCell(row.rtSum,      subDiff("8923", row.rtSum))}

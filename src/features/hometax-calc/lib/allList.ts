@@ -10,8 +10,9 @@ export interface AllListItem {
   hasProc: boolean               // 계산과정 존재 여부(버튼 활성화용)
   exhausted: boolean; exhaustLabel: string | null
   // 중간 계(NTS 대조용) — 산출/결정만으론 못 잡는 단계별 차이 진단. NTS 코드: 특별8920·그밖의8921·감면계8924·세액공제계8923
-  //   소득공제 = 총급여−과세표준(TOT_PAY_AMT−TOT_PTB, 드로어 ①과 동일 파생). 단일 코드 없음.
-  spclSubSum: number; otoSum: number; incomeDdc: number; taxCut: number; rtSum: number
+  //   인적+연금공제 = 근로소득금액−특별소득공제−차감소득금액(WORK_AMT−SPCL_SUB_AMT_SUM−BIA_AMT). 485/485 항등 검증.
+  //   NTS 대조는 개별 인적코드(8001/8002/8003/8101~8104)+연금계(8919) 합(PERS_PEN_CODES).
+  spclSubSum: number; otoSum: number; persPen: number; taxCut: number; rtSum: number
 }
 
 // 전체 비교(종합) 대상 = 해당 연도 전 직원. 산출·결정세액 대조 + 인력정보(사번/표준특별/계속퇴사/계산과정).
@@ -21,13 +22,13 @@ export async function getAllItems(year: string): Promise<AllListItem[]> {
     TOT_PAY_AMT: number; PROD_TAX_AMT: number; RES_INCM_TAX: number; EFFCTV_TAX_RATE: number
     EMP_NO: string | null; KEEP_PS: string | null; CALC_METHOD: string | null
     HAS_PROC: number; EXHAUSTED_POINT: string | null
-    SPCL_SUB_AMT_SUM: number; OTO_SUM: number; TOT_PTB: number; TAX_CUT: number; RT_SUM: number
+    SPCL_SUB_AMT_SUM: number; OTO_SUM: number; WORK_AMT: number; BIA_AMT: number; TAX_CUT: number; RT_SUM: number
   }>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
            c.TOT_PAY_AMT, c.PROD_TAX_AMT, c.RES_INCM_TAX, c.EFFCTV_TAX_RATE,
            c.CALC_METHOD, CASE WHEN c.CALC_PROC_TOTAL IS NOT NULL THEN 1 ELSE 0 END AS HAS_PROC, c.EXHAUSTED_POINT,
-           c.SPCL_SUB_AMT_SUM, c.OTO_SUM, c.TOT_PTB, c.TAX_CUT, c.RT_SUM,
+           c.SPCL_SUB_AMT_SUM, c.OTO_SUM, c.WORK_AMT, c.BIA_AMT, c.TAX_CUT, c.RT_SUM,
            m.EMP_NO, m.KEEP_PS
     FROM YTS39.PAY_WRK_CALC c
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
@@ -53,7 +54,7 @@ export async function getAllItems(year: string): Promise<AllListItem[]> {
       exhausted:     ex.exhausted, exhaustLabel: ex.exhaustLabel,
       spclSubSum:    Number(r.SPCL_SUB_AMT_SUM ?? 0),
       otoSum:        Number(r.OTO_SUM ?? 0),
-      incomeDdc:     Number(r.TOT_PAY_AMT) - Number(r.TOT_PTB ?? 0),   // 소득공제 = 총급여 − 과세표준
+      persPen:       Number(r.WORK_AMT ?? 0) - Number(r.SPCL_SUB_AMT_SUM ?? 0) - Number(r.BIA_AMT ?? 0),   // 인적+연금공제 = 근로소득금액 − 특별소득공제 − 차감소득금액
       taxCut:        Number(r.TAX_CUT ?? 0),
       rtSum:         Number(r.RT_SUM ?? 0),
     }
