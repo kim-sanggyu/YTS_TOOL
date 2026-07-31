@@ -1166,8 +1166,9 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
 }) {
   const { sorted, sort, onSort } = useSortedList(items, listSort, onListSort)
   // 한 항목을 "YTS값 (차이)" 1컬럼으로. 차이=NTS−YTS: null(미실행)="(—)", 0=정상(회색), ≠0=이상(빨강)
-  const calcCell = (yts: number | undefined, diff: number | null) => (
-    <td className="px-3 py-2 text-right tabular-nums text-xs whitespace-nowrap">
+  //   emphasize=최종 지표(산출세액·결정세액) 컬럼에 흐린 회색 배경 → 중간 공제 컬럼과 시각 구분(글꼴은 동일).
+  const calcCell = (yts: number | undefined, diff: number | null, emphasize = false) => (
+    <td className={`px-3 py-2 text-right tabular-nums text-xs whitespace-nowrap ${emphasize ? "bg-muted/70" : ""}`}>
       {won(yts)}{" "}
       <span className={diff == null ? "text-muted-foreground/40" : diff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/50"}>
         ({diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")})
@@ -1237,10 +1238,10 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
               {calcCell(row.persPen,    persPenDiff)}
               {calcCell(row.spclSubSum, subDiff("8920", row.spclSubSum))}
               {calcCell(row.otoSum,     subDiff("8921", row.otoSum))}
-              {calcCell(row.prodTaxAmt, prodDiff)}
+              {calcCell(row.prodTaxAmt, prodDiff, true)}
               {calcCell(row.taxCut,     subDiff("8924", row.taxCut))}
               {calcCell(row.rtSum,      subDiff("8923", row.rtSum))}
-              {calcCell(row.resIncmTax, dcdDiff)}
+              {calcCell(row.resIncmTax, dcdDiff, true)}
               <td className="px-3 py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{res?.ranAt ?? "—"}</td>
               <td className="px-3 py-2 text-right text-xs text-muted-foreground">{res ? time(res.duration) : "—"}</td>
             </tr>
