@@ -1276,12 +1276,14 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
 }
 
-// 기부금 항목(라벨)만 강조하는 유형 — 정치자금·고향사랑(일반+특별) = 동일 청색.
+// 기부금 항목(라벨)만 강조하는 유형 — 정치자금·고향사랑(일반+특별) = 동일 청색, 특례·우리사주 = 오렌지.
 // (이월은 별도로 '연도' 칸만 오렌지 — 항목/금액엔 색 없음. 색 최소화.)
 const GIFT_TYPE_HL: Record<string, string> = {
-  "548-020": "text-blue-600 font-semibold",   // 정치자금
-  "548-100": "text-blue-600 font-semibold",   // 고향(일반)
-  "548-110": "text-blue-600 font-semibold",   // 고향(특별)
+  "548-020": "text-blue-600 font-semibold",     // 정치자금
+  "548-100": "text-blue-600 font-semibold",     // 고향(일반)
+  "548-110": "text-blue-600 font-semibold",     // 고향(특별)
+  "548-010": "text-orange-600 font-semibold",   // 특례기부금
+  "548-080": "text-orange-600 font-semibold",   // 우리사주
 }
 
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
