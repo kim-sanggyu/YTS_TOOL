@@ -295,11 +295,11 @@ export const COVERAGE_2025: Record<string, Coverage> = {
   // 의료비 — ★유형별 집계(3%·실손차감 후) 전송 → 국세청 서버는 로직A 재현 안 함(화면JS) → 사각(화면구동 검증 필요)
   "8720": { verdict: "사각", review: "검토중" }, "8721": { verdict: "사각", review: "검토중" }, "8725": { verdict: "사각", review: "검토중" }, "8729": { verdict: "사각", review: "검토중" },
   // 기부금 — 원본(공제가능액) 전송, 국세청이 한도·tiered율·이월 건별 재현(커버리지 모범 케이스)
-  "8740": { verdict: "안전", review: "검토중" }, "8783": { verdict: "안전", review: "검토중" }, "8784": { verdict: "안전", review: "검토중" },
-  "8743": { verdict: "안전", review: "검토중" }, "8744": { verdict: "안전", review: "검토중" }, "8746": { verdict: "안전", review: "검토중" }, "8747": { verdict: "안전", review: "검토중" },
-  "8811": { verdict: "안전", review: "검토중" }, "8812": { verdict: "안전", review: "검토중" }, "8813": { verdict: "안전", review: "검토중" }, "8814": { verdict: "안전", review: "검토중" }, "8815": { verdict: "안전", review: "검토중" },
-  "8821": { verdict: "안전", review: "검토중" }, "8822": { verdict: "안전", review: "검토중" }, "8823": { verdict: "안전", review: "검토중" }, "8824": { verdict: "안전", review: "검토중" }, "8825": { verdict: "안전", review: "검토중" },
-  "8831": { verdict: "안전", review: "검토중" }, "8832": { verdict: "안전", review: "검토중" }, "8833": { verdict: "안전", review: "검토중" }, "8834": { verdict: "안전", review: "검토중" }, "8835": { verdict: "안전", review: "검토중" },
+  "8740": { verdict: "안전", review: "확정" }, "8783": { verdict: "안전", review: "확정" }, "8784": { verdict: "안전", review: "확정" },
+  "8743": { verdict: "안전", review: "확정" }, "8744": { verdict: "안전", review: "확정" }, "8746": { verdict: "안전", review: "확정" }, "8747": { verdict: "안전", review: "확정" },
+  "8811": { verdict: "안전", review: "확정" }, "8812": { verdict: "안전", review: "확정" }, "8813": { verdict: "안전", review: "확정" }, "8814": { verdict: "안전", review: "확정" }, "8815": { verdict: "안전", review: "확정" },
+  "8821": { verdict: "안전", review: "확정" }, "8822": { verdict: "안전", review: "확정" }, "8823": { verdict: "안전", review: "확정" }, "8824": { verdict: "안전", review: "확정" }, "8825": { verdict: "안전", review: "확정" },
+  "8831": { verdict: "안전", review: "확정" }, "8832": { verdict: "안전", review: "확정" }, "8833": { verdict: "안전", review: "확정" }, "8834": { verdict: "안전", review: "확정" }, "8835": { verdict: "안전", review: "확정" },
   // 연금계좌 — 납입액(원본) 전송, 국세청이 한도·율 자체계산(ISA도 전환액 원본)
   "8701": { verdict: "안전", review: "검토중" }, "8702": { verdict: "안전", review: "검토중" }, "8703": { verdict: "안전", review: "검토중" },
   "8707": { verdict: "안전", review: "검토중" }, "8708": { verdict: "안전", review: "검토중" },
