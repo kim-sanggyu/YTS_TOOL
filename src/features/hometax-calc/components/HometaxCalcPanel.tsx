@@ -1039,7 +1039,7 @@ export function HometaxCalcPanel() {
           <button
             className={`px-3 py-1.5 transition-colors ${selectedTab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("status")}
-          >현황</button>
+          >맵현황</button>
         </div>
 
         {/* 세션 상태 */}
