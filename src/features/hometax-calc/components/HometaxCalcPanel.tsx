@@ -722,7 +722,7 @@ export function HometaxCalcPanel() {
     batchEsRef.current = null
     stopBatchFlush()
     setBatchRunning(false)
-    toast("전체 실행 중단됨 — 부분 결과는 저장되었습니다")
+    toast("전체 실행 중단됨 — 부분 결과는 저장되었습니다", { duration: Infinity })
   }
 
   // endpoint = 라우트명(그룹은 쿼리 포함 가능 예 "personal-batch?group=income"), total = 진행바 분모.
@@ -753,7 +753,7 @@ export function HometaxCalcPanel() {
 
     es.addEventListener("blocked", (e) => {
       const { message } = JSON.parse((e as MessageEvent).data) as { message: string }
-      toast.error(message)
+      toast.error(message, { duration: Infinity })
     })
 
     es.addEventListener("done", () => {
@@ -762,7 +762,7 @@ export function HometaxCalcPanel() {
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
-      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""}`)
+      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""}`, { duration: Infinity })
       fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     })
 
@@ -772,7 +772,7 @@ export function HometaxCalcPanel() {
       try {
         message = (JSON.parse((e as MessageEvent).data) as { message: string }).message
       } catch { /* 기본 메시지 유지 */ }
-      toast.error(message)
+      toast.error(message, { duration: Infinity })
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
