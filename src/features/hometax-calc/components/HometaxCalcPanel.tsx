@@ -490,6 +490,9 @@ export function HometaxCalcPanel() {
   const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number; skipped: number } | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
+  // 저장된 전체실행 결과 중 국세청 계산 실패(resultCode≠"S": 세션만료·차단·예외) 건수 — 캐시(results)만으로 집계, 추가 로드 0.
+  //   사람 단위(탭 무관) 전역 지표 → 매 탭을 눈으로 훑지 않아도 "오류 있나"를 헤더에서 즉시 확인.
+  const errorCount = useMemo(() => Object.values(results).filter(isErrorRow).length, [results])
   const [procTexts,      setProcTexts]      = useState<Record<string, string>>({})   // 계산과정 텍스트 lazy 캐시(calcNo→text) — 카드 등 목록에서 CLOB 뺀 탭용
   const [ioDetail,       setIoDetail]       = useState<Record<string, { ntsIn: NtsIoRow[]; ntsOut: NtsIoRow[] }>>({})   // 드로어 IN/OUT lazy 캐시 — 목록 페이로드에서 뺀 상세를 열 때 단건 로드
   const listLoaded       = useRef<Set<string>>(new Set())    // 이미 fetch한 목록(`tab|year|ntsYear`) — 탭 재진입 시 재조회 스킵
@@ -1008,6 +1011,11 @@ export function HometaxCalcPanel() {
                 <span title="저장된 전체실행 결과입니다. 다시 실행하면 갱신됩니다.">
                   실행 {formatRanAt(new Date(cachedAt))}
                 </span>
+                {errorCount > 0 && (
+                  <span className="text-amber-700 font-semibold" title="국세청 계산 실패(세션만료·차단·예외) 건수 — 해당 인원 재실행 필요">
+                    ⚠ 오류 {errorCount}건
+                  </span>
+                )}
                 <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
                   지우기
                 </Button>
