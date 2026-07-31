@@ -917,8 +917,9 @@ export function HometaxCalcPanel() {
       <div className="shrink-0 flex items-center gap-2 p-4 border-b">
         {/* 국세청 모의계산 연도 (중심축) — 선택하면 YTS 데이터 연도가 자동 연동 */}
         <span className="text-xs text-muted-foreground whitespace-nowrap">국세청 모의계산</span>
-        <Select value={ntsYear} onValueChange={v => { if (v) { setNtsYear(v); setYear(v) } }}>
-          <SelectTrigger className="w-24 h-7 text-sm">
+        {/* 전체 실행 중엔 연도 변경 잠금 — 연도는 계산 파라미터라 진행 중 바뀌면 옛 연도 결과가 새 화면에 섞임(탭=뷰는 자유). */}
+        <Select value={ntsYear} disabled={batchRunning} onValueChange={v => { if (v) { setNtsYear(v); setYear(v) } }}>
+          <SelectTrigger className="w-24 h-7 text-sm" title={batchRunning ? "전체 실행 중에는 연도를 변경할 수 없습니다 — 중단 후 변경하세요" : undefined}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
