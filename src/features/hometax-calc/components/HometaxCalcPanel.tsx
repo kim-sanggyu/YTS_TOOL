@@ -2098,9 +2098,9 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
   mapping.forEach(m => {
     if (m.ytsCol && !ytsColOf.has(m.ntsCode)) ytsColOf.set(m.ntsCode, ytsSrcWithTable(m))
     const oc = m.outCode ?? m.ntsCode
-    if (m.resultCol && !resultColOf.has(oc)) resultColOf.set(oc, ytsOutOf(m))
+    if (m.resultCol && !resultColOf.has(oc)) resultColOf.set(oc, ytsOutWithTable(m))
   })
-  SUBTOTAL_CODES.forEach((v, code) => { if (!resultColOf.has(code)) resultColOf.set(code, v.ytsOut) })
+  SUBTOTAL_CODES.forEach((v, code) => { if (!resultColOf.has(code)) resultColOf.set(code, "calc." + v.ytsOut) })
   // ② 전용 정렬: 매핑(MAPPING_2025) 정의 순서(그룹별). 소계코드는 멤버 바로 앞. ③(로스터)과 달리 '기타' 분리 없음.
   const anchorMap = (c: string): [number, number, string] => {
     const di = mapOrder.get(c)
@@ -2232,9 +2232,9 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                         </button>
                       ) : label}
                     </td>
-                    <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l">{ytsCol ?? "—"}</td>
+                    <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l"><SrcCell text={ytsCol ?? "—"} /></td>
                     <td className={`px-2 py-1 text-right tabular-nums ${sent ? "" : "text-muted-foreground/30"}`}>{ioNum(sent)}</td>
-                    <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l">{resCol ?? "—"}</td>
+                    <td className="px-2 py-1 text-left font-mono text-[10px] text-muted-foreground border-l"><SrcCell text={resCol ?? "—"} /></td>
                     <td className={`px-2 py-1 text-right tabular-nums ${ytsD ? "" : "text-muted-foreground/30"}`}>{ioNum(ytsD)}</td>
                   </tr>
                 )
@@ -2373,33 +2373,40 @@ const OTHER_SRC: Record<string, string> = {
   // 투자조합출자(8415~8423) = PEN_SAVE_SPEC 562-110, INVST_CLS/INVST_YY 로 연도/종류 분리
   ...Object.fromEntries(["8415","8416","8417","8418","8419","8420","8421","8422","8423"].map(c => [`OTHER_${c}`, "PEN_SAVE_SPEC(562-110)"])),
 }
-// yts 원천컬럼에 소속 테이블 접두: route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_ 등)은 실제 원천으로 환원하고,
-//   PAY_WRK_MAIN/PAY_WRK_CALC 소속이면 앞에 MAIN./CALC. 을 붙인다(다른 테이블·함수는 그대로). ②표·현황표 공용.
+// yts IN/OUT 원천 셀 — "table.COLUMN" 에서 테이블명(첫 '.' 앞)만 볼드. '.' 없으면(테이블만·함수형) 통째 볼드. (2026-07-31 테이블명 굵게·소문자 통일)
+function SrcCell({ text }: { text: string }) {
+  if (!text || text === "—") return <span className="text-muted-foreground/40">—</span>
+  const dot = text.indexOf(".")
+  if (dot < 0) return <span className="font-bold text-blue-600">{text}</span>
+  return <><span className="font-bold text-blue-600">{text.slice(0, dot)}</span>{text.slice(dot)}</>
+}
+// yts 원천컬럼에 소속 테이블 접두(소문자 축약, PAY_WRK_ 제거): route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_ 등)은
+//   실제 원천으로 환원하고, 소속 테이블을 소문자 축약(calc/main/gift_adj/pen_save_spec 등)으로 앞에 붙인다. ②표·현황표 공용.
+//   렌더(SrcCell)가 테이블명만 볼드 처리. (2026-07-31 테이블명 굵게·소문자 통일)
 function ytsSrcWithTable(m: MappingRow): string {
   const c = m.ytsCol
   if (!c) return "—"
-  if (c.startsWith("CARD_")) return "CALC.CALC_PROC_CARD"
-  if (c.startsWith("MEDI_")) return "CALC.CALC_PROC_MEDI"
-  if (c.startsWith("PEN_"))  return "PEN_SAVE_PMT_AMT"          // PAY_WRK_PEN_SAVE_SPEC
-  if (c.startsWith("GIFT_")) return "GIFT_ABLE_SUB_AMT"        // PAY_WRK_GIFT_ADJ
-  if (c.startsWith("RENT_")) return "MAIN.HOUSE_RENT"
-  if (c.startsWith("FAM_"))  return "PAY_WRK_FMLY"             // 인원 집계
-  if (c.startsWith("ETX_"))  return "MAIN." + (ETX_SRC[c] ?? c)
-  if (c.startsWith("LOAN_")) { const s = LOAN_SRC[c] ?? c; return s.includes(".") ? s : "MAIN." + s }   // 테이블명 이미 포함(8312 SPEC)이면 MAIN. 접두 제외
-  if (c.startsWith("OTHER_")) { const s = OTHER_SRC[c] ?? c; return s.startsWith("PEN_SAVE_SPEC") ? s : "MAIN." + s }
-  if (c === "CUT_8601")      return "MAIN.TAX_GOVM_AGREE"
-  if (c.startsWith("CUT_"))  return "FN_PAY_GET_WRK_NTAX(Txx)"
-  return "CALC." + c   // 매핑이 직접 지정한 PAY_WRK_CALC 컬럼(BASC_SUB_*·SPCL_*·NP_INSU_* 등)
+  if (c.startsWith("CARD_")) return "calc.CALC_PROC_CARD"
+  if (c.startsWith("MEDI_")) return "calc.CALC_PROC_MEDI"
+  if (c.startsWith("PEN_"))  return "pen_save_spec.PEN_SAVE_PMT_AMT"
+  if (c.startsWith("GIFT_")) return "gift_adj.GIFT_ABLE_SUB_AMT"
+  if (c.startsWith("RENT_")) return "main.HOUSE_RENT"
+  if (c.startsWith("FAM_"))  return "fmly"                     // 인원 집계(테이블만)
+  if (c.startsWith("ETX_"))  return "main." + (ETX_SRC[c] ?? c)
+  if (c.startsWith("LOAN_")) {
+    const s = LOAN_SRC[c] ?? c
+    if (s.includes(".")) { const [t, col] = s.split("."); return t.replace(/^PAY_WRK_/, "").toLowerCase() + "." + col }   // 테이블명 이미 포함(8312 SPEC)
+    return "main." + s
+  }
+  if (c.startsWith("OTHER_")) { const s = OTHER_SRC[c] ?? c; return s.startsWith("PEN_SAVE_SPEC") ? "pen_save_spec" + s.slice("PEN_SAVE_SPEC".length) : "main." + s }
+  if (c === "CUT_8601")      return "main.TAX_GOVM_AGREE"
+  if (c.startsWith("CUT_"))  return "fn_pay_get_wrk_ntax(Txx)"
+  return "calc." + c   // 매핑이 직접 지정한 PAY_WRK_CALC 컬럼(BASC_SUB_*·SPCL_*·NP_INSU_* 등)
 }
-// yts OUT 물리 공제컬럼(self행): 기부금은 라인별 GIFT_SUB_AMT, 그 외는 resultCol(RT_*).
-function ytsOutOf(m: MappingRow): string {
-  if (m.group === "기부금") return "GIFT_SUB_AMT"          // GiftTable 대조 기준
-  return m.resultCol ?? "—"
-}
-// 현황표용: yts OUT 공제컬럼에 소속 테이블 접두. resultCol 은 전부 PAY_WRK_CALC(RT_*·BASC_*·ADD_*·OTO_*), 기부금만 별도 테이블.
+// 현황표·②표용 yts OUT 공제컬럼(소문자 테이블 접두): 기부금은 gift_adj.GIFT_SUB_AMT, 그 외 resultCol 은 전부 PAY_WRK_CALC.
 function ytsOutWithTable(m: MappingRow): string {
-  if (m.group === "기부금") return "GIFT_SUB_AMT"          // PAY_WRK_GIFT_ADJ (IN 표기와 일관)
-  return m.resultCol ? "CALC." + m.resultCol : "—"
+  if (m.group === "기부금") return "gift_adj.GIFT_SUB_AMT"   // IN 표기와 일관
+  return m.resultCol ? "calc." + m.resultCol : "—"
 }
 
 // 현황탭 렌더 단위: self형/입력전용은 매핑행 1:1, 소계형은 개별행 + 합성 소계행.
@@ -2439,7 +2446,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
       ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,
       ntsOut: isMrrg ? "—" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
       ytsIn:  selfSub ? "—" : ytsSrcWithTable(m),
-      ytsOut: isMrrg ? "—" : selfSub ? "CALC." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      ytsOut: isMrrg ? "—" : selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       isSubtotal: !!selfSub,
     })
@@ -2454,7 +2461,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
         ntsIn: "—",
         ntsOut: "ddcAmt",
         ytsIn:  "—",
-        ytsOut: "CALC." + meta.ytsOut,
+        ytsOut: "calc." + meta.ytsOut,
         status: "확정",   // 소계 대조 = 실측확정된 부분
         isSubtotal: true,
       })
@@ -2617,8 +2624,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`}>{r.ntsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] ${r.ntsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{r.ntsOut}</td>
-                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}>{r.ytsIn}</td>
-                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`} title={r.ytsOut}>{r.ytsOut}</td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}><SrcCell text={r.ytsIn} /></td>
+                    <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsOut === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsOut}><SrcCell text={r.ytsOut} /></td>
                     {(() => {
                       const c = coverageOf(r.code.split(" ")[0], coverage)
                       // 소계 합성행(자기 send 경로 없음)은 커버리지 대상 아님 → —. 미등록(send:true 누락)은 "미분류"(적색).
