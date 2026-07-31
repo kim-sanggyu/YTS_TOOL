@@ -680,6 +680,25 @@ export function HometaxCalcPanel() {
       })
       const json = await res.json()
       setResults(prev => ({ ...prev, [calcNo]: buildRowResult(json, Date.now() - start) }))
+      // 재비교한 행의 list 원본(전송 사용액·YTS공제 등)도 최신 DB로 교체 — 대조결과만 갱신되고 list가 stale로 남던 것 방지.
+      //   그 calcNo 1건만 재조회(list route calcNo 필터) → 해당 탭 items 상태의 그 행만 splice.
+      try {
+        const base = `year=${year}&ntsYear=${ntsYear}&calcNo=${calcNo}`
+        const url =
+          tab === "all" ? `/api/tools/hometax-calc/list?${base}`
+          : tab === "etc" && ETC_GROUPS[etcCode] ? `/api/tools/hometax-calc/list?${base}&${ETC_GROUPS[etcCode].listQs}`
+          : `/api/tools/hometax-calc/list?${base}&type=${tab}`
+        const fresh = (await fetch(url).then(r => r.json())).items?.[0]
+        if (fresh) {
+          const upd = <T extends { calcNo: string }>(prev: T[]): T[] => prev.map(it => it.calcNo === calcNo ? (fresh as T) : it)
+          if (tab === "gift")         setGiftItems(upd)
+          else if (tab === "card")    setCardItems(upd)
+          else if (tab === "medi")    setMediItems(upd)
+          else if (tab === "pension") setPensionItems(upd)
+          else if (tab === "all")     setAllItems(upd)
+          else if (tab === "etc")     (ETC_GROUPS[etcCode] ? setGroupItems : setEtcItems)(upd)
+        }
+      } catch { /* list refresh 실패는 대조결과에 영향 없음 */ }
       // 세션이 새로 생성됐을 수 있으므로 상태 갱신
       fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     } catch {
@@ -688,7 +707,7 @@ export function HometaxCalcPanel() {
       inFlightRef.current.delete(calcNo)
       setRunning(prev => { const s = new Set(prev); s.delete(calcNo); return s })
     }
-  }, [ntsYear, year])
+  }, [ntsYear, year, tab, etcCode])
 
   // ── 비교탭 전체 실행 (백그라운드 배치, SSE로 진행상황 수신) ────────────────────
   const BATCH_ENDPOINT = { all: "all-batch", gift: "gift-batch", card: "card-batch", medi: "medi-batch", pension: "pension-batch", etc: "etc-batch" } as const

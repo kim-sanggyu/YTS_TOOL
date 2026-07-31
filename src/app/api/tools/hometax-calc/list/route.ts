@@ -19,25 +19,30 @@ export async function GET(req: NextRequest) {
   const year    = req.nextUrl.searchParams.get("year") ?? String(new Date().getFullYear())
   const ntsYear = (req.nextUrl.searchParams.get("ntsYear") ?? year).trim()
   const type    = req.nextUrl.searchParams.get("type")
+  const calcNo  = req.nextUrl.searchParams.get("calcNo")   // 지정 시 그 1명만 반환 — 재비교 후 해당 행 list refresh용
 
-  if (type === "gift")    return Response.json({ items: await getGiftItems(year, ntsYear) })
-  if (type === "card")    return Response.json({ items: await getCardItems(year) })
-  if (type === "medi")    return Response.json({ items: await getMediItems(year) })
-  if (type === "pension") return Response.json({ items: await getPensionItems(year) })
-  if (type === "etc")     return Response.json({ items: await getEtcItems(year) })
+  // calcNo 있으면 그 행만 필터(재비교 단건 갱신). 없으면 전체.
+  const json = (items: { calcNo: string }[]) =>
+    Response.json({ items: calcNo ? items.filter(i => i.calcNo === calcNo) : items })
+
+  if (type === "gift")    return json(await getGiftItems(year, ntsYear))
+  if (type === "card")    return json(await getCardItems(year))
+  if (type === "medi")    return json(await getMediItems(year))
+  if (type === "pension") return json(await getPensionItems(year))
+  if (type === "etc")     return json(await getEtcItems(year))
   if (type === "personal") {
     const group = req.nextUrl.searchParams.get("group")
     const kind  = group === "credit" ? "세액공제" : group === "income" ? "소득공제" : undefined
-    return Response.json({ items: await getPersonalItems(year, kind) })
+    return json(await getPersonalItems(year, kind))
   }
-  if (type === "housing") return Response.json({ items: await getHousingItems(year) })
-  if (type === "housingsavings") return Response.json({ items: await getHousingSavingsItems(year) })
-  if (type === "otherincome") return Response.json({ items: await getOtherIncomeItems(year) })
-  if (type === "etccredit") return Response.json({ items: await getEtcCreditItems(year) })
-  if (type === "taxcut")    return Response.json({ items: await getTaxCutItems(year) })
-  if (type === "insurance") return Response.json({ items: await getInsuranceItems(year) })
-  if (type === "education") return Response.json({ items: await getEducationItems(year) })
-  if (type === "investment") return Response.json({ items: await getInvestmentItems(year, ntsYear) })
+  if (type === "housing") return json(await getHousingItems(year))
+  if (type === "housingsavings") return json(await getHousingSavingsItems(year))
+  if (type === "otherincome") return json(await getOtherIncomeItems(year))
+  if (type === "etccredit") return json(await getEtcCreditItems(year))
+  if (type === "taxcut")    return json(await getTaxCutItems(year))
+  if (type === "insurance") return json(await getInsuranceItems(year))
+  if (type === "education") return json(await getEducationItems(year))
+  if (type === "investment") return json(await getInvestmentItems(year, ntsYear))
 
-  return Response.json({ items: await getAllItems(year) })
+  return json(await getAllItems(year))
 }
