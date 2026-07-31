@@ -274,9 +274,9 @@ export const COVERAGE_2025: Record<string, Coverage> = {
   "8418": { verdict: "안전", review: "검토중" }, "8419": { verdict: "안전", review: "검토중" }, "8420": { verdict: "안전", review: "검토중" },
   "8421": { verdict: "안전", review: "검토중" }, "8422": { verdict: "안전", review: "검토중" }, "8423": { verdict: "안전", review: "검토중" },   // 투자조합출자
   "8410": { verdict: "해당없음", review: "검토중" },   // 투자조합 소계(결과전용, send:false)
-  "8431": { verdict: "안전", review: "검토중" }, "8432": { verdict: "안전", review: "검토중" }, "8433": { verdict: "안전", review: "검토중" },
-  "8434": { verdict: "안전", review: "검토중" }, "8435": { verdict: "안전", review: "검토중" },
-  "8461": { verdict: "안전", review: "검토중" }, "8462": { verdict: "안전", review: "검토중" }, "8463": { verdict: "안전", review: "검토중" },   // 신용카드 원본 지출→국세청 소계 8430 자체계산
+  "8431": { verdict: "안전", review: "확정" }, "8432": { verdict: "안전", review: "확정" }, "8433": { verdict: "안전", review: "확정" },
+  "8434": { verdict: "안전", review: "확정" }, "8435": { verdict: "안전", review: "확정" },
+  "8461": { verdict: "안전", review: "확정" }, "8462": { verdict: "안전", review: "확정" }, "8463": { verdict: "안전", review: "확정" },   // 신용카드 원본 지출(PAY_WRK_FMLY_DTL SUM, 로직A無)→국세청 소계 8430 자체계산. SQL SUM↔CALC_PROC_CARD↔8430 원단위 일치 확인(2026-07-31)
   "8452": { verdict: "미검증", review: "검토중" }, "8451": { verdict: "미검증", review: "검토중" }, "8501": { verdict: "미검증", review: "검토중" }, "8453": { verdict: "미검증", review: "검토중" },   // 실데이터 0명(대상 미발생)
   // 세액감면 — 감면대상급여(원본) 전송, 국세청이 감면세액 자동계산
   "8603": { verdict: "안전", review: "검토중" }, "8608": { verdict: "안전", review: "검토중" },   // 조특법30조, 9명 원단위 검증
