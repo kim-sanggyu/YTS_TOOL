@@ -1931,8 +1931,8 @@ const PersonalTableMemo = memo(PersonalTable)
 // 실행과정의 접이식 영역(결과비교/전송한 공제입력/IN·OUT 대조) 공용 껍데기.
 // 펼침 = flex-1(남는 영역끼리 공유) + 내부만 세로·가로 스크롤, 접힘 = 헤더만 남기고 다른 영역에 공간 양보.
 // grow=false 면 내용 길이만큼만 차지(짧은 표에서 밑에 빈 여백 안 남게) — 나머지 flex-1 영역이 남는 공간을 가져간다.
-function DetailPanel({ title, extra, rightExtra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, children }: {
-  title: string; extra?: ReactNode; rightExtra?: ReactNode; collapsed: boolean; onToggle?: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; children: ReactNode
+function DetailPanel({ title, extra, rightExtra, collapsed, onToggle, onExpandOnly, maximized = false, grow = true, headerBg = "bg-background", children }: {
+  title: string; extra?: ReactNode; rightExtra?: ReactNode; collapsed: boolean; onToggle?: () => void; onExpandOnly?: () => void; maximized?: boolean; grow?: boolean; headerBg?: string; children: ReactNode
 }) {
   const expand = !collapsed && grow
   return (
@@ -1941,7 +1941,7 @@ function DetailPanel({ title, extra, rightExtra, collapsed, onToggle, onExpandOn
         onClick={onToggle}
         onDoubleClick={onExpandOnly}
         title={onToggle ? "클릭: 접기/펼치기 · 더블클릭: 이 영역만 최대화" : "더블클릭: 이 영역만 전체보기(최대화)"}
-        className={`flex items-center justify-between gap-2 px-3 py-2 bg-background border-b text-xs font-semibold shrink-0 select-none ${onToggle || onExpandOnly ? "cursor-pointer" : ""}`}
+        className={`flex items-center justify-between gap-2 px-3 py-2 ${headerBg} border-b text-xs font-semibold shrink-0 select-none ${onToggle || onExpandOnly ? "cursor-pointer" : ""}`}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="shrink-0">{title}</span>
@@ -2489,7 +2489,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const { mapping, coverage, procLabelCode } = getYearConfig(ntsYear)
   // 두 영역(매핑 현황 / 계산과정 로스터)을 실행과정 드로어처럼 접기·최대화
   const [collapsed, setCollapsed] = useState({ mapping: false, roster: false })
-  const [focused, setFocused] = useState<"mapping" | "roster" | null>(null)
+  // 맵현황 진입 시 매핑현황을 기본 최대화(로스터 접힘)로 — 콘텐츠 영역 꽉 채워 표시. 로스터는 헤더 버튼으로 펼침.
+  const [focused, setFocused] = useState<"mapping" | "roster" | null>("mapping")
   // 정합성 검사 결과(파생매핑↔MAPPING 코드셋). 검사한 연도를 함께 기록해, 연도가 바뀌면 렌더에서 자동 무효화.
   const [consistency, setConsistency] = useState<{ year: string; result: ConsistencyResult } | null>(null)
   const consResult = consistency && consistency.year === ntsYear ? consistency.result : null
@@ -2539,6 +2540,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         title={`매핑 현황 (전체 ${totCnt} · 확정 ${totConf} · 전송 ${totSend}) — 실행과정 ②표 정렬·원천 기준`}
         extra={<span className="text-[10px] font-normal text-muted-foreground">국세청 in-out 정리 진도 · <span className="font-mono">mapping/{ntsYear}.ts › MAPPING_{ntsYear}</span></span>}
         collapsed={isCollP("mapping")} onToggle={() => toggleP("mapping")} onExpandOnly={() => expandOnlyP("mapping")} maximized={focused === "mapping"}
+        headerBg="bg-sky-100"
       >
         {/* 검증 커버리지 롤업 범례 — 각 항목이 국세청 대조로 검증되는 깊이(mapping/2025.ts COVERAGE_2025) */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-[11px]">
@@ -2647,6 +2649,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         title={`계산과정 순서 로스터 (${rosterRows.length}) — 실행과정 ③표 정렬 기준`}
         extra={<span className="text-[10px] font-normal text-muted-foreground"><span className="font-mono">mapping/{ntsYear}.ts › PROC_LABEL_CODE_{ntsYear}</span>{rosterUnknown > 0 && <span className="text-red-600 font-semibold"> · 미등록 {rosterUnknown}</span>}</span>}
         collapsed={isCollP("roster")} onToggle={() => toggleP("roster")} onExpandOnly={() => expandOnlyP("roster")} maximized={focused === "roster"}
+        headerBg="bg-amber-100"
       >
         <table className="w-full text-xs border-collapse">
           <thead className="sticky top-0 z-10 bg-muted">
