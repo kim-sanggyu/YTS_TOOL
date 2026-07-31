@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, useTransition, memo, createContext, useContext, Fragment, type ReactNode } from "react"
 import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
@@ -487,7 +488,6 @@ export function HometaxCalcPanel() {
   const [sessionLoading, setSessionLoading] = useState(false)
   const [batchRunning,   setBatchRunning]   = useState(false)
   const [batchProgress,  setBatchProgress]  = useState<{ done: number; total: number; skipped: number } | null>(null)
-  const [batchError,     setBatchError]     = useState<string | null>(null)
   const [diffOnly,       setDiffOnly]       = useState(false)
   const [cachedAt,       setCachedAt]       = useState<string | null>(null)   // 복원된 이전 실행 결과 저장시각(ISO)
   const [procTexts,      setProcTexts]      = useState<Record<string, string>>({})   // 계산과정 텍스트 lazy 캐시(calcNo→text) — 카드 등 목록에서 CLOB 뺀 탭용
@@ -590,7 +590,6 @@ export function HometaxCalcPanel() {
   // 현재 탭 목록 로드 — 이미 로드한 (tab,year,ntsYear)면 재조회 스킵(탭 전환마다 DB 재조회 방지).
   useEffect(() => {
     setDiffOnly(false)
-    setBatchError(null)   // 배치 중단·오류 메시지("사용자가 중단했습니다" 등)는 탭 이동 시 지운다(중단 직후만 표시)
     if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
     if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
     const key = `${tab}|${year}|${ntsYear}`
@@ -720,15 +719,15 @@ export function HometaxCalcPanel() {
     batchEsRef.current = null
     stopBatchFlush()
     setBatchRunning(false)
-    setBatchError("사용자가 중단했습니다.")
+    toast("전체 실행 중단됨 — 부분 결과는 저장되었습니다")
   }
 
   // endpoint = 라우트명(그룹은 쿼리 포함 가능 예 "personal-batch?group=income"), total = 진행바 분모.
   function runItemBatch(endpoint: string, total: number) {
     if (batchRunning) return
+    let doneCount = 0, skipCount = 0   // 클로저 카운터 — done 시점 완료 toast용(state 클로저 회피)
     setBatchRunning(true)
     setBatchProgress({ done: 0, total, skipped: 0 })
-    setBatchError(null)
     batchBufRef.current = []
     batchFlushRef.current = setInterval(flushBatchRows, 500)   // row는 버퍼에 쌓고 0.5초마다 반영
 
@@ -744,13 +743,14 @@ export function HometaxCalcPanel() {
     es.addEventListener("row", (e) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = JSON.parse((e as MessageEvent).data) as { calcNo: string; ok: boolean; result?: any; error?: string; duration: number; cached?: boolean }
+      doneCount++; if (data.cached) skipCount++
       batchBufRef.current.push({ calcNo: data.calcNo, ok: data.ok, result: data.result, duration: data.duration })   // flush는 타이머가(0.5초)
       setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1, skipped: prev.skipped + (data.cached ? 1 : 0) } : prev)
     })
 
     es.addEventListener("blocked", (e) => {
       const { message } = JSON.parse((e as MessageEvent).data) as { message: string }
-      setBatchError(message)
+      toast.error(message)
     })
 
     es.addEventListener("done", () => {
@@ -759,17 +759,17 @@ export function HometaxCalcPanel() {
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
+      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""}`)
       fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     })
 
     es.addEventListener("error", (e) => {
       stopBatchFlush()
+      let message = "배치 실행 중 오류가 발생했습니다."
       try {
-        const { message } = JSON.parse((e as MessageEvent).data) as { message: string }
-        setBatchError(message)
-      } catch {
-        setBatchError("배치 실행 중 오류가 발생했습니다.")
-      }
+        message = (JSON.parse((e as MessageEvent).data) as { message: string }).message
+      } catch { /* 기본 메시지 유지 */ }
+      toast.error(message)
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
@@ -1002,9 +1002,6 @@ export function HometaxCalcPanel() {
                 ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
                 : "전체 실행"}
             </Button>
-            {batchError && (
-              <span className="text-xs text-red-600">{batchError}</span>
-            )}
             {/* 저장된 전체실행 결과 = 한 벌. 방금 돌렸든 복원됐든 항상 같은 모양: 실행시각 + 지우기 */}
             {cachedAt && !batchRunning && (
               <span className="flex items-center gap-2 text-xs text-muted-foreground">
