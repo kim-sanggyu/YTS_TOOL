@@ -63,7 +63,7 @@ function makeCodeLabel(mapping: MappingRow[]): Record<string, string> {
 // 기타 드롭다운 = 그룹 항목(여러 코드 묶음) + 단일코드 항목(매핑 tab:"기타") 순.
 // 그룹 = 여러 코드를 한 표에 묶어 대조하는 뷰(PersonalTable 공용). listQs=목록조회 / batchEndpoint=전체실행.
 const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint: string }> = {
-  PERSONAL:      { label: "인적공제",     listQs: "type=personal&group=income", batchEndpoint: "personal-batch?group=income" },  // 배우자·부양가족·추가공제
+  PERSONAL:      { label: "인적(기본,추가)공제", listQs: "type=personal&group=income", batchEndpoint: "personal-batch?group=income" },  // 배우자·부양가족·추가공제
   FAMILY_CREDIT: { label: "혼인자녀출산", listQs: "type=personal&group=credit", batchEndpoint: "personal-batch?group=credit" },  // 혼인·자녀·출산입양
   HOUSING:       { label: "주택자금",     listQs: "type=housing",               batchEndpoint: "housing-batch" },                // 원리금·장기주택저당(한도 대조)
   HOUSING_SAVINGS: { label: "주택마련저축", listQs: "type=housingsavings",        batchEndpoint: "housingsavings-batch" },         // 청약저축·주택청약종합·근로자주택마련(×40%)
