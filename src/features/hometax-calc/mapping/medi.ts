@@ -17,14 +17,15 @@ export interface MediCat {
   label: string
   code:  string   // NTS amtClusCd
   rank:  number
+  selfKey: "bonin" | "other" | "misuk" | "nanim"   // 자체집계(MediSelfAgg) 필드 — 대조a용
 }
 
 /** 대상자별 지출금액 키 → NTS 코드 */
 export const MEDI_CATS: MediCat[] = [
-  { key: "본인등배려자",   label: "본인·65세·장애인",    code: "8720", rank: 1 },
-  { key: "그밖의부양가족", label: "그 밖의 공제대상자",  code: "8721", rank: 2 },
-  { key: "난임시술비",     label: "난임시술비",          code: "8725", rank: 3 },
-  { key: "미숙아등이상아", label: "미숙아·선천성이상아", code: "8729", rank: 4 },
+  { key: "본인등배려자",   label: "본인·65세·장애인",    code: "8720", rank: 1, selfKey: "bonin" },
+  { key: "그밖의부양가족", label: "그 밖의 공제대상자",  code: "8721", rank: 2, selfKey: "other" },
+  { key: "난임시술비",     label: "난임시술비",          code: "8725", rank: 3, selfKey: "nanim" },
+  { key: "미숙아등이상아", label: "미숙아·선천성이상아", code: "8729", rank: 4, selfKey: "misuk" },
 ]
 
 /** NTS 의료비 세액공제 총액 반환 코드 (비교 기준) */

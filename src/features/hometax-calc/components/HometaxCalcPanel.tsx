@@ -246,12 +246,14 @@ interface MediLine {
   code: string          // NTS amtClusCd (전송 코드)
   label: string         // 본인·65세·장애인 / 그밖 / 난임 / 미숙아
   useAmt: number        // 전송 지출금액 (CALC_PROC_MEDI 대상자별)
+  selfAmt: number       // 검증도구 자체집계 (원천 FMLY_DTL 독립 재집계) — 대조a
 }
 interface MediListItem {
   calcNo: string; nm: string; totPayAmt: number
   mediDdc: number       // YTS 의료비 세액공제 (=RT_MEDI_AMT, 비교 기준)
   exhausted?: boolean; exhaustLabel?: string | null
   empNo: string; calcType: string; workStatus: string; calcProcTotal: string | null
+  selfAggMismatch: boolean   // 자체집계 vs CALC_PROC 불일치(목록 배지용)
   lines: MediLine[]
 }
 interface PensionLine {
@@ -896,6 +898,8 @@ export function HometaxCalcPanel() {
     const res = results[calcNo]
     return !!res && verdict.ddcVerdict(res, code) === "diff"
   }
+  // 의료비 "차이" = 세액 차이(대조b, 8726) OR fmly_dtl집계 불일치(대조a). 집계 불일치는 NTS 실행 전에도 잡힘.
+  const mediHasDiff = (i: MediListItem) => subtotalHasDiff(i.calcNo, MEDI_SUBTOTAL_CODE) || i.selfAggMismatch
   // 전체탭 "차이" = 표시되는 전 열(인적연금·특별·그밖의·감면·세액공제·산출·결정) 중 하나라도 diff.
   //   각 열 셀의 diff 계산과 동일 로직 → 빨갛게 보이는 것이 곧 카운트·필터에 잡힌다(화면↔필터 일치).
   function allHasDiff(i: ListItem): boolean {
@@ -917,7 +921,7 @@ export function HometaxCalcPanel() {
   const diffCount =
     tab === "gift"    ? giftItems.filter(giftHasDiff).length :
     tab === "card"    ? cardItems.filter(i => subtotalHasDiff(i.calcNo, CARD_SUBTOTAL_CODE)).length :
-    tab === "medi"    ? mediItems.filter(i => subtotalHasDiff(i.calcNo, MEDI_SUBTOTAL_CODE)).length :
+    tab === "medi"    ? mediItems.filter(mediHasDiff).length :
     tab === "pension" ? pensionItems.filter(pensionHasDiff).length :
     tab === "etc"     ? (isGroup ? groupItems.filter(groupHasDiff).length : etcByCode.filter(etcHasDiff).length) :
     allItems.filter(allHasDiff).length
@@ -927,7 +931,7 @@ export function HometaxCalcPanel() {
   const shownAllItems     = showDiffOnly ? allItems.filter(allHasDiff) : allItems
   const shownGiftItems    = showDiffOnly ? giftItems.filter(giftHasDiff) : giftItems
   const shownCardItems    = showDiffOnly ? cardItems.filter(i => subtotalHasDiff(i.calcNo, CARD_SUBTOTAL_CODE)) : cardItems
-  const shownMediItems    = showDiffOnly ? mediItems.filter(i => subtotalHasDiff(i.calcNo, MEDI_SUBTOTAL_CODE)) : mediItems
+  const shownMediItems    = showDiffOnly ? mediItems.filter(mediHasDiff) : mediItems
   const shownPensionItems = showDiffOnly ? pensionItems.filter(pensionHasDiff) : pensionItems
   const shownEtcItems     = showDiffOnly ? etcByCode.filter(etcHasDiff) : etcByCode
   const shownGroupItems = showDiffOnly ? groupItems.filter(groupHasDiff) : groupItems
@@ -1517,6 +1521,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           <SortableTh label="총급여" k="totPayAmt" sort={sort} onSort={onSort} className="text-right w-32" />
           <th className="px-3 py-2 text-center font-medium w-24">실행 / 분석</th>
           <th className="px-3 py-2 text-left font-medium whitespace-nowrap">항목</th>
+          <th className="px-3 py-2 text-right font-medium whitespace-nowrap">fmly_dtl집계</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">전송 사용액</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">YTS 공제</th>
           <th className="px-3 py-2 text-right font-medium whitespace-nowrap">NTS 공제</th>
@@ -1528,7 +1533,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
       </thead>
       <tbody>
         {items.length === 0 && !loading && (
-          <tr><td colSpan={17} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
+          <tr><td colSpan={18} className="px-3 py-8 text-center text-sm text-muted-foreground">의료비 데이터가 없습니다.</td></tr>
         )}
         {sorted.map(row => {
           const res       = results[row.calcNo]
@@ -1536,6 +1541,7 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
           const ntsDdc    = res ? (res.ntsMap[MEDI_SUBTOTAL_CODE] ?? 0) : null
           const diff      = ntsDdc != null ? ntsDdc - row.mediDdc : null
           const useTotal  = row.lines.reduce((s, l) => s + l.useAmt, 0)
+          const selfTotal = row.lines.reduce((s, l) => s + l.selfAmt, 0)   // 자체집계 총합(원천 독립 재집계)
           return (
             <Fragment key={row.calcNo}>
               {/* 본행 = 의료비 세액공제 소계 */}
@@ -1556,7 +1562,8 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                   </div>
                 </td>
                 <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap font-bold">의료비공제 소계</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{won(useTotal)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${selfTotal !== useTotal ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{won(selfTotal)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${selfTotal !== useTotal ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{won(useTotal)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{won(row.mediDdc)}</td>
                 <td className="px-3 py-2 text-right tabular-nums font-semibold">{ntsDdc != null ? won(ntsDdc) : "—"}</td>
                 <td className="px-3 py-2 text-center">
@@ -1573,15 +1580,21 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const last = i === row.lines.length - 1
                 // 난임시술비(8725, 30%)·미숙아선천성이상아(8729, 20%)는 강조색으로 구분 — 일반 의료비와, 서로도 구별
                 const hi = line.code === "8725" ? "text-teal-600 font-semibold" : line.code === "8729" ? "text-fuchsia-600 font-semibold" : ""
+                // 자체집계(원천 독립 재집계) ≠ 전송값(CALC_PROC) → 자체집계·전송 둘 다 적색(대조a 불일치)
+                const amtCls = line.selfAmt !== line.useAmt ? "text-red-600 font-semibold" : hi
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
                     <td className={`px-3 py-1 whitespace-nowrap ${hi || "text-muted-foreground"}`}>
                       {line.label}
                     </td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${hi}`}>{won(line.useAmt)}</td>
-                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
-                    <td className="px-3 py-1 text-right text-muted-foreground/30">—</td>
+                    {/* fmly_dtl집계 = 원천 FMLY_DTL 독립 재집계 (전송값과 나란히 대조) */}
+                    <td className={`px-3 py-1 text-right tabular-nums ${amtCls}`}
+                        title="검증도구 fmly_dtl 집계 — 원천(FMLY_DTL)에서 실손차감·유형분류 독립 재집계">
+                      {won(line.selfAmt)}
+                    </td>
+                    <td className={`px-3 py-1 text-right tabular-nums ${amtCls}`}>{won(line.useAmt)}</td>
+                    <td /><td />
                     <td /><td /><td colSpan={2} />
                   </tr>
                 )
