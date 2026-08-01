@@ -69,6 +69,7 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   for (const row of mapping) {
     const oc = outCodeOf(row)
     if (SUBTOTAL_CODES.has(oc) && oc !== row.ntsCode) SUBTOTAL_OF.set(row.ntsCode, oc)
+    else if (row.displaySubtotal) SUBTOTAL_OF.set(row.ntsCode, row.displaySubtotal)   // 표시전용 그룹핑(부양가족 8004~09→8003) — outCode 무관, ③표 정렬만
   }
 
   // ③ 항목대조 순서·필터용 — 매핑 정의순(단일원천). 컴포넌트 mapOrder 도 이걸 참조한다.

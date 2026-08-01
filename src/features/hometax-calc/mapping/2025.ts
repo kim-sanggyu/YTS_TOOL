@@ -50,12 +50,12 @@ export const MAPPING_2025: MappingRow[] = [
   //     기본공제만 보면 유형 무관(전원 한 유형에 몰아도 과세표준 동일)이지만, 자녀공제(8763)가 직계비속(8005)
   //     인원에 의존 → 8005=0으로 통합하면 8763도 0으로 떨어짐. (2026-07-23 실측 3명 전원, docs/hometax-family-lump-probe.mjs)
   //   ※자녀공제(8763)는 유형별만으론도 산출 안 됨(별도 총인원 필요). 출산입양(8761)은 순번별 8764~66이 산출. (2026-07-17 실측)
-  { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
-  { group: "인적공제", ntsCode: "8005", label: "부양가족-직계비속(자녀·손자녀·입양)", ytsCol: "FAM_8005", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-050" },
-  { group: "인적공제", ntsCode: "8006", label: "부양가족-직계비속 그외",          ytsCol: "FAM_8006", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-055" },
-  { group: "인적공제", ntsCode: "8007", label: "부양가족-형제자매",              ytsCol: "FAM_8007", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-060" },
-  { group: "인적공제", ntsCode: "8008", label: "부양가족-수급자",                ytsCol: "FAM_8008", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-070" },
-  { group: "인적공제", ntsCode: "8009", label: "부양가족-위탁아동",              ytsCol: "FAM_8009", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, note: "FMLY_RELN 550-080" },
+  { group: "인적공제", ntsCode: "8004", label: "부양가족-직계존속",              ytsCol: "FAM_8004", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-020(소득자 직계존속)+550-030(배우자 직계존속)" },
+  { group: "인적공제", ntsCode: "8005", label: "부양가족-직계비속(자녀·손자녀·입양)", ytsCol: "FAM_8005", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-050" },
+  { group: "인적공제", ntsCode: "8006", label: "부양가족-직계비속 그외",          ytsCol: "FAM_8006", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-055" },
+  { group: "인적공제", ntsCode: "8007", label: "부양가족-형제자매",              ytsCol: "FAM_8007", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-060" },
+  { group: "인적공제", ntsCode: "8008", label: "부양가족-수급자",                ytsCol: "FAM_8008", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-070" },
+  { group: "인적공제", ntsCode: "8009", label: "부양가족-위탁아동",              ytsCol: "FAM_8009", valueKey: "incDdcNfpCnt", rule: "value", status: "확정", send: true, displaySubtotal: "8003", note: "FMLY_RELN 550-080" },
   { group: "인적공제", ntsCode: "8101", label: "추가공제-경로우대", ytsCol: "ADD_SUB_OAT_CNT",     resultCol: "ADD_SUB_OAT_AMT",      valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: true, note: "self ddcAmt=인원×100만. 인원(ADD_SUB_OAT_CNT) 전송, 결과대조=ADD_SUB_OAT_AMT. 라이브 캡처 실측(2026-07-18, n=38, 1명→1,000,000)" },
   { group: "인적공제", ntsCode: "8102", label: "추가공제-장애인",   ytsCol: "ADD_SUB_HDC_PERS_CNT",resultCol: "ADD_SUB_HDC_PERS_AMT", valueKey: "incDdcNfpCnt", rule: "value",  status: "확정", send: true, note: "self ddcAmt=인원×200만. 인원(ADD_SUB_HDC_PERS_CNT) 전송, 결과대조=ADD_SUB_HDC_PERS_AMT. 라이브 캡처 실측(2026-07-18, n=38, 2명→4,000,000)" },
   { group: "인적공제", ntsCode: "8103", label: "추가공제-부녀자",   ytsCol: "ADD_SUB_LADY_AMT",    resultCol: "ADD_SUB_LADY_AMT",      valueKey: "incDdcNfpCnt", rule: "flag",   status: "확정", send: true, note: "self ddcAmt=500,000(50만). 인원(flag→1) 전송, 결과대조=ADD_SUB_LADY_AMT. 라이브 캡처 실측(2026-07-18, n=56, 배우자없음+직계비속0+부녀자로 격리 — 한부모(8104)와 배타관계)" },

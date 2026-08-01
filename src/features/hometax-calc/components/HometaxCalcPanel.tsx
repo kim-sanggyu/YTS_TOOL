@@ -2032,7 +2032,9 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
   const isCollapsed = (k: keyof typeof collapsed) => (focusedPanel ? k !== focusedPanel : collapsed[k])
   const isGrow = (k: keyof typeof collapsed, defaultGrow: boolean) => (focusedPanel ? k === focusedPanel : defaultGrow)
   // ③ 소계형(카드8430/의료8726/교육8735/출산8761/투자조합8410) 개별 멤버 접기 — 기본 펼침, chevron 으로 접기
-  const [openSubs, setOpenSubs] = useState<Set<string>>(() => new Set(SUBTOTAL_CODES.keys()))
+  // displaySubtotal 표시전용 소계(부양가족 8003 등)도 소계로 취급 — SUBTOTAL_OF.values()에 그 소계코드가 있음.
+  const displaySubCodes = useMemo(() => new Set(SUBTOTAL_OF.values()), [SUBTOTAL_OF])
+  const [openSubs, setOpenSubs] = useState<Set<string>>(() => new Set([...SUBTOTAL_CODES.keys(), ...SUBTOTAL_OF.values()]))
   const toggleSub = (c: string) => setOpenSubs(s => { const n = new Set(s); if (n.has(c)) n.delete(c); else n.add(c); return n })
   // ③ 전체보기(로스터+매핑 전 항목, 값 없으면 —) / 값보기(실제 값이 오간 코드만)
   const [ioShowAll, setIoShowAll] = useState(true)
@@ -2229,7 +2231,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                 if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return null
                 const subParent  = SUBTOTAL_OF.get(code)
                 if (subParent && !openSubs.has(subParent)) return null
-                const isSubtotal = SUBTOTAL_CODES.has(code)
+                const isSubtotal = SUBTOTAL_CODES.has(code) || displaySubCodes.has(code)
                 const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                 const sent   = i?.useAmt || i?.incDdcNfpCnt || i?.ddcTrgtAmt
                 const ytsCol = ytsColOf.get(code)
@@ -2292,7 +2294,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                   if (!mapOrder.has(code) && !SUBTOTAL_CODES.has(code)) return null   // 매핑 밖(국세청 내부 코드 8464~8467 등) 제외 — 항목도 YTS 기준
                   const subParent  = SUBTOTAL_OF.get(code)                     // 소계형 개별 멤버면 그 소계코드(카드8430 등)
                   if (subParent && !openSubs.has(subParent)) return null       // 소계가 접혀 있으면 멤버 숨김(기본은 펼침)
-                  const isSubtotal = SUBTOTAL_CODES.has(code)                  // 소계코드 행(카드8430/의료8726 등)
+                  const isSubtotal = SUBTOTAL_CODES.has(code) || displaySubCodes.has(code)   // 소계코드 행(카드8430/의료8726/부양가족8003 등)
                   const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                   // 소계 멤버(카드8431·ISA8707 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT(한도·인원)은 소계행이 담당(카드·의료 동형).
                   //   ISA는 국세청이 per-code OUT도 주지만(카드·의료는 소계만), 소계형은 8705가 유일 YTS 대조점이라 멤버는 입력만.
