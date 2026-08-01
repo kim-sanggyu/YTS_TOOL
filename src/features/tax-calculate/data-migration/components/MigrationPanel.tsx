@@ -77,7 +77,8 @@ export function MigrationPanel() {
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
   const cancelledRef = useRef(false)
   // 과거 기부금(PAY_WRK_GIFT_ADJ) 기부연도 처리: false=A(그대로, 골든마스터 회귀비교) / true=B(+1, 2026 검증)
-  const [giftCarryPlusOne, setGiftCarryPlusOne] = useState(false)
+  //   초기 무선택(null) — 사용자가 A/B 를 명시적으로 고르도록 강제(무심코 기본값 실행 방지).
+  const [giftCarryPlusOne, setGiftCarryPlusOne] = useState<boolean | null>(null)
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -109,6 +110,7 @@ export function MigrationPanel() {
 
   const runScripts = async (scriptIds: string[]) => {
     if (isRunning || scriptIds.length === 0) return
+    if (giftCarryPlusOne === null) { toast.error("과거 기부금 기부연도 옵션(A/B)을 먼저 선택하세요."); return }
 
     // X{toYear} 데이터 사전 확인
     const alreadyExists = scripts.filter(s =>
@@ -251,7 +253,7 @@ export function MigrationPanel() {
           ) : (
             <Button
               onClick={() => runScripts(activeScriptIds)}
-              disabled={isDeleting || activeScriptIds.length === 0}
+              disabled={isDeleting || activeScriptIds.length === 0 || giftCarryPlusOne === null}
               className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               <Play className="h-4 w-4" />전체 실행 ({activeScriptIds.length}개)
@@ -296,12 +298,12 @@ export function MigrationPanel() {
           <div className="flex flex-col gap-1">
             <label className={`flex items-center gap-2 ${isRunning ? "opacity-50" : "cursor-pointer"}`}>
               <input type="radio" name="giftCarry" className="accent-emerald-600"
-                     checked={!giftCarryPlusOne} onChange={() => setGiftCarryPlusOne(false)} disabled={isRunning} />
+                     checked={giftCarryPlusOne === false} onChange={() => setGiftCarryPlusOne(false)} disabled={isRunning} />
               <span>그대로 <span className="font-mono">(A)</span> — 연도 보존 · 2025 골든마스터 회귀비교</span>
             </label>
             <label className={`flex items-center gap-2 ${isRunning ? "opacity-50" : "cursor-pointer"}`}>
               <input type="radio" name="giftCarry" className="accent-emerald-600"
-                     checked={giftCarryPlusOne} onChange={() => setGiftCarryPlusOne(true)} disabled={isRunning} />
+                     checked={giftCarryPlusOne === true} onChange={() => setGiftCarryPlusOne(true)} disabled={isRunning} />
               <span>+1 <span className="font-mono">(B)</span> — 기부연도 +1 · 2026 모의계산/전산매체 검증</span>
             </label>
           </div>
