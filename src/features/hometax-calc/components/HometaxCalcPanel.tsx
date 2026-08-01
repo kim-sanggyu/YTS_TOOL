@@ -182,8 +182,8 @@ function PersonMainCells({ item, onShowProc }: {
   const hasProc = item.calcProcTotal != null || !!item.hasProc
   return (
     <>
-      <td className={`px-3 py-2 text-left ${item.calcType === "표준" ? "text-red-400" : "text-muted-foreground"}`}>{item.calcType}</td>
-      <td className={`px-3 py-2 text-left ${item.workStatus === "중도퇴사" ? "text-red-400" : "text-muted-foreground"}`}>{item.workStatus}</td>
+      <td className={`px-3 py-2 text-left ${item.calcType === "표준" ? "text-blue-600 font-semibold" : "text-muted-foreground"}`}>{item.calcType}</td>
+      <td className={`px-3 py-2 text-left ${item.workStatus === "중도퇴사" ? "text-green-600 font-semibold" : "text-muted-foreground"}`}>{item.workStatus}</td>
       <td className="px-1 py-2 text-center">
         <Button
           size="sm" variant="ghost" className="h-6 w-6 p-0"
@@ -1280,14 +1280,14 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
   )
 }
 
-// 기부금 항목(라벨)만 강조하는 유형 — 정치자금·고향사랑(일반+특별) = 동일 청색, 특례·우리사주 = 오렌지.
-// (이월은 별도로 '연도' 칸만 오렌지 — 항목/금액엔 색 없음. 색 최소화.)
+// 기부금 항목(라벨)만 강조 — 정치·고향(일반+특별)=청색, 특례=녹색, 우리사주=보라색 (적색계통은 오류 전용).
+// (이월은 별도로 '연도' 칸만 보라 — 항목/금액엔 색 없음. 색 최소화.)
 const GIFT_TYPE_HL: Record<string, string> = {
   "548-020": "text-blue-600 font-semibold",     // 정치자금
   "548-100": "text-blue-600 font-semibold",     // 고향(일반)
   "548-110": "text-blue-600 font-semibold",     // 고향(특별)
-  "548-010": "text-orange-600 font-semibold",   // 특례기부금
-  "548-080": "text-orange-600 font-semibold",   // 우리사주
+  "548-010": "text-green-600 font-semibold",    // 특례기부금
+  "548-080": "text-purple-600 font-semibold",   // 우리사주
 }
 
 // ── 기부금 비교 테이블 (본행 합계 + 유형×연도 세부행) ────────────────────────
@@ -1365,9 +1365,9 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 const ntsVal = res && line.code ? (res.ntsMap[line.code] ?? 0) : null
                 const d = ntsVal != null ? ntsVal - line.ytsSub : null
                 const last = i === row.lines.length - 1
-                // 색 최소화: 항목=정치/고향만 청색, 연도=이월만 오렌지, 금액은 무색. 그 외는 기본(회색). (대조컬럼은 불일치 적색 유지)
+                // 색 최소화: 항목=정치/고향 청·특례 녹·우리사주 보라, 연도=이월 보라, 금액은 무색. (대조컬럼 불일치만 적색)
                 const labelCls = GIFT_TYPE_HL[line.giftCls] ?? "text-muted-foreground"
-                const yearCls  = line.carried ? "text-orange-600 font-semibold" : "text-muted-foreground"
+                const yearCls  = line.carried ? "text-purple-600 font-semibold" : "text-muted-foreground"
                 return (
                   <tr key={`${line.giftCls}-${line.giftYy}`} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
@@ -1578,10 +1578,10 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
               {/* 세부행 = 대상자별 지출금액 (입력) */}
               {row.lines.map((line, i) => {
                 const last = i === row.lines.length - 1
-                // 난임시술비(8725, 30%)·미숙아선천성이상아(8729, 20%)는 강조색으로 구분 — 일반 의료비와, 서로도 구별
-                const hi = line.code === "8725" ? "text-teal-600 font-semibold" : line.code === "8729" ? "text-fuchsia-600 font-semibold" : ""
-                // 자체집계(원천 독립 재집계) ≠ 전송값(CALC_PROC) → 자체집계·전송 둘 다 적색(대조a 불일치)
-                const amtCls = line.selfAmt !== line.useAmt ? "text-red-600 font-semibold" : hi
+                // 특이 항목 강조는 항목명만 — 난임=청색·미숙아=녹색(청→녹→보라 순). 적색계통은 오류 전용이라 회피.
+                const hi = line.code === "8725" ? "text-blue-600 font-semibold" : line.code === "8729" ? "text-green-600 font-semibold" : ""
+                // 대조a 불일치(오류)만 적색. 금액 자체는 강조색 없이 본연 색상 유지.
+                const amtCls = line.selfAmt !== line.useAmt ? "text-red-600 font-semibold" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
@@ -1797,9 +1797,9 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                     <td className={`px-3 py-1 whitespace-nowrap ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>
                       {line.label}
                     </td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : "text-muted-foreground"}`}>{won(line.useAmt)}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : ""}`}>{won(line.ytsDdc)}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${isa ? "text-indigo-600 font-semibold" : ""}`}>{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{won(line.useAmt)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
                       <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
                     </td>
@@ -1896,21 +1896,22 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
                 const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
-                // 세부행 강조색(라벨): 장애인전용 보험료(8711)=violet, 주택임차 원리금(8311/8312)=cyan,
-                //   인적 추가공제 부녀자(8103)·한부모(8104)=pink(배타관계 쌍) — 리스트에서 한눈에 구분.
+                // 세부행 강조색(라벨만, 금액은 본연): 8711=violet, 주택임차(8311/8312)=cyan,
+                //   부녀자(8103)·혼인세액공제(8790)=청, 한부모(8104)·출산입양(8761·8764~66)=녹. (적색계통은 오류 전용 회피)
                 //   (리터럴 클래스 유지 — Tailwind JIT 퍼지 안전)
                 const hiText = line.code === "8711" ? "text-violet-600 font-semibold"
                              : (line.code === "8311" || line.code === "8312") ? "text-cyan-600 font-semibold"
-                             : (line.code === "8103" || line.code === "8104") ? "text-pink-600 font-semibold" : ""
+                             : (line.code === "8103" || line.code === "8790") ? "text-blue-600 font-semibold"
+                             : (line.code === "8104" || line.code === "8761" || line.code === "8764" || line.code === "8765" || line.code === "8766") ? "text-green-600 font-semibold" : ""
                 return (
                   <tr key={line.code} className={`${last ? "border-b" : ""} text-xs`}>
                     <td colSpan={9} />
                     <td className={`px-3 py-1 whitespace-nowrap ${hiText || "text-muted-foreground"}`}>
                       {line.label}
                     </td>
-                    {showInput && <td className={`px-3 py-1 text-right tabular-nums ${hiText || "text-muted-foreground"}`}>{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
-                    <td className={`px-3 py-1 text-right tabular-nums ${hiText}`}>{won(line.ytsDdc)}</td>
-                    <td className={`px-3 py-1 text-right tabular-nums ${hiText}`}>{ntsVal != null ? won(ntsVal) : "—"}</td>
+                    {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
+                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
                       <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
                     </td>
