@@ -2243,8 +2243,8 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                     <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                       {isSubtotal ? (
                         <button type="button" onClick={e => { e.stopPropagation(); toggleSub(code) }} className="inline-flex items-center gap-1 hover:text-foreground">
-                          <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
                           {label}
+                          <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
                         </button>
                       ) : label}
                     </td>
@@ -2316,8 +2316,8 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                       <td className={`px-2 py-1 ${subParent ? "pl-6" : ""}`}>
                         {isSubtotal ? (
                           <button type="button" onClick={e => { e.stopPropagation(); toggleSub(code) }} className="inline-flex items-center gap-1 hover:text-foreground">
-                            <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
                             {label}
+                            <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${openSubs.has(code) ? "" : "-rotate-90"}`} />
                           </button>
                         ) : label}
                       </td>
