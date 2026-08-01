@@ -271,7 +271,8 @@ export const COVERAGE_2026: Record<string, Coverage> = {
   "8754": { verdict: "해당없음", review: "검토중" },   // 외국납부 국외총급여(한도계산용 동반입력, 자체결과 없음)
   "8750": { verdict: "안전", review: "검토중" },   // 월세 원본 지급총액, 국세청 한도·율 자체계산
   // 의료비 — ★유형별 집계(3%·실손차감 후) 전송 → 국세청 서버는 로직A 재현 안 함(화면JS) → 사각(화면구동 검증 필요)
-  "8720": { verdict: "사각", review: "검토중" }, "8721": { verdict: "사각", review: "검토중" }, "8725": { verdict: "사각", review: "검토중" }, "8729": { verdict: "사각", review: "검토중" },
+  // ★2026-08-01 fmly_dtl 독립 재집계(대조a)로 집계·실손 사각 메움 + 3%·율은 국세청 재현(대조b) → 안전 승격
+  "8720": { verdict: "안전", review: "확정" }, "8721": { verdict: "안전", review: "확정" }, "8725": { verdict: "안전", review: "확정" }, "8729": { verdict: "안전", review: "확정" },
   // 기부금 — 원본(공제가능액) 전송, 국세청이 한도·tiered율·이월 건별 재현(커버리지 모범 케이스)
   "8740": { verdict: "안전", review: "확정" }, "8783": { verdict: "안전", review: "확정" }, "8784": { verdict: "안전", review: "확정" },
   "8743": { verdict: "안전", review: "확정" }, "8744": { verdict: "안전", review: "확정" }, "8746": { verdict: "안전", review: "확정" }, "8747": { verdict: "안전", review: "확정" },
