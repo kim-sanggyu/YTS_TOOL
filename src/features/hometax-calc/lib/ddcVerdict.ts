@@ -6,27 +6,25 @@
  * ▶ 연도 구동화(2026-07-29): 매핑 의존분(MAP_ORDER·SUBTOTAL_OF·DDC_DOMAIN 및 이를 참조하는
  *   ddcVerdict/diffCodesOf/hiddenDiffCodes)은 makeYearVerdict(mapping) 팩토리로 생성한다.
  *   컴포넌트는 getYearConfig(ntsYear).mapping 으로 인스턴스를 만들어 드롭다운 연도를 따라간다.
- *   연도 무관분(OUT_GROUPS·outCodeOf·SUBTOTAL_CODES·FLOW_CODES)은 모듈 상수로 남긴다.
+ *   연도 무관분(outCodeOf·SUBTOTAL_CODES·FLOW_CODES)은 모듈 상수로 남긴다.
  */
 import type { MappingRow } from "@/features/hometax-calc/mapping/types"
 import { CARD_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/card"
 import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 
-// self OUT(각 코드가 자기 ddcAmt 회신) 그룹. 연금보험료·특별소득공제(건강고용·주택자금)는 소득공제지만
-//   라이브 캡처로 코드별 self ddcAmt 회신 실측확정(2026-07-18). ※카드(소계 8430)는 그밖의소득공제라 아래서 CARD_ 우선처리로 제외.
-//   ★기타세액공제(8751 외국납부·8752 주택차입이자·8753 납세조합)도 self(resultCol RT_FCG/RT_HBA/RT_PTU) — 이 그룹이 빠져
-//     outCodeOf가 "—"로 떨어져 맵현황 nts OUT을 잘못 비웠던 것 교정(2026-08-02, 데이터 정비 A1). 단 8754(국외총급여)는 group "세액공제"+outCode "—"라 그대로 1:0 유지.
-export const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금", "연금보험료", "특별소득공제", "기타세액공제"])
-
-// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → self → 없음(—)
+// 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(prefix) → self → 없음(—).
+//   self OUT 판정 = per-code 신호(resultCol / GIFT_·OTHER_ prefix). 구 OUT_GROUPS(group=한 유형 전제)는
+//   인적공제처럼 self+멤버+집계 혼재 그룹에서 깨져 폐기 → resultCol 기준 개별 판정으로 교체(2026-08-02, B4).
 export function outCodeOf(m: MappingRow): string {
   if (m.outCode) return m.outCode
   if (m.ytsCol?.startsWith("CARD_")) return CARD_SUBTOTAL_CODE
   if (m.ytsCol?.startsWith("MEDI_")) return MEDI_SUBTOTAL_CODE
   if (m.ytsCol?.startsWith("OTHER_")) return m.ntsCode      // 그밖의소득공제 self(개인연금저축8401·노란우산8402, 실측)
-  // 연금(PEN_)은 실측확정 항목별 self OUT을 매핑 outCode 로 명시 → helper 폴백은 self
-  if (OUT_GROUPS.has(m.group)) return m.ntsCode
+  if (m.ytsCol?.startsWith("GIFT_")) return m.ntsCode       // 기부금 self — resultCol 없이 giftDdc로 대조(정치8740·고향8783/84·이월8811~)
+  // self OUT = 대조할 YTS 공제컬럼(resultCol) 보유. 단 소계코드(투자조합 8410 등) 자체는 소계행이 담당하므로 제외.
+  //   (연금 PEN_ 등 항목별 self OUT은 매핑 outCode 로도 명시돼 위 outCode 분기에서 이미 처리)
+  if (m.resultCol && !SUBTOTAL_CODES.has(m.ntsCode)) return m.ntsCode
   return "—"
 }
 
@@ -135,12 +133,10 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   const relationTypeOf = (m: MappingRow): RelationType => {
     if (SUBTOTAL_OF.has(m.ntsCode)) return "N:1"                                       // 소계 멤버(카드·의료·출산·교육·부양가족 8004~09)
     if (AGGREGATE_CODES.has(m.ntsCode) || SUBTOTAL_CODES.has(m.ntsCode)) return "N:1"  // 집계 대조코드(8003)·self-subtotal(8410)
-    if (outCodeOf(m) !== "—") return "1:1"                                             // self 대조(OUT_GROUPS·prefix로 self OUT 확정)
-    // outCodeOf "—": 대조되는 코드면 1:1, 순수 입력이면 1:0.
-    //   ·resultCol 있음 = self 대조(인적공제 8001·8002·8101~04는 group이 OUT_GROUPS 밖이라 oc="—"지만 self)
-    //   ·FLOW_CODES = echo 대조(총급여 8900, resultCol 없이 useAmt echo로 대조)
-    //   ·둘 다 아님 = 동반입력(8754 국외총급여, 자체 결과 없음)
-    if (m.resultCol || FLOW_CODES.has(m.ntsCode)) return "1:1"
+    if (outCodeOf(m) !== "—") return "1:1"                                             // self 대조(resultCol·prefix로 self OUT 확정)
+    // outCodeOf "—" = self OUT 없음: FLOW echo(총급여 8900, useAmt로 대조)면 1:1, 순수 동반입력(8754)이면 1:0.
+    //   (resultCol 있는 self는 위 outCodeOf 에서 이미 self 로 잡혀 여기 안 옴 — B4 이후)
+    if (FLOW_CODES.has(m.ntsCode)) return "1:1"
     return "1:0"
   }
 

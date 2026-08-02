@@ -74,11 +74,17 @@ describe("relationTypeOf — 실행과정 대응관계 유형(자동 3유형: 1:
   const { relationTypeOf } = makeYearVerdict(MAPPING_2025)
   const row = (code: string) => MAPPING_2025.find(m => m.ntsCode === code)!
 
-  test("1:1 self — 국민연금 8201 (OUT_GROUPS self, resultCol 있음)", () => {
+  test("1:1 self — 국민연금 8201 (resultCol self)", () => {
     expect(relationTypeOf(row("8201"))).toBe("1:1")
   })
-  test("1:1 self — 기타세액공제 8751 (group이 OUT_GROUPS 밖이라 oc='—'이나 resultCol 있어 self)", () => {
+  test("1:1 self — 기타세액공제 8751 (resultCol self)", () => {
     expect(relationTypeOf(row("8751"))).toBe("1:1")
+  })
+  test("1:1 self — 인적공제 본인 8001 (resultCol self, 구 OUT_GROUPS 밖이던 것 B4로 교정)", () => {
+    expect(relationTypeOf(row("8001"))).toBe("1:1")
+  })
+  test("1:1 self — 인적공제 배우자 8002 (resultCol self, A4)", () => {
+    expect(relationTypeOf(row("8002"))).toBe("1:1")
   })
   test("1:1 echo — 총급여 8900 (resultCol 없이 FLOW echo 대조)", () => {
     expect(relationTypeOf(row("8900"))).toBe("1:1")

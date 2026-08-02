@@ -2361,7 +2361,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
 
 // ── 매핑 현황(진도) 뷰 — MAPPING_2025 를 그대로 렌더(코드=화면 항상 동기) ──
 //   각 항목의 계약 5축(원천/IN/OUT/실측/전송)을 그룹별로 조회. 국세청 in-out 정리 진도판.
-// 판정 단일원천(OUT_GROUPS·outCodeOf·SUBTOTAL_CODES·SUBTOTAL_OF·MAP_ORDER·ddcVerdict·diffCodesOf)은
+// 판정 단일원천(outCodeOf·SUBTOTAL_CODES·SUBTOTAL_OF·MAP_ORDER·ddcVerdict·diffCodesOf)은
 //   lib/ddcVerdict.ts 로 추출 — 상단 import 참조. 유닛테스트·모순 감지기가 같은 모듈을 공유한다.
 
 // 기타세액공제 ETX_ 가상컬럼 → PAY_WRK_MAIN 실제 원천 컬럼
