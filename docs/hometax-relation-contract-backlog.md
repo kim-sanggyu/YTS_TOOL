@@ -6,6 +6,25 @@
 
 ---
 
+## ▶ 다음 세션 착수 지점 (2026-08-03, 미결정 2건)
+
+### 결정 1 — 인적공제 verdict 정정 + review 검토중→확정
+- **8001 본인·8003 통합·8004~09 부양가족** = 진짜 안전(부양가족은 FMLY 원본 count ↔ CALC 공제액 교차검증) → **지금 확정 OK**.
+- **8002 배우자·8101 경로·8102 장애·8103 부녀자·8104 한부모** = 현재 verdict "안전"이나 **실은 사각**: CALC 자기값(인원/flag)을 보내 CALC 공제액과 대조 = self-echo(인원·자격 판정 미검증). "안전"으로 확정하면 틀린 판정 못박음.
+- **★내 수정 권고 = (i) FMLY 원본 전환**: `injectFamilyVals`(runCompareForCalcNo.ts:186) 쿼리가 이미 있어 저비용, 신고서 자격 flag ↔ YTS 공제계산 교차검증으로 실제 사각 닫음. (앞서 b 권고했으나 교차검증 가치+쿼리 존재를 과소평가해 정정.) 대안 (ii)=CALC 유지+사각 라벨.
+- **FMLY 원본 소스**(상규님이 준 `getPayWrkFmlyCnt` SQL, `PAY_WRK_FMLY` WHERE BAS_SUB_YN='Y'):
+  - 배우자 8002 = `FMLY_RELN='550-040'`(MATE) · 경로 8101 = `OB_TRE_YN='Y'`+나이 · 장애 8102 = `HDC_PERS_YN IS NOT NULL`
+  - 부녀자 8103 = `LADY_YN='Y' AND 550-010 AND 성별(RES_NO)='F'`(FN_GET_YTS_RES_SEX) · 한부모 8104 = `SNGL_PRNT_YN='Y' AND 550-010`
+  - ★코드맵 정정: **550-010=본인(SELF)**, **550-040=배우자(MATE)**. (injectFamilyVals FAM_MRRG 주석 "배우자550-010"은 오해 — 550-010은 본인. 코드는 본인 혼인flag 카운트라 맞음, 주석만 정정 대상.)
+
+### 결정 2 — ③표 투자조합 소계(8410)와 개별(8415~23) 분리 (A3 표면화)
+- **현상**: 카드 8431~63은 `outCode=8430`(SUBTOTAL_OF 멤버)라 8430 밑에 접힘. 투자조합 8415~23은 `OTHER_` prefix self라 SUBTOTAL_OF 멤버 아님 + 계산과정 로스터에도 없어(개별은 NTS 계산과정 없음) → "기타(로스터 밖)"으로 떨어져 8410 소계와 분리.
+- **근본** = A3 복합유형(개별 = self+8410멤버). 2026-07-21 "결과전용행 렌더"(per-code NTS 가시) 결정의 부작용.
+- **충돌 주의**: `displaySubtotal="8410"`로 접으면 유형 ·N:1(멤버)이 되나 self OUT도 있어 **A7 유형서명 검사가 위반 처리**(consistency 테스트 깨짐). 단순 모델론 못 묶음 = facet 필요 증거.
+- **★내 권고 = (i) targeted**: displaySubtotal="8410" + 유형서명 검사에 "복합(멤버+self OUT)=IN·OUT 둘 다 허용" 처리. **단 ③표 드로어에서 접었을 때 개별 per-code 값 유지되는지 먼저 확인**(line ~2295 `isSubMember ? undefined` 주의). 대안 (ii)=facet 모델 착수, (iii)=그대로(로스터 밖은 정직).
+
+---
+
 ## 1. 북극성 (목표)
 
 **유형 = 생성기(generator).** 이게 다 정리되면 **유형을 보면 두 가지가 자동으로 결정된다:**
