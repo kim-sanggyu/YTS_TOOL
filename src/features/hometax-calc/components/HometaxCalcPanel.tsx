@@ -2514,7 +2514,14 @@ const REL_TITLE: Record<RelationType, string> = {
   "0:1": "결과계(보류) — 송신 없이 회신(산출·결정세액 등)",
 }
 function RelationBadge({ rel }: { rel: RelationType }) {
-  return <span className={`px-1 py-0.5 rounded text-[9px] font-mono ${REL_CLS[rel]}`} title={REL_TITLE[rel]}>{rel}</span>
+  // 멤버(·N:1)/집계(N:1·)의 점을 크게(•) 렌더해 N쪽/1쪽 구분을 또렷하게. 내부 문자열값은 그대로(·).
+  const body = rel.replace(/·/g, "")
+  const dot = <span className="text-[13px] leading-none font-bold">•</span>
+  return (
+    <span className={`inline-flex items-center gap-px px-1 py-0.5 rounded text-[9px] font-mono ${REL_CLS[rel]}`} title={REL_TITLE[rel]}>
+      {rel.startsWith("·") && dot}{body}{rel.endsWith("·") && dot}
+    </span>
+  )
 }
 
 // 검증 커버리지 판정 배지(안전/사각/미검증/해당없음). 검토상태는 별도 열. mapping/2025.ts COVERAGE_2025 근거.
