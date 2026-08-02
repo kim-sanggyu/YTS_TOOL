@@ -20,6 +20,7 @@ import { MEDI_CATS, MEDI_SUBTOTAL_CODE } from "./medi"
 import { PENSION_TYPES, PENSION_SUBTOTAL_CODE } from "./pension"
 import { INVESTMENT_TYPES, INVESTMENT_SUBTOTAL_CODE } from "./investment"
 import { PERSONAL_ROWS } from "./personal"
+import { makeYearVerdict, outCodeOf, SUBTOTAL_CODES, FLOW_CODES } from "@/features/hometax-calc/lib/ddcVerdict"
 
 /**
  * 파생매핑은 알지만 MAPPING 행이 없어도 정상인 코드(정상 예외).
@@ -60,7 +61,7 @@ function derivedSources(): DerivedSource[] {
   ]
 }
 
-export type ConsistencyDirection = "MAPPING누락" | "파생누락"
+export type ConsistencyDirection = "MAPPING누락" | "파생누락" | "유형서명"
 
 export interface ConsistencyIssue {
   source:    string               // 어느 파생매핑
@@ -80,6 +81,8 @@ export interface ConsistencyResult {
  *      → 파생만 고치고 MAPPING 반영을 빠뜨린 사고.
  *   ② 역방향(파생누락): MAPPING 의 파생 group 코드가 파생매핑에 없음(카드/의료/기부금/연금만)
  *      → MAPPING 만 고치고 파생 반영을 빠뜨린 사고.
+ *   ③ 유형서명: 각 행의 (전송·self OUT 존재)가 대응관계 유형(relationTypeOf)이 요구하는 서명과 맞는가
+ *      → "유형이 속성 존재여부를 결정·검증"(계약의 축소판). 집계에 send:true, self에 OUT 누락 등 배선사고를 잡음.
  */
 export function checkMappingConsistency(mapping: MappingRow[]): ConsistencyResult {
   const mappingCodes = new Set<string>()
@@ -118,6 +121,29 @@ export function checkMappingConsistency(mapping: MappingRow[]): ConsistencyResul
           detail: `MAPPING "${row.group}"의 ${row.ntsCode}가 파생매핑 ${src.name}에 없음`,
         })
       }
+    }
+  }
+
+  // ③ 유형 서명: 각 행의 (전송·self OUT 존재)가 대응관계 유형과 맞는가.
+  //    self(1:1)=IN·OUT 둘 다 / 멤버(·N:1)=IN만 / 집계(N:1·)=OUT만 / 입력전용(1:0)=IN만. 어긋나면 배선 사고.
+  //    relationTypeOf 는 SUBTOTAL_OF 로 유형을 파생 → 여기선 "그 유형이 요구하는 속성이 실제로 있는지"를 대조(순환 아님).
+  //    self OUT = outCodeOf self · 소계코드 · FLOW echo(총급여 8900). (A5의 8003 send:true 오배선이 이 검사에 걸렸을 위반.)
+  const { relationTypeOf } = makeYearVerdict(mapping)
+  const REL_SIG: Record<string, [inNts: boolean, outSelf: boolean]> = {
+    "1:1": [true, true], "·N:1": [true, false], "N:1·": [false, true], "1:0": [true, false],
+  }
+  const mark = (b: boolean) => (b ? "○" : "✗")
+  for (const row of mapping) {
+    const rel = relationTypeOf(row)
+    const sig = REL_SIG[rel]
+    if (!sig) continue   // 1:N·0:1 등 미파생 유형은 스킵
+    const inNts   = row.send
+    const outSelf = outCodeOf(row) === row.ntsCode || SUBTOTAL_CODES.has(row.ntsCode) || FLOW_CODES.has(row.ntsCode)
+    if (inNts !== sig[0] || outSelf !== sig[1]) {
+      issues.push({
+        source: "유형서명", code: row.ntsCode, direction: "유형서명",
+        detail: `${rel} 기대(IN ${mark(sig[0])}·selfOUT ${mark(sig[1])}) ≠ 실제(IN ${mark(inNts)}·selfOUT ${mark(outSelf)})`,
+      })
     }
   }
 
