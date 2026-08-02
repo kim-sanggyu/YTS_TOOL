@@ -2368,6 +2368,14 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
 const ETX_SRC: Record<string, string> = {
   ETX_8751: "FRGN_PAY_TAX", ETX_8754: "FRGN_TOT_PAY_AMT", ETX_8752: "HOUSE_ALR", ETX_8753: "ASSO_SUB_TAX_AMT",
 }
+// 부양가족 FAM_ 가상컬럼 → PAY_WRK_FMLY.FMLY_RELN 관계코드(원천 필터). 맵현황 yts IN 에 원천을 구체화.
+//   ★injectFamilyVals(runCompareForCalcNo.ts) SQL 의 CASE 조건과 동기 유지할 것(코드 바뀌면 여기도).
+const FAM_RELN: Record<string, string> = {
+  FAM_8004: "550-020/030", FAM_8005: "550-050", FAM_8006: "550-055",
+  FAM_8007: "550-060", FAM_8008: "550-070", FAM_8009: "550-080",
+  FAM_8764: "550-050·순번3", FAM_8765: "550-050·순번5", FAM_8766: "550-050·순번7",
+  FAM_MRRG: "550-010·혼인",
+}
 // 주택자금 LOAN_ 가상컬럼 → PAY_WRK_MAIN 원본 상환액 컬럼(원리금·장기주택저당)
 const LOAN_SRC: Record<string, string> = {
   LOAN_8311: "HOUSE_RALR_LENDER", LOAN_8312: "PAY_WRK_RENT_HABT_SPEC.PNINT_SUM",   // 8312 거주자=SPEC B0 합(MAIN 아님, 2026-07-23 실측정정)
@@ -2407,7 +2415,7 @@ function ytsSrcWithTable(m: MappingRow): string {
   if (c.startsWith("PEN_"))  return "pen_save_spec.PEN_SAVE_PMT_AMT"
   if (c.startsWith("GIFT_")) return "gift_adj.GIFT_ABLE_SUB_AMT"
   if (c.startsWith("RENT_")) return "main.HOUSE_RENT"
-  if (c.startsWith("FAM_"))  return "fmly"                     // 인원 집계(테이블만)
+  if (c.startsWith("FAM_"))  return FAM_RELN[c] ? `fmly ${FAM_RELN[c]}` : "fmly"   // 인원 집계 + FMLY_RELN 원천
   if (c.startsWith("ETX_"))  return "main." + (ETX_SRC[c] ?? c)
   if (c.startsWith("LOAN_")) {
     const s = LOAN_SRC[c] ?? c
