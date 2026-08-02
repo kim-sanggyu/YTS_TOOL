@@ -2460,9 +2460,9 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
       label,
       // 실제 국세청 입력코드가 표시코드와 다르면 병기(sendCode 지정 행. 현재 없음 — 인프라만 유지)
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
-      ntsIn: isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,
+      ntsIn: !m.send ? "—" : isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,   // send:false(8003 통합=altSent 등)는 자기전송 안 함 → IN "—"(실제 전송은 8004~09 유형별)
       ntsOut: isMrrg ? "—" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
-      ytsIn:  selfSub ? "—" : ytsSrcWithTable(m),
+      ytsIn:  !m.send ? "—" : selfSub ? "—" : ytsSrcWithTable(m),
       ytsOut: isMrrg ? "—" : selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       isSubtotal: !!selfSub,

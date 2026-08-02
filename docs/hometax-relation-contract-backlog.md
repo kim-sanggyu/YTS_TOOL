@@ -35,7 +35,8 @@
 - **A1** — 기타세액공제 8751~53 self OUT 표시 교정
 - **B4** — `outCodeOf` self 판정을 `group`(OUT_GROUPS) → **`resultCol` per-code**로 교체, `OUT_GROUPS` 폐기.
   → **A4**(인적공제 self 8001·8002·8101~04·8003 통합) nts OUT 표시 자동 교정.
-- **결과: 맵현황의 "self인데 OUT 비어보임" 거짓 표시 전부 제거.** self 판정이 group 휴리스틱이 아닌 per-code 신호로 감.
+- **A5** — `send:false`(8003 통합 = altSent) 행의 nts IN·yts IN을 "—"로 교정. 8003은 자기전송 안 하고(실제 전송은 8004~09 유형별) OUT만 받는데, `statusRowsOf`가 `send`를 안 봐서 IN을 전송하는 것처럼 표시하던 것 제거.
+- **결과: 맵현황의 IN/OUT 거짓 표시 전부 제거.** self 판정이 group 휴리스틱이 아닌 per-code 신호로 감.
 
 현재 self OUT 판정(`outCodeOf`): 명시 outCode → CARD_/MEDI_ prefix(소계) → OTHER_/GIFT_ prefix(self) → **resultCol 보유 & 비소계(self)** → 없음("—").
 
