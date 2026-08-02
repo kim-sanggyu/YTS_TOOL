@@ -15,7 +15,9 @@ import { GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 
 // self OUT(각 코드가 자기 ddcAmt 회신) 그룹. 연금보험료·특별소득공제(건강고용·주택자금)는 소득공제지만
 //   라이브 캡처로 코드별 self ddcAmt 회신 실측확정(2026-07-18). ※카드(소계 8430)는 그밖의소득공제라 아래서 CARD_ 우선처리로 제외.
-export const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금", "연금보험료", "특별소득공제"])
+//   ★기타세액공제(8751 외국납부·8752 주택차입이자·8753 납세조합)도 self(resultCol RT_FCG/RT_HBA/RT_PTU) — 이 그룹이 빠져
+//     outCodeOf가 "—"로 떨어져 맵현황 nts OUT을 잘못 비웠던 것 교정(2026-08-02, 데이터 정비 A1). 단 8754(국외총급여)는 group "세액공제"+outCode "—"라 그대로 1:0 유지.
+export const OUT_GROUPS = new Set(["세액공제", "세액감면", "연금계좌", "기부금", "연금보험료", "특별소득공제", "기타세액공제"])
 
 // 국세청 결과(OUT) 코드: 명시 outCode 우선 → 소계형(가상컬럼 prefix) → self → 없음(—)
 export function outCodeOf(m: MappingRow): string {
