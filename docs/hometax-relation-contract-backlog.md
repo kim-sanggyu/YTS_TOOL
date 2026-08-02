@@ -36,7 +36,10 @@
 - **B4** — `outCodeOf` self 판정을 `group`(OUT_GROUPS) → **`resultCol` per-code**로 교체, `OUT_GROUPS` 폐기.
   → **A4**(인적공제 self 8001·8002·8101~04·8003 통합) nts OUT 표시 자동 교정.
 - **A5** — `send:false`(8003 통합 = altSent) 행의 nts IN·yts IN을 "—"로 교정. 8003은 자기전송 안 하고(실제 전송은 8004~09 유형별) OUT만 받는데, `statusRowsOf`가 `send`를 안 봐서 IN을 전송하는 것처럼 표시하던 것 제거.
+- **A6** — N:1 배지를 **멤버(`·N:1`) / 집계(`N:1·`)** 두 종류로 분리(점 위치 = 코드가 N쪽이냐 1쪽이냐). N:1은 정반대 서명: 멤버=IN만·집계=OUT만. `relationTypeOf`가 이미 `SUBTOTAL_OF`(멤버)/`AGGREGATE_CODES`(집계)로 갈래 판정하던 것을 라벨로 노출.
 - **결과: 맵현황의 IN/OUT 거짓 표시 전부 제거.** self 판정이 group 휴리스틱이 아닌 per-code 신호로 감.
+
+> **▶ 다음 즉시 과제(A6 후속): 유형 → IN/OUT 존재여부 검증.** 멤버(`·N:1`)면 nts/yts IN 있고 OUT 없어야 · 집계(`N:1·`)면 OUT 있고 IN 없어야 · self(1:1)면 IN·OUT 둘 다 · 입력전용(1:0)이면 IN만. 어기면 `checkMappingConsistency`에 경고 → **"유형이 속성 존재여부를 결정·검증"의 첫 실물**(§5 facet 계약의 축소판). A5의 8003이 딱 이 위반이었음.
 
 현재 self OUT 판정(`outCodeOf`): 명시 outCode → CARD_/MEDI_ prefix(소계) → OTHER_/GIFT_ prefix(self) → **resultCol 보유 & 비소계(self)** → 없음("—").
 

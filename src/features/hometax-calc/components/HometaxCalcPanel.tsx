@@ -2482,7 +2482,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
         ytsOut: "calc." + meta.ytsOut,
         status: "확정",   // 소계 대조 = 실측확정된 부분
         isSubtotal: true,
-        relation: "N:1",   // 합성 소계행 = 집계 대조코드(카드8430·의료8726 등)
+        relation: "N:1·",   // 합성 소계행 = 1-집계 대조코드(카드8430·의료8726 등)
       })
     }
   })
@@ -2500,14 +2500,16 @@ function StatusBadge({ status }: { status: string }) {
 const REL_CLS: Record<RelationType, string> = {
   "1:0": "bg-slate-100 text-slate-600",
   "1:1": "bg-sky-100 text-sky-700",
-  "N:1": "bg-violet-100 text-violet-700",
+  "·N:1": "bg-violet-100 text-violet-600",   // N-멤버(전송만)
+  "N:1·": "bg-violet-100 text-violet-800",   // 1-집계(대조점)
   "1:N": "bg-teal-100 text-teal-700",     // 보류(현재 미노출)
   "0:1": "bg-slate-100 text-slate-500",   // 보류(매핑 밖)
 }
 const REL_TITLE: Record<RelationType, string> = {
   "1:0": "입력만 — 대조 회신 없음(동반입력, 예 8754 국외총급여)",
   "1:1": "self 대조 — 송신코드=대조코드(총급여 8900은 echo 대조)",
-  "N:1": "집계 대조 — 여러 코드가 소계·통합코드로 회신(카드·의료·출산·교육·부양가족)",
+  "·N:1": "N:1 멤버 — 전송만(nts/yts IN 있음, OUT 없음), 대조는 집계코드서(카드8431·부양가족8004~09)",
+  "N:1·": "N:1 집계 — IN 없이 통합 회신 받아 대조(nts/yts OUT 있음, IN 없음)(8003·8430·8726·8410)",
   "1:N": "국세청 구간분해(보류) — 정치자금·고향사랑",
   "0:1": "결과계(보류) — 송신 없이 회신(산출·결정세액 등)",
 }
@@ -2620,7 +2622,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-[11px]">
           <span className="font-semibold">대응관계:</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1" />self(송신=대조)</span>
-          <span className="inline-flex items-center gap-1"><RelationBadge rel="N:1" />집계(여럿→소계)</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="·N:1" />멤버(전송만)</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="N:1·" />집계(대조점)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:0" />입력만</span>
           <span className="text-muted-foreground">· 1:N(구간분해)·0:1(결과계)은 보류</span>
         </div>

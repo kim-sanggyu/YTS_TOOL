@@ -92,17 +92,17 @@ describe("relationTypeOf — 실행과정 대응관계 유형(자동 3유형: 1:
   test("1:0 입력만 — 국외총급여 8754 (동반입력, resultCol 없음·FLOW 아님)", () => {
     expect(relationTypeOf(row("8754"))).toBe("1:0")
   })
-  test("N:1 소계 멤버 — 카드 8431 (outCode 8430)", () => {
-    expect(relationTypeOf(row("8431"))).toBe("N:1")
+  test("·N:1 N-멤버 — 카드 8431 (outCode 8430, 전송만)", () => {
+    expect(relationTypeOf(row("8431"))).toBe("·N:1")
   })
-  test("N:1 소계 멤버 — 부양가족 8004 (displaySubtotal 8003)", () => {
-    expect(relationTypeOf(row("8004"))).toBe("N:1")
+  test("·N:1 N-멤버 — 부양가족 8004 (displaySubtotal 8003, 전송만)", () => {
+    expect(relationTypeOf(row("8004"))).toBe("·N:1")
   })
-  test("N:1 집계 대조코드 — 부양가족 통합 8003 (멤버 8004~09가 몰아주는 집계)", () => {
-    expect(relationTypeOf(row("8003"))).toBe("N:1")
+  test("N:1· 1-집계 — 부양가족 통합 8003 (멤버 8004~09가 몰아주는 집계, 대조점)", () => {
+    expect(relationTypeOf(row("8003"))).toBe("N:1·")
   })
-  test("N:1 self-subtotal — 투자조합출자 8410 (매핑행 자체가 소계)", () => {
-    expect(relationTypeOf(row("8410"))).toBe("N:1")
+  test("N:1· 1-집계 — 투자조합출자 8410 (매핑행 자체가 소계, 대조점)", () => {
+    expect(relationTypeOf(row("8410"))).toBe("N:1·")
   })
 })
 
