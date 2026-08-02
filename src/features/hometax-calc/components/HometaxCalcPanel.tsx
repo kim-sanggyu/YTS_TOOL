@@ -16,7 +16,7 @@ import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/r
 import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
-import { outCodeOf, SUBTOTAL_CODES, makeYearVerdict, type YearVerdict } from "@/features/hometax-calc/lib/ddcVerdict"
+import { outCodeOf, SUBTOTAL_CODES, makeYearVerdict, type YearVerdict, type RelationType } from "@/features/hometax-calc/lib/ddcVerdict"
 import type { NtsIoRow } from "@/features/hometax-calc/lib/runHometaxCalc"
 
 // 연도별 판정 인스턴스(makeYearVerdict) 컨텍스트 — 리스트 Table·드로어가 드롭다운 연도의 판정기를 공유.
@@ -2438,10 +2438,11 @@ interface StatusRow {
   ytsOut:     string   // YTS39 자체 공제액 컬럼 (resultCol) — 소계 멤버는 소계행으로 모음
   status:     string
   isSubtotal: boolean
+  relation:   RelationType   // 실행과정 대응관계 유형(1:0·1:1·N:1) — relationTypeOf 파생
 }
 
 // 한 그룹의 매핑행 → 렌더행. self형=IN·OUT 한 행, 소계형=개별행(OUT —) + 소계행(IN —, OUT).
-function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
+function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: MappingRow) => RelationType): StatusRow[] {
   const out: StatusRow[] = []
   const emitted = new Set<string>()   // 소계행을 이미 낸 코드(중복 방지)
   rows.forEach((m, i) => {
@@ -2465,6 +2466,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
       ytsOut: isMrrg ? "—" : selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       isSubtotal: !!selfSub,
+      relation: relationOf(m),
     })
     // 소계행은 해당 소계의 "마지막 멤버" 바로 뒤에 삽입 → 개별행 옆에 붙음(카드·의료는 그룹말미라 위치 동일, 출산입양은 세액공제 그룹 중간이라 8766 뒤로 이동)
     if (isSub && !emitted.has(oc) && !rows.slice(i + 1).some(r => outCodeOf(r) === oc)) {
@@ -2480,6 +2482,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number): StatusRow[] {
         ytsOut: "calc." + meta.ytsOut,
         status: "확정",   // 소계 대조 = 실측확정된 부분
         isSubtotal: true,
+        relation: "N:1",   // 합성 소계행 = 집계 대조코드(카드8430·의료8726 등)
       })
     }
   })
@@ -2491,6 +2494,25 @@ function StatusBadge({ status }: { status: string }) {
             : status === "추정" ? "bg-amber-100 text-amber-700"
             : "bg-muted text-muted-foreground"
   return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>
+}
+
+// 실행과정 대응관계 유형 배지(1:0·1:1·N:1). 커버리지/상태 배지(녹/적/황/muted)와 안 겹치게 sky/violet/slate 계열.
+const REL_CLS: Record<RelationType, string> = {
+  "1:0": "bg-slate-100 text-slate-600",
+  "1:1": "bg-sky-100 text-sky-700",
+  "N:1": "bg-violet-100 text-violet-700",
+  "1:N": "bg-teal-100 text-teal-700",     // 보류(현재 미노출)
+  "0:1": "bg-slate-100 text-slate-500",   // 보류(매핑 밖)
+}
+const REL_TITLE: Record<RelationType, string> = {
+  "1:0": "입력만 — 대조 회신 없음(동반입력, 예 8754 국외총급여)",
+  "1:1": "self 대조 — 송신코드=대조코드(총급여 8900은 echo 대조)",
+  "N:1": "집계 대조 — 여러 코드가 소계·통합코드로 회신(카드·의료·출산·교육·부양가족)",
+  "1:N": "국세청 구간분해(보류) — 정치자금·고향사랑",
+  "0:1": "결과계(보류) — 송신 없이 회신(산출·결정세액 등)",
+}
+function RelationBadge({ rel }: { rel: RelationType }) {
+  return <span className={`px-1 py-0.5 rounded text-[9px] font-mono ${REL_CLS[rel]}`} title={REL_TITLE[rel]}>{rel}</span>
 }
 
 // 검증 커버리지 판정 배지(안전/사각/미검증/해당없음). 검토상태는 별도 열. mapping/2025.ts COVERAGE_2025 근거.
@@ -2510,6 +2532,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const yy = Number(ntsYear)
   // 연도 설정(매핑·커버리지·로스터)은 registry 단일원천에서 라우팅 — 드롭다운 연도(ntsYear)를 그대로 따라간다.
   const { mapping, coverage, procLabelCode } = getYearConfig(ntsYear)
+  // 대응관계 유형(1:0·1:1·N:1) 파생기 — 판정 단일원천(makeYearVerdict)에서 SUBTOTAL_OF 기반 분류를 그대로 공유
+  const { relationTypeOf } = useMemo(() => makeYearVerdict(mapping), [mapping])
   // 두 영역(매핑 현황 / 계산과정 로스터)을 실행과정 드로어처럼 접기·최대화
   const [collapsed, setCollapsed] = useState({ mapping: false, roster: false })
   // 맵현황 진입 시 매핑현황을 기본 최대화(로스터 접힘)로 — 콘텐츠 영역 꽉 채워 표시. 로스터는 헤더 버튼으로 펼침.
@@ -2592,12 +2616,22 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             ))}
           </ul>
         )}
+        {/* 대응관계 유형 범례 — 실행과정 송신:회신 카디널리티(자동 3유형). 1:N·0:1은 보류 */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-[11px]">
+          <span className="font-semibold">대응관계:</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1" />self(송신=대조)</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="N:1" />집계(여럿→소계)</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="1:0" />입력만</span>
+          <span className="text-muted-foreground">· 1:N(구간분해)·0:1(결과계)은 보류</span>
+        </div>
         <table className="w-full border-collapse table-fixed text-xs">
           <colgroup>
             {/* 항목 (고정·truncate) — w-56(14rem)에서 확대(20%→추가 10%) */}
             <col className="w-[18.48rem]" />
             {/* nts코드 */}
             <col className="w-14" />
+            {/* 유형 (대응관계) */}
+            <col className="w-12" />
             {/* nts IN */}
             <col className="w-40" />
             {/* nts OUT */}
@@ -2617,6 +2651,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <tr className="text-[10px] text-muted-foreground text-left">
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">항목</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts코드</th>
+              <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted" title="실행과정 대응관계 유형(송신:회신)">유형</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts IN</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts OUT</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts IN</th>
@@ -2630,14 +2665,15 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             {groups.flatMap(g => {
               return [
                 <tr key={`h-${g.name}`} className="bg-muted/70 border-y">
-                  <td colSpan={9} className="px-2 py-1">
+                  <td colSpan={10} className="px-2 py-1">
                     <span className="text-sm font-semibold whitespace-nowrap">{g.name}</span>
                   </td>
                 </tr>,
-                ...statusRowsOf(g.rows, yy).map(r => (
+                ...statusRowsOf(g.rows, yy, relationTypeOf).map(r => (
                   <tr key={r.key} className={`border-t ${r.isSubtotal ? "bg-muted/40" : ""}`}>
                     <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
+                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><RelationBadge rel={r.relation} /></td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`}>{r.ntsIn}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] ${r.ntsOut === "—" ? "text-muted-foreground/40" : "font-semibold"}`}>{r.ntsOut}</td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ytsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`} title={r.ytsIn}><SrcCell text={r.ytsIn} /></td>

@@ -70,6 +70,36 @@ describe("★기부금 이월 8746 오탐 회귀 (2026-07-28, Y202500150/398)", 
   })
 })
 
+describe("relationTypeOf — 실행과정 대응관계 유형(자동 3유형: 1:0·1:1·N:1)", () => {
+  const { relationTypeOf } = makeYearVerdict(MAPPING_2025)
+  const row = (code: string) => MAPPING_2025.find(m => m.ntsCode === code)!
+
+  test("1:1 self — 국민연금 8201 (OUT_GROUPS self, resultCol 있음)", () => {
+    expect(relationTypeOf(row("8201"))).toBe("1:1")
+  })
+  test("1:1 self — 기타세액공제 8751 (group이 OUT_GROUPS 밖이라 oc='—'이나 resultCol 있어 self)", () => {
+    expect(relationTypeOf(row("8751"))).toBe("1:1")
+  })
+  test("1:1 echo — 총급여 8900 (resultCol 없이 FLOW echo 대조)", () => {
+    expect(relationTypeOf(row("8900"))).toBe("1:1")
+  })
+  test("1:0 입력만 — 국외총급여 8754 (동반입력, resultCol 없음·FLOW 아님)", () => {
+    expect(relationTypeOf(row("8754"))).toBe("1:0")
+  })
+  test("N:1 소계 멤버 — 카드 8431 (outCode 8430)", () => {
+    expect(relationTypeOf(row("8431"))).toBe("N:1")
+  })
+  test("N:1 소계 멤버 — 부양가족 8004 (displaySubtotal 8003)", () => {
+    expect(relationTypeOf(row("8004"))).toBe("N:1")
+  })
+  test("N:1 집계 대조코드 — 부양가족 통합 8003 (멤버 8004~09가 몰아주는 집계)", () => {
+    expect(relationTypeOf(row("8003"))).toBe("N:1")
+  })
+  test("N:1 self-subtotal — 투자조합출자 8410 (매핑행 자체가 소계)", () => {
+    expect(relationTypeOf(row("8410"))).toBe("N:1")
+  })
+})
+
 describe("diffCodesOf — 코드집합 중 diff 만(중복제거·null 스킵)", () => {
   test("diff 코드만 추려낸다", () => {
     const res = cells({ "8002": 100, "8746": 50, "8103": 30 }, { "8002": 90, "8746": 50, "8103": 30 })

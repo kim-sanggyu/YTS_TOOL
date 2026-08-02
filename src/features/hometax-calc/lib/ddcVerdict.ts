@@ -47,6 +47,12 @@ export const FLOW_CODES = new Set(["8900", "8901", "8902", "8903", "8990", "8700
 
 export type Verdict = "match" | "diff" | null
 
+/** 실행과정 대응관계 유형 = 송신 코드 개수 : 대조 회신 개수.
+ *  1:0=입력만(대조 회신 없음) · 1:1=self 대조 · N:1=여러 코드→집계코드 대조.
+ *  ※ 자동 파생은 이 3유형만. 1:N(국세청 구간분해)·0:1(결과계 코드)은 보류
+ *    — 1:N은 현재 1:1로 잡히고, 0:1 결과계 코드는 매핑 배열 밖이라 맵현황에 나타나지 않는다. */
+export type RelationType = "1:0" | "1:1" | "N:1" | "1:N" | "0:1"
+
 /** 판정 입력 = 코드별 NTS OUT(ntsMap)·YTS 공제(ytsDdcMap) 두 맵. RowResult 가 구조적으로 만족한다. */
 export interface DdcCells { ntsMap: Record<string, number>; ytsDdcMap: Record<string, number> }
 
@@ -58,6 +64,7 @@ export interface YearVerdict {
   ddcVerdict: (res: DdcCells, code: string) => Verdict
   diffCodesOf: (res: DdcCells, codes: Iterable<string | null>) => string[]
   hiddenDiffCodes: (res: DdcCells, domain: Iterable<string | null>, lineCodes: Iterable<string>) => string[]
+  relationTypeOf: (m: MappingRow) => RelationType
 }
 
 /**
@@ -123,5 +130,19 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
     return diffCodesOf(res, domain).filter(c => !listSet.has(c) && !SUBTOTAL_CODES.has(c))
   }
 
-  return { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes }
+  // 실행과정 대응관계 유형(자동 3유형: 1:0·1:1·N:1). SUBTOTAL_OF(멤버→집계 역참조)로 집계코드까지 정확히 분류.
+  const AGGREGATE_CODES = new Set(SUBTOTAL_OF.values())   // 집계·통합 대조코드(8430·8726·8003·8761·8735·8705…)
+  const relationTypeOf = (m: MappingRow): RelationType => {
+    if (SUBTOTAL_OF.has(m.ntsCode)) return "N:1"                                       // 소계 멤버(카드·의료·출산·교육·부양가족 8004~09)
+    if (AGGREGATE_CODES.has(m.ntsCode) || SUBTOTAL_CODES.has(m.ntsCode)) return "N:1"  // 집계 대조코드(8003)·self-subtotal(8410)
+    if (outCodeOf(m) !== "—") return "1:1"                                             // self 대조(OUT_GROUPS·prefix로 self OUT 확정)
+    // outCodeOf "—": 대조되는 코드면 1:1, 순수 입력이면 1:0.
+    //   ·resultCol 있음 = self 대조(인적공제 8001·8002·8101~04는 group이 OUT_GROUPS 밖이라 oc="—"지만 self)
+    //   ·FLOW_CODES = echo 대조(총급여 8900, resultCol 없이 useAmt echo로 대조)
+    //   ·둘 다 아님 = 동반입력(8754 국외총급여, 자체 결과 없음)
+    if (m.resultCol || FLOW_CODES.has(m.ntsCode)) return "1:1"
+    return "1:0"
+  }
+
+  return { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes, relationTypeOf }
 }
