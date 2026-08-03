@@ -458,7 +458,14 @@ export function HometaxCalcPanel() {
   const [isTabPending,   startTabTransition] = useTransition()
   // 탭 클릭: 하이라이트(색)는 즉시, 무거운 목록 렌더는 transition으로 미뤄 클릭 반응이 막히지 않게 한다.
   const selectTab = (t: Tab) => {
-    if (t === selectedTab) return
+    if (t === selectedTab) {
+      // 같은 탭 재클릭 = 새로고침: 캐시 가드를 무효화해 YTS 목록 재조회 + NTS 결과 캐시 재읽기(기존 행 덮어쓰기) 유도.
+      listLoaded.current.delete(`${tab}|${year}|${ntsYear}`)   // 현재 탭 목록 재조회
+      cacheLoadedKey.current = null                            // NTS 결과 캐시 재읽기
+      overwriteCacheRef.current = true                         // 재읽기 시 기존 행도 최신 캐시값으로 교체
+      setRefreshNonce(n => n + 1)
+      return
+    }
     setSelectedTab(t)
     startTabTransition(() => setTab(t))
   }
@@ -499,6 +506,8 @@ export function HometaxCalcPanel() {
   const [ioDetail,       setIoDetail]       = useState<Record<string, { ntsIn: NtsIoRow[]; ntsOut: NtsIoRow[] }>>({})   // 드로어 IN/OUT lazy 캐시 — 목록 페이로드에서 뺀 상세를 열 때 단건 로드
   const listLoaded       = useRef<Set<string>>(new Set())    // 이미 fetch한 목록(`tab|year|ntsYear`) — 탭 재진입 시 재조회 스킵
   const cacheLoadedKey   = useRef<string | null>(null)       // 이미 읽은 캐시 (`year|ntsYear`) — 탭 전환마다 24MB 재읽기 방지
+  const [refreshNonce, setRefreshNonce] = useState(0)        // 같은 탭 재클릭 시 목록·결과를 강제 새로고침하는 트리거(값이 바뀌면 로드 effect 재실행)
+  const overwriteCacheRef = useRef(false)                    // 다음 NTS 캐시 재읽기에서 기존 결과행도 최신 캐시값으로 덮어쓸지(새로고침 시 true, 라이브 단건 결과는 캐시에 없으면 보존)
 
   // 세션 상태 30초마다 폴링 — 드롭다운 연도(ntsYear)별 세션을 조회(연도 바뀌면 재폴링)
   useEffect(() => {
@@ -621,7 +630,7 @@ export function HometaxCalcPanel() {
     }
     load()
     return () => { cancelled = true }
-  }, [tab, year, ntsYear, ntsAvailable])
+  }, [tab, year, ntsYear, ntsAvailable, refreshNonce])
 
   // 기타>그룹(인적공제/혼인자녀출산/주택자금) 선택 시 사람별 YTS 공제 조회 (NTS 값은 results.ntsMap 에서 조인).
   //   이 fetch는 목록 loading(effect1, type=etc)과 별도라 groupLoading으로 조회중 표시 → 빈-메시지 깜빡임 방지.
@@ -635,7 +644,7 @@ export function HometaxCalcPanel() {
       .catch(() => { /* 무시 */ })
       .finally(() => { if (!cancelled) setGroupLoading(false) })
     return () => { cancelled = true }
-  }, [tab, etcCode, year, ntsYear])
+  }, [tab, etcCode, year, ntsYear, refreshNonce])
 
   // 저장된 이전 실행 결과 복원 — 배치탭 진입/파라미터 변경 시 캐시(JSON)를 읽어 results를 채운다.
   // 라이브 결과(현재 세션에서 방금 실행한 건)는 덮지 않는다("이미 있으면 유지" = 최신 우선).
@@ -647,13 +656,15 @@ export function HometaxCalcPanel() {
     fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`)
       .then(r => r.json())
       .then((d: { savedAt: string | null; rows: { calcNo: string; ok: boolean; result: unknown; error: string | null; ranAt: string; duration: number }[] }) => {
+        const overwrite = overwriteCacheRef.current   // 새로고침 재클릭이면 기존 행도 최신 캐시로 교체(아니면 라이브 결과 우선 유지)
+        overwriteCacheRef.current = false             // 취소 여부와 무관하게 소비 즉시 리셋 → 플래그가 다음 읽기로 새지 않게
         if (cancelled) return                    // 취소(로딩 중 탭·연도 전환)면 잠그지 않음 → 다음 진입에서 재조회
         cacheLoadedKey.current = key              // ★성공 로드 후에만 잠금(취소된 fetch가 재조회를 막지 않게)
         if (!d.rows?.length) return
         setResults(prev => {
           const next = { ...prev }
           for (const row of d.rows) {
-            if (next[row.calcNo]) continue
+            if (next[row.calcNo] && !overwrite) continue
             const ranAt = formatRanAt(new Date(row.ranAt))
             next[row.calcNo] = row.ok
               ? buildRowResult(row.result, row.duration, ranAt)
@@ -665,7 +676,7 @@ export function HometaxCalcPanel() {
       })
       .catch(() => { /* 실패 시 key 미설정 → 다음 진입에서 재시도 */ })
     return () => { cancelled = true }
-  }, [tab, year, ntsYear])
+  }, [tab, year, ntsYear, refreshNonce])
 
   // 진행중 가드는 ref로(running state 의존 제거) → runCompare를 안정화해 테이블 React.memo 유지.
   const inFlightRef = useRef<Set<string>>(new Set())
