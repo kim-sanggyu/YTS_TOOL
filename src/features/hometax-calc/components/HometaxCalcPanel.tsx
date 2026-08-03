@@ -503,6 +503,7 @@ export function HometaxCalcPanel() {
   //   사람 단위(탭 무관) 전역 지표 → 매 탭을 눈으로 훑지 않아도 "오류 있나"를 헤더에서 즉시 확인.
   const errorCount = useMemo(() => Object.values(results).filter(isErrorRow).length, [results])
   const [procTexts,      setProcTexts]      = useState<Record<string, string>>({})   // 계산과정 텍스트 lazy 캐시(calcNo→text) — 카드 등 목록에서 CLOB 뺀 탭용
+  const [drawerProc,     setDrawerProc]     = useState<{ calcNo: string; text: string | null }>({ calcNo: "", text: null })   // 드로어 계산과정 — 열 때마다 최신 CLOB 재조회(목록 calcProcTotal이 세액 재계산 후 stale 되는 것 방지, 정확성>성능)
   const [ioDetail,       setIoDetail]       = useState<Record<string, { ntsIn: NtsIoRow[]; ntsOut: NtsIoRow[] }>>({})   // 드로어 IN/OUT lazy 캐시 — 목록 페이로드에서 뺀 상세를 열 때 단건 로드
   const listLoaded       = useRef<Set<string>>(new Set())    // 이미 fetch한 목록(`tab|year|ntsYear`) — 탭 재진입 시 재조회 스킵
   const cacheLoadedKey   = useRef<string | null>(null)       // 이미 읽은 캐시 (`year|ntsYear`) — 탭 전환마다 24MB 재읽기 방지
@@ -575,22 +576,20 @@ export function HometaxCalcPanel() {
     setCachedAt(null)
   }
 
-  // 계산과정 텍스트 lazy 로드 — 목록 쿼리에서 뺀 CLOB(CALC_PROC_TOTAL)을 그 한 명치만 조회해 캐시.
-  // procTexts는 ref로 읽어(procTextsRef) 콜백을 안정화 → 테이블 React.memo가 procTexts 변경에 리렌더되지 않게.
-  const procTextsRef = useRef(procTexts)
-  procTextsRef.current = procTexts
+  // 계산과정 텍스트 로드 — 목록 쿼리에서 뺀 CLOB(CALC_PROC_TOTAL)을 그 한 명치만 조회.
+  //   정확성 우선: 캐시 재사용 없이 매번 최신으로 재조회·덮어씀(목록 calcProcTotal이 세액 재계산 후 stale 되는 것 방지).
+  //   콜백은 procTexts 미의존([] deps)이라 참조 안정 → 테이블 React.memo 유지.
   const ensureProcText = useCallback(async (calcNo: string): Promise<string | null> => {
-    if (procTextsRef.current[calcNo] != null) return procTextsRef.current[calcNo]
     try {
       const d = await fetch(`/api/tools/hometax-calc/proc-total?calcNo=${calcNo}`).then(r => r.json())
-      if (d.text != null) setProcTexts(prev => (prev[calcNo] != null ? prev : { ...prev, [calcNo]: d.text }))
+      if (d.text != null) setProcTexts(prev => ({ ...prev, [calcNo]: d.text }))
       return d.text ?? null
     } catch { return null }
   }, [])
 
-  // 계산과정 팝업 열기 — 목록에 텍스트가 실려오면(대부분 탭) 즉시, 없으면(카드 등 lazy 탭) 단건 조회 후 표시.
+  // 계산과정 팝업 열기 — 정확성 우선: 목록에 실린 값(재계산 후 stale 가능) 대신 항상 최신 CLOB 재조회, 실패 시 목록값 폴백.
   const showProc = useCallback(async (info: { calcNo: string; nm: string; text: string | null }) => {
-    const text = info.text ?? await ensureProcText(info.calcNo)
+    const text = (await ensureProcText(info.calcNo)) ?? info.text
     if (text != null) setProcTotalFor({ calcNo: info.calcNo, nm: info.nm, text })
   }, [ensureProcText])
 
@@ -840,19 +839,26 @@ export function HometaxCalcPanel() {
     ?? null
   ) : null
 
-  // 계산과정 텍스트 — 목록에 실려온 값(대부분 탭) 우선, 없으면(카드 등 lazy 탭) 캐시(procTexts)에서.
+  // 계산과정 텍스트 — 드로어 열 때 재조회한 최신 CLOB(drawerProc) 우선, 로딩 중엔 목록값으로 자리 유지.
+  //   목록의 calcProcTotal 은 세액 재계산 후 stale 될 수 있어(주택자금 결합한도 변경 등) 최신 재조회값을 앞세운다.
   const detailProcText: string | null =
-    detailRow?.calcProcTotal ?? (detailFor ? procTexts[detailFor] ?? null : null)
+    (drawerProc.calcNo === detailFor && drawerProc.text != null)
+      ? drawerProc.text
+      : detailRow?.calcProcTotal ?? (detailFor ? procTexts[detailFor] ?? null : null)
   // 계산과정 패널 자리 확보 여부 — 텍스트가 lazy 로드되기 전에도 hasProc면 좌패널을 그려
   // 첫 열림부터 최종 레이아웃(좌 계산 / 우 실행)으로 뜨게 한다(실행과정 100%→축소 깜빡임 제거).
   const hasProcPanel = !!detailProcText || !!detailRow?.hasProc
 
-  // 드로어를 lazy 탭(카드 등)에서 열면 목록에 없는 계산과정 텍스트를 단건 로드
+  // 드로어 열 때마다 계산과정 CLOB을 최신으로 재조회(정확성>성능). 목록에 실린 calcProcTotal은
+  // 세액 재계산 후 stale일 수 있어(예: 주택자금 결합한도 변경) 항상 서버에서 그 한 명치만 다시 읽는다.
   useEffect(() => {
-    if (detailFor && detailRow && detailRow.calcProcTotal == null && detailRow.hasProc) {
-      ensureProcText(detailFor)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!detailFor) return
+    let cancelled = false
+    fetch(`/api/tools/hometax-calc/proc-total?calcNo=${detailFor}`)
+      .then(r => r.json())
+      .then((d: { text?: string | null }) => { if (!cancelled) setDrawerProc({ calcNo: detailFor, text: d.text ?? null }) })
+      .catch(() => { if (!cancelled) setDrawerProc({ calcNo: detailFor, text: null }) })
+    return () => { cancelled = true }
   }, [detailFor])
 
   // 드로어 열림 → IN/OUT 상세 lazy 로드. 목록 캐시는 슬림(ntsIn 비어있음)이라 그 한 명치만 가져온다.
