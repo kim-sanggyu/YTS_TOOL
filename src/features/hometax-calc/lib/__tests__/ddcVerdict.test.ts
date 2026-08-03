@@ -104,6 +104,12 @@ describe("relationTypeOf — 실행과정 대응관계 유형(자동 3유형: 1:
   test("N:1· 1-집계 — 투자조합출자 8410 (매핑행 자체가 소계, 대조점)", () => {
     expect(relationTypeOf(row("8410"))).toBe("N:1·")
   })
+  test("1:1·N:1 복합 — 투자조합 개별 8420 (self+소계8410 멤버, selfComparable)", () => {
+    expect(relationTypeOf(row("8420"))).toBe("1:1·N:1")
+  })
+  test("1:1·N:1 복합 — ISA 8707 (per-code YTS 있어 self+소계8705 멤버)", () => {
+    expect(relationTypeOf(row("8707"))).toBe("1:1·N:1")
+  })
 })
 
 describe("diffCodesOf — 코드집합 중 diff 만(중복제거·null 스킵)", () => {

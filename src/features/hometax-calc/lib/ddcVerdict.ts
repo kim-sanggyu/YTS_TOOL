@@ -50,7 +50,7 @@ export type Verdict = "match" | "diff" | null
  *  ※ N:1은 정반대 서명의 두 종류 — 멤버(IN 있음·OUT 없음)·집계(OUT 있음·IN 없음). 배지 점 위치로 구분(·N:1 / N:1·).
  *  ※ 자동 파생은 이들만. 1:N(국세청 구간분해)·0:1(결과계 코드)은 보류
  *    — 1:N은 현재 1:1로 잡히고, 0:1 결과계 코드는 매핑 배열 밖이라 맵현황에 나타나지 않는다. */
-export type RelationType = "1:0" | "1:1" | "·N:1" | "N:1·" | "1:N" | "0:1"
+export type RelationType = "1:0" | "1:1" | "·N:1" | "N:1·" | "1:1·N:1" | "1:N" | "0:1"
 
 /** 판정 입력 = 코드별 NTS OUT(ntsMap)·YTS 공제(ytsDdcMap) 두 맵. RowResult 가 구조적으로 만족한다. */
 export interface DdcCells { ntsMap: Record<string, number>; ytsDdcMap: Record<string, number> }
@@ -132,6 +132,7 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   // 실행과정 대응관계 유형(자동 3유형: 1:0·1:1·N:1). SUBTOTAL_OF(멤버→집계 역참조)로 집계코드까지 정확히 분류.
   const AGGREGATE_CODES = new Set(SUBTOTAL_OF.values())   // 집계·통합 대조코드(8430·8726·8003·8761·8735·8705…)
   const relationTypeOf = (m: MappingRow): RelationType => {
+    if (m.selfComparable) return "1:1·N:1"                                              // 복합: self(per-code YTS 있음) + 소계멤버. 투자조합8415~23·ISA8707/08(계약표)
     if (SUBTOTAL_OF.has(m.ntsCode)) return "·N:1"                                       // N-멤버(전송만, 대조는 집계코드서): 카드·의료·출산·교육·부양가족 8004~09
     if (AGGREGATE_CODES.has(m.ntsCode) || SUBTOTAL_CODES.has(m.ntsCode)) return "N:1·"  // 1-집계(IN 없이 통합 회신 받아 대조): 8003·8410·8430·8726…
     if (outCodeOf(m) !== "—") return "1:1"                                             // self 대조(resultCol·prefix로 self OUT 확정)

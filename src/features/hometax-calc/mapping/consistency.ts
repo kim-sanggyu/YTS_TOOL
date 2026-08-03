@@ -131,6 +131,7 @@ export function checkMappingConsistency(mapping: MappingRow[]): ConsistencyResul
   const { relationTypeOf } = makeYearVerdict(mapping)
   const REL_SIG: Record<string, [inNts: boolean, outSelf: boolean]> = {
     "1:1": [true, true], "·N:1": [true, false], "N:1·": [false, true], "1:0": [true, false],
+    "1:1·N:1": [true, true],   // 복합 = IN(전송) + self OUT(per-code YTS) 둘 다. 멤버성은 소계행이 담당.
   }
   const mark = (b: boolean) => (b ? "○" : "✗")
   for (const row of mapping) {
@@ -138,7 +139,8 @@ export function checkMappingConsistency(mapping: MappingRow[]): ConsistencyResul
     const sig = REL_SIG[rel]
     if (!sig) continue   // 1:N·0:1 등 미파생 유형은 스킵
     const inNts   = row.send
-    const outSelf = outCodeOf(row) === row.ntsCode || SUBTOTAL_CODES.has(row.ntsCode) || FLOW_CODES.has(row.ntsCode)
+    // self OUT = outCodeOf self · 소계코드 · FLOW echo · 복합의 per-code YTS(selfComparable)
+    const outSelf = outCodeOf(row) === row.ntsCode || SUBTOTAL_CODES.has(row.ntsCode) || FLOW_CODES.has(row.ntsCode) || !!row.selfComparable
     if (inNts !== sig[0] || outSelf !== sig[1]) {
       issues.push({
         source: "유형서명", code: row.ntsCode, direction: "유형서명",

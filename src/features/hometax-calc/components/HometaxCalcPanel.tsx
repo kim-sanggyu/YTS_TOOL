@@ -2530,6 +2530,7 @@ const REL_CLS: Record<RelationType, string> = {
   "1:1": "bg-sky-100 text-sky-700",
   "·N:1": "bg-violet-100 text-violet-600",   // N-멤버(전송만)
   "N:1·": "bg-violet-100 text-violet-800",   // 1-집계(대조점)
+  "1:1·N:1": "",                          // 복합 — 두 칩(1:1+·N:1)으로 분리 렌더라 자체 클래스 미사용
   "1:N": "bg-teal-100 text-teal-700",     // 보류(현재 미노출)
   "0:1": "bg-slate-100 text-slate-500",   // 보류(매핑 밖)
 }
@@ -2538,10 +2539,19 @@ const REL_TITLE: Record<RelationType, string> = {
   "1:1": "self 대조 — 송신코드=대조코드(총급여 8900은 echo 대조)",
   "·N:1": "N:1 멤버 — 전송만(nts/yts IN 있음, OUT 없음), 대조는 집계코드서(카드8431·부양가족8004~09)",
   "N:1·": "N:1 집계 — IN 없이 통합 회신 받아 대조(nts/yts OUT 있음, IN 없음)(8003·8430·8726·8410)",
+  "1:1·N:1": "복합 — self(per-code YTS 있어 동일코드 대조 가능)이면서 소계 멤버. 투자조합8415~23·ISA8707/08",
   "1:N": "국세청 구간분해(보류) — 정치자금·고향사랑",
   "0:1": "결과계(보류) — 송신 없이 회신(산출·결정세액 등)",
 }
 function RelationBadge({ rel }: { rel: RelationType }) {
+  // 복합(1:1·N:1)은 두 성질을 각각 칩으로 — self(1:1) + 멤버(·N:1) 나란히.
+  if (rel === "1:1·N:1") {
+    return (
+      <span className="inline-flex items-center gap-0.5" title={REL_TITLE[rel]}>
+        <RelationBadge rel="1:1" /><RelationBadge rel="·N:1" />
+      </span>
+    )
+  }
   // 멤버(·N:1)/집계(N:1·)의 점을 크게(•) 렌더해 N쪽/1쪽 구분을 또렷하게. 내부 문자열값은 그대로(·).
   const body = rel.replace(/·/g, "")
   const dot = <span className="text-[13px] leading-none font-bold">•</span>
@@ -2659,6 +2669,7 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1" />self(송신=대조)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="·N:1" />멤버(전송만)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="N:1·" />집계(대조점)</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1·N:1" />복합(self+멤버)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:0" />입력만</span>
           <span className="text-muted-foreground">· 1:N(구간분해)·0:1(결과계)은 보류</span>
         </div>
@@ -2668,8 +2679,8 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <col className="w-[18.48rem]" />
             {/* nts코드 */}
             <col className="w-14" />
-            {/* 유형 (대응관계) */}
-            <col className="w-12" />
+            {/* 유형 (대응관계) — 복합(1:1·N:1) 두 칩 수용 위해 확대 */}
+            <col className="w-20" />
             {/* nts IN */}
             <col className="w-40" />
             {/* nts OUT */}

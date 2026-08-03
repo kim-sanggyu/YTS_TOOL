@@ -33,6 +33,10 @@ export interface MappingRow {
   /** 표시전용 소계 그룹핑: 대조(outCode)는 그대로 두고 ③표 로스터에서만 이 소계코드 뒤 블록으로 묶어 렌더.
    *  부양가족 8004~09→8003(개별 인원 펼침) 등. outCode 와 분리 = 대조 로직 무영향. */
   displaySubtotal?: string
+  /** 복합 유형(1:1·N:1) 표식 — self(per-code)이면서 소계 멤버.
+   *  = "대조할 YTS per-code 원천이 있다"(투자조합·ISA의 PAY_WRK_PEN_SAVE_SPEC.PEN_SAVE_SUB_AMT).
+   *  relationTypeOf 가 이 플래그로 1:1·N:1 을 판정. 계약표: docs/hometax-relation-contract-backlog.md */
+  selfComparable?: boolean
   note?:     string
 }
 
