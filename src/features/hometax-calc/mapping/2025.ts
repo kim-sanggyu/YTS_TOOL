@@ -79,7 +79,7 @@ export const MAPPING_2025: MappingRow[] = [
   { group: "특별소득공제", ntsCode: "8305", label: "고용보험료",   ytsCol: "SPCL_IF_EMP_INSU_OBJ_AMT",  resultCol: "SPCL_IF_EMP_INSU_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
   // ── 주택자금(특별소득공제) — 한도 있어 원본 상환액(PAY_WRK_MAIN) LOAN_{코드} 주입 전송, NTS 한도로직 검증. ──
   //   대조 공제액 = SP_*_AMT(한도후). 코드↔YTS컬럼 순서 실측·상규님 확정(capture-io 2026-07-18, 8321~8329 = LRSF1/2/3/10/20/30/40/50/60).
-  //   소계 OUT: 8310(원리금 소계)·8320(장기주택저당 소계). 전용 탭 없음(전체 결정세액 비교에 기여).
+  //   소계 8310(원리금)·8320(장기주택저당)은 NTS가 결정세액 산출 중 내부 합산하는 값 — 우리 도구는 파싱·대조·표시 안 함(개별 SP_*_AMT와 최종 결정세액만 대조).
   { group: "특별소득공제", ntsCode: "8311", label: "주택임차 원리금-대출기관",       ytsCol: "LOAN_8311", resultCol: "SP_HOUSE_RALR_LENDER_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "특별소득공제", ntsCode: "8312", label: "주택임차 원리금-거주자",         ytsCol: "LOAN_8312", resultCol: "SP_HOUSE_RALR_HABT_AMT",   valueKey: "useAmt", rule: "value", status: "확정", send: true },
   { group: "특별소득공제", ntsCode: "8321", label: "장기주택저당 2011이전 15년미만",        ytsCol: "LOAN_8321", resultCol: "SP_LH_LRSF1_AMT",  valueKey: "useAmt", rule: "value", status: "확정", send: true },
