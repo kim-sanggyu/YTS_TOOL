@@ -761,6 +761,7 @@ export function HometaxCalcPanel() {
   function runItemBatch(endpoint: string, total: number) {
     if (batchRunning) return
     let doneCount = 0, skipCount = 0   // 클로저 카운터 — done 시점 완료 toast용(state 클로저 회피)
+    const startedAt = Date.now()       // 배치 시작 시각 — 완료 toast 소요시간 표시용
     setBatchRunning(true)
     setBatchProgress({ done: 0, total, skipped: 0 })
     batchBufRef.current = []
@@ -794,7 +795,9 @@ export function HometaxCalcPanel() {
       setBatchRunning(false)
       es.close()
       batchEsRef.current = null
-      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""}`, { duration: Infinity })
+      const secs = (Date.now() - startedAt) / 1000
+      const elapsed = secs < 60 ? `${secs.toFixed(1)}초` : `${Math.floor(secs / 60)}분 ${Math.round(secs % 60)}초`
+      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""} · 소요 ${elapsed}`, { duration: Infinity })
       fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     })
 
