@@ -84,8 +84,8 @@ export const MAPPING_2026: MappingRow[] = [
   { group: "특별소득공제", ntsCode: "8329", label: "장기주택저당 2012이후 10~15년",             ytsCol: "LOAN_8329", resultCol: "SP_LH_LRSF60_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true },
 
   // ── 그밖의 소득공제 (useAmt) — 국세청 화면(그밖의소득공제 상세팝업) 기준 정리 (2026-07-17 화면·payload 실측) ──
-  { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",              ytsCol: "OTHER_8401", resultCol: "OTO_PPF", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_PEN_SAVE_SPEC PEN_SAVE_CLS='562-030' ΣPEN_SAVE_PMT_AMT(납입액 원본) → OTHER_8401 주입. OUT self ddcAmt=납입액×40%(한도72만) ↔ OTO_PPF. 라이브 캡처 실측(2026-07-18, 1,000,000→400,000). ★한도캡(납입>180만) 시 ddcLmtAmt 없이 NTS 자체캡 여부 미검증" },
-  { group: "그밖의소득공제", ntsCode: "8402", label: "소기업소상공인", ytsCol: "OTHER_8402", resultCol: "OTO_SM_ETPR_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.SM_ETPR_AMT(납입액 원본) → OTHER_8402 주입. OUT self ddcAmt=min(납입액, 소득금액별한도 600/500/400/200만) ↔ OTO_SM_ETPR_AMT. 라이브 캡처 실측(2026-07-18, 1,000,000→1,000,000). ★한도캡 시 ddcLmtAmt 없이 NTS 자체캡 여부 미검증" },
+  { group: "그밖의소득공제", ntsCode: "8401", label: "개인연금저축",              ytsCol: "OTHER_8401", resultCol: "OTO_PPF", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_PEN_SAVE_SPEC PEN_SAVE_CLS='562-030' ΣPEN_SAVE_PMT_AMT(납입액 원본) → OTHER_8401 주입. OUT self ddcAmt=납입액×40%(한도72만) ↔ OTO_PPF. 라이브 캡처 실측(2026-07-18, 1,000,000→400,000). ★한도캡(납입>180만) 시 ddcLmtAmt 없이 NTS 자체캡 720,000 실측확정(2026-08-03, Y202600235 납입6,060,000→720,000, docs/ppf-8401-cap-probe.mjs)" },
+  { group: "그밖의소득공제", ntsCode: "8402", label: "소기업소상공인", ytsCol: "OTHER_8402", resultCol: "OTO_SM_ETPR_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.SM_ETPR_AMT(납입액 원본) → OTHER_8402 주입. OUT self ddcAmt=min(납입액, 소득금액별한도 600/500/400/200만) ↔ OTO_SM_ETPR_AMT. 라이브 캡처 실측(2026-07-18, 1,000,000→1,000,000). ★한도캡 시 ddcLmtAmt 없이 NTS 자체캡 실측확정(2026-08-03, Y202600235 총급여1.5억→200만한도, 납입7,500,000→2,000,000, docs/sm-etpr-8402-cap-probe.mjs) + 구간표 600/500/400/200만 스윕확정(경계 소득금액 4천만·1억, docs/sm-etpr-8402-bracket-sweep.mjs)" },
   // 주택마련저축 = PAY_WRK_PEN_SAVE_SPEC 납입액(CLS별) → OTHER_ 주입. OUT self ddcAmt=납입액×40%(한도). 라이브 캡처 실측(2026-07-18).
   //   ★주택청약종합저축은 카탈로그 입력코드 8407(2015이후)로 통일(2026-07-21). 구 표시코드 8405는 카탈로그에 없고
   //     8405로 보내면 OUT=0. 8407로 보내면 NTS가 8405·8407 둘 다 동일 ddcAmt 회신·과표 1회 → 8407 단일로 전송·대조.
@@ -245,8 +245,8 @@ export const COVERAGE_2026: Record<string, Coverage> = {
   "8324": { verdict: "안전", review: "검토중" }, "8325": { verdict: "안전", review: "검토중" }, "8326": { verdict: "안전", review: "검토중" },
   "8327": { verdict: "안전", review: "검토중" }, "8328": { verdict: "안전", review: "검토중" }, "8329": { verdict: "안전", review: "검토중" },
   // 그밖의소득공제
-  "8401": { verdict: "미검증", review: "검토중" },   // 원본 납입이나 한도캡(납입>180만) 시 국세청 자체캡 미실측(note)
-  "8402": { verdict: "미검증", review: "검토중" },   // 원본 납입이나 소득금액별 한도캡 미실측(note)
+  "8401": { verdict: "안전", review: "검토중" },   // 한도캡(납입>180만) 시에도 NTS 자체캡 720,000 실측확정(2026-08-03, Y202600235)
+  "8402": { verdict: "안전", review: "검토중" },   // 소득금액별 한도캡(200만 구간) NTS 자체캡 실측확정(2026-08-03, Y202600235)
   "8403": { verdict: "안전", review: "검토중" }, "8407": { verdict: "안전", review: "검토중" }, "8404": { verdict: "안전", review: "검토중" },   // 주택마련저축 ×40% 실측
   "8415": { verdict: "안전", review: "검토중" }, "8416": { verdict: "안전", review: "검토중" }, "8417": { verdict: "안전", review: "검토중" },
   "8418": { verdict: "안전", review: "검토중" }, "8419": { verdict: "안전", review: "검토중" }, "8420": { verdict: "안전", review: "검토중" },
