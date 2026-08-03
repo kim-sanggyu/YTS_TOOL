@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, useCallback, useTransition, memo, createContext, useContext, Fragment, type ReactNode } from "react"
-import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2 } from "lucide-react"
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useTransition, memo, createContext, useContext, Fragment, type ReactNode } from "react"
+import { Loader2, Play, CheckCircle2, XCircle, FileSearch, FileText, ChevronDown, Maximize2, Minimize2, Wifi } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -509,6 +509,8 @@ export function HometaxCalcPanel() {
   const cacheLoadedKey   = useRef<string | null>(null)       // 이미 읽은 캐시 (`year|ntsYear`) — 탭 전환마다 24MB 재읽기 방지
   const [refreshNonce, setRefreshNonce] = useState(0)        // 같은 탭 재클릭 시 목록·결과를 강제 새로고침하는 트리거(값이 바뀌면 로드 effect 재실행)
   const overwriteCacheRef = useRef(false)                    // 다음 NTS 캐시 재읽기에서 기존 결과행도 최신 캐시값으로 덮어쓸지(새로고침 시 true, 라이브 단건 결과는 캐시에 없으면 보존)
+  const headerRef      = useRef<HTMLDivElement>(null)        // 툴바 폭 측정 — 넘치면 저우선 항목을 단계적으로 숨김
+  const [compactLevel, setCompactLevel] = useState(0)        // 툴바 축약 레벨(0=full, 넘칠수록 ↑). 레벨별 숨김항목은 아래 derived 플래그
 
   // 세션 상태 30초마다 폴링 — 드롭다운 연도(ntsYear)별 세션을 조회(연도 바뀌면 재폴링)
   useEffect(() => {
@@ -519,6 +521,39 @@ export function HometaxCalcPanel() {
     const id = setInterval(check, 30000)
     return () => clearInterval(id)
   }, [ntsYear])
+
+  // 툴바가 넘치면(스크롤 대신) 저우선 항목을 단계적으로 숨김. 스크롤바 없음(overflow-hidden).
+  //   방식: 트리거(리사이즈·내용변화)마다 레벨 0부터 시작 → 넘치면 한 단계씩 올려 재측정(useLayoutEffect 반복, 페인트 전)
+  //   → 맞는 최소 레벨에서 멈춤. full 폭 기준으로 매번 0부터 재수렴 → 진동 없음. MAX_COMPACT_LEVEL 초과분은 클립.
+  const MAX_COMPACT_LEVEL = 6
+  const measuringRef = useRef(true)
+  const [, forceMeasureTick] = useState(0)   // 값 미사용 — 레벨이 이미 0이어도 강제 리렌더해 측정 이펙트를 돌린다
+  const startMeasure = useCallback(() => { measuringRef.current = true; setCompactLevel(0); forceMeasureTick(t => t + 1) }, [])
+  useLayoutEffect(() => {
+    if (!measuringRef.current) return
+    const el = headerRef.current
+    if (!el) { measuringRef.current = false; return }
+    setCompactLevel(lv => {
+      if (el.scrollWidth > el.clientWidth + 1 && lv < MAX_COMPACT_LEVEL) return lv + 1   // 넘침 → 한 단계 더 숨김(재측정)
+      measuringRef.current = false   // 맞음(또는 최대) → 종료
+      return lv
+    })
+  })
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    startMeasure()
+    const ro = new ResizeObserver(startMeasure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [startMeasure])
+  // 레벨별 숨김(누적): 1 실행시간 · 2 지우기 · 3 조회/차이 축약 · 4 타이틀 · 5 조회/차이 숨김 · 6 탭·전체실행 압축.
+  const hideRunTime = compactLevel >= 1
+  const hideClear   = compactLevel >= 2
+  const shortCount  = compactLevel >= 3
+  const hideTitles  = compactLevel >= 4
+  const hideCount   = compactLevel >= 5
+  const compactTabs = compactLevel >= 6
 
   // 상세조회 드로어 좌우 리사이즈 드래그
   useEffect(() => {
@@ -946,6 +981,9 @@ export function HometaxCalcPanel() {
     tab === "etc"     ? (isGroup ? groupItems.filter(groupHasDiff).length : etcByCode.filter(etcHasDiff).length) :
     allItems.filter(allHasDiff).length
 
+  // 툴바 내용 변화(실행결과·조회수·차이·탭·연도)로 폭이 바뀌면 레벨 0부터 재측정 — RO는 el 자체 크기만 감지하므로 보완.
+  useEffect(() => { startMeasure() }, [startMeasure, cachedAt, currentCount, diffCount, selectedTab, etcLabel, ntsYear, batchRunning])
+
   // 차이만 보기 필터 활성 시 현재 탭의 items를 차이나는 건만 추림
   const showDiffOnly     = diffOnly && diffCount > 0
   const shownAllItems     = showDiffOnly ? allItems.filter(allHasDiff) : allItems
@@ -959,13 +997,13 @@ export function HometaxCalcPanel() {
   return (
     <YearVerdictContext.Provider value={{ verdict, codeLabel }}>
     <div className="flex flex-col h-full min-h-0">
-      {/* 헤더 */}
-      <div className="shrink-0 flex items-center gap-2 p-4 border-b">
+      {/* 헤더 — 한 줄 유지(줄바꿈 금지). 넘치면 저우선 항목 숨김+탭/전체실행 1자 압축(compactTabs). 스크롤바 없이 클립. */}
+      <div ref={headerRef} className="shrink-0 flex items-center gap-2 p-4 border-b overflow-hidden">
         {/* 국세청 모의계산 연도 (중심축) — 선택하면 YTS 데이터 연도가 자동 연동 */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap">국세청 모의계산</span>
+        {!hideTitles && <span className="text-xs text-muted-foreground whitespace-nowrap">모의계산</span>}
         {/* 전체 실행 중엔 연도 변경 잠금 — 연도는 계산 파라미터라 진행 중 바뀌면 옛 연도 결과가 새 화면에 섞임(탭=뷰는 자유). */}
         <Select value={ntsYear} disabled={batchRunning} onValueChange={v => { if (v) { setNtsYear(v); setYear(v) } }}>
-          <SelectTrigger className="w-24 h-7 text-sm" title={batchRunning ? "전체 실행 중에는 연도를 변경할 수 없습니다 — 중단 후 변경하세요" : undefined}>
+          <SelectTrigger className="w-20 h-7 shrink-0 text-sm" title={batchRunning ? "전체 실행 중에는 연도를 변경할 수 없습니다 — 중단 후 변경하세요" : undefined}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -976,43 +1014,49 @@ export function HometaxCalcPanel() {
         </Select>
 
         {/* YTS 데이터 연도 = 국세청 연도에 자동 연동(수정 불가) */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap">YTS 데이터</span>
+        {!hideTitles && <span className="text-xs text-muted-foreground whitespace-nowrap">데이터</span>}
         <div
-          className="w-24 h-7 flex items-center justify-center rounded-md border bg-muted text-sm text-muted-foreground cursor-not-allowed"
+          className="w-20 h-7 shrink-0 whitespace-nowrap flex items-center justify-center rounded-md border bg-muted text-sm text-muted-foreground cursor-not-allowed"
           title="국세청 모의계산 연도에 자동 연동됩니다"
         >{year}년</div>
 
         <div className="w-px h-5 bg-border mx-1" />
-        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+        <div className="flex shrink-0 whitespace-nowrap rounded-md border overflow-hidden text-xs font-medium">
           <button
-            className={`px-3 py-1.5 transition-colors ${selectedTab === "all" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            className={`px-3 py-1.5 whitespace-nowrap transition-colors ${selectedTab === "all" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("all")}
-          >전체 비교</button>
+            title="전체"
+          >{compactTabs ? "전…" : "전체"}</button>
         </div>
 
-        <div className="flex rounded-md border overflow-hidden text-xs font-medium">
+        <div className="flex shrink-0 whitespace-nowrap rounded-md border overflow-hidden text-xs font-medium">
           <button
             className={`px-3 py-1.5 transition-colors ${selectedTab === "gift" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("gift")}
-          >기부금</button>
+            title="기부금"
+          >{compactTabs ? "기…" : "기부금"}</button>
           <button
             className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "card" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("card")}
-          >신용카드</button>
+            title="신용카드"
+          >{compactTabs ? "신…" : "신용카드"}</button>
           <button
             className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "medi" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("medi")}
-          >의료비</button>
+            title="의료비"
+          >{compactTabs ? "의…" : "의료비"}</button>
           <button
             className={`px-3 py-1.5 border-l transition-colors ${selectedTab === "pension" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("pension")}
-          >연금계좌</button>
+            title="연금계좌"
+          >{compactTabs ? "연…" : "연금계좌"}</button>
           {/* 기타 = 드롭다운: 잡다 세액공제 항목 중 하나를 골라 본문 리스트 필터로 사용 */}
           <DropdownMenu open={etcMenuOpen} onOpenChange={setEtcMenuOpen}>
             <DropdownMenuTrigger
               className={`px-3 py-1.5 border-l transition-colors inline-flex items-center gap-1 ${selectedTab === "etc" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              title={`기타${etcLabel ? `: ${etcLabel}` : ""}`}
             >
-              기타{etcLabel ? `: ${etcLabel}` : ""}
+              {compactTabs ? "기…" : `기타${etcLabel ? `: ${etcLabel}` : ""}`}
               <ChevronDown className="h-3 w-3 opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -1036,7 +1080,7 @@ export function HometaxCalcPanel() {
         {(tab === "all" || tab === "gift" || tab === "card" || tab === "medi" || tab === "pension" || tab === "etc") && (
           <>
             <Button
-              size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs"
+              size="sm" variant={batchRunning ? "destructive" : "outline"} className="h-7 text-xs shrink-0" title="전체 실행"
               disabled={!batchRunning && (isGroup ? groupItems.length === 0 : BATCH_TAB_COUNT[tab] === 0)}
               onClick={() => batchRunning
                 ? stopBatch()
@@ -1046,66 +1090,69 @@ export function HometaxCalcPanel() {
             >
               {batchRunning
                 ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />중단 ({batchProgress?.done ?? 0}/{batchProgress?.total ?? 0}{batchProgress?.skipped ? `, 스킵 ${batchProgress.skipped}` : ""})</>
-                : "전체 실행"}
+                : compactTabs ? "전…" : "전체 실행"}
             </Button>
-            {/* 저장된 전체실행 결과 = 한 벌. 방금 돌렸든 복원됐든 항상 같은 모양: 실행시각 + 지우기 */}
+            {/* 저장된 전체실행 결과 = 한 벌. 실행시각·지우기는 저우선(공간 없으면 숨김). ⚠오류는 중요해 유지. */}
             {cachedAt && !batchRunning && (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span title="저장된 전체실행 결과입니다. 다시 실행하면 갱신됩니다.">
-                  실행 {formatRanAt(new Date(cachedAt))}
-                </span>
+              <span className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
+                {!hideRunTime && (
+                  <span title="저장된 전체실행 결과입니다. 다시 실행하면 갱신됩니다.">
+                    실행 {formatRanAt(new Date(cachedAt))}
+                  </span>
+                )}
                 {errorCount > 0 && (
                   <span className="text-amber-700 font-semibold" title="국세청 계산 실패(세션만료·차단·예외) 건수 — 해당 인원 재실행 필요">
                     ⚠ 오류 {errorCount}건
                   </span>
                 )}
-                <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
-                  지우기
-                </Button>
+                {!hideClear && (
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs text-muted-foreground" onClick={clearCache}>
+                    지우기
+                  </Button>
+                )}
               </span>
             )}
           </>
         )}
 
         {(loading || isTabPending) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-        {!loading && !isTabPending && currentCount > 0 && (
-          <span className="text-xs text-muted-foreground flex items-center gap-1">
-            {currentCount}명 조회됨
+        {!loading && !isTabPending && currentCount > 0 && !hideCount && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+            <span>{currentCount}명{!shortCount && " 조회됨"}</span>
             {diffCount > 0 && (
               <button
-                className={`rounded px-1.5 py-0.5 font-medium transition-colors ${diffOnly ? "bg-red-600 text-white" : "text-red-600 hover:bg-red-50"}`}
+                className={`rounded px-1.5 py-0.5 font-medium whitespace-nowrap transition-colors ${diffOnly ? "bg-red-600 text-white" : "text-red-600 hover:bg-red-50"}`}
                 onClick={() => setDiffOnly(v => !v)}
               >
-                ({diffCount}명 차이)
+                ({diffCount}명{!shortCount && " 차이"})
               </button>
             )}
           </span>
         )}
 
         {/* 현황 탭 — NTS 세션 영역 바로 앞(우측) */}
-        <div className="ml-auto flex rounded-md border overflow-hidden text-xs font-medium">
+        <div className="ml-auto flex shrink-0 whitespace-nowrap rounded-md border overflow-hidden text-xs font-medium">
           <button
             className={`px-3 py-1.5 transition-colors ${selectedTab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => selectTab("status")}
           >맵현황</button>
         </div>
 
-        {/* 세션 상태 */}
-        <div className="flex items-center gap-2">
-          <span className={`flex items-center gap-1.5 text-xs ${sessionInfo.active ? "text-green-600" : "text-muted-foreground"}`}>
-            <span className={`h-2 w-2 rounded-full ${sessionInfo.active ? "bg-green-500" : "bg-muted-foreground/30"}`} />
-            {sessionInfo.active ? `NTS 세션 활성 (${sessionInfo.ageMinutes}분)` : "NTS 세션 없음"}
-          </span>
-          {sessionInfo.active ? (
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={stopSession}>
-              종료
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" className="h-7 text-xs" disabled={sessionLoading} onClick={startSession}>
-              {sessionLoading ? <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />시작 중...</> : "세션 시작"}
-            </Button>
-          )}
-        </div>
+        {/* 세션 상태 = 아이콘 하나. 활성=녹색·없음=회색. 실행 시 세션 자동 생성(getOrCreateSession)이라 시작 버튼 불필요.
+            활성일 때 클릭하면 종료(강제 재생성용). */}
+        <button
+          type="button"
+          onClick={sessionInfo.active ? stopSession : undefined}
+          disabled={!sessionInfo.active || sessionLoading}
+          title={sessionLoading ? "NTS 세션 준비 중…"
+            : sessionInfo.active ? `NTS 세션 활성 (${sessionInfo.ageMinutes}분) — 클릭하면 종료`
+            : "NTS 세션 없음 — 실행 시 자동 생성됩니다"}
+          className="shrink-0 flex items-center"
+        >
+          {sessionLoading
+            ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            : <Wifi className={`h-4 w-4 ${sessionInfo.active ? "text-green-600" : "text-muted-foreground/40"}`} />}
+        </button>
       </div>
 
       {/* 기타 그룹 선택 시 구성 항목 캡션 (MAPPING group 파생) */}
