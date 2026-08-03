@@ -95,15 +95,15 @@ export const MAPPING_2026: MappingRow[] = [
   // 투자조합출자 = 3연도(입력연도-2~입력연도) × 3종류(벤처등/조합1/조합2). PAY_WRK_PEN_SAVE_SPEC INVST_CLS×INVST_YY 로 분리(단일컬럼 아님).
   //   IN = SUM(PEN_SAVE_PMT_AMT) → OTHER_{코드}(route.injectInvestmentVals, code=investmentCode(CLS,연차)). OUT self=벤처100/70/30%·조합10%, 소계 8410.
   //   대조 공제액 = SUM(PEN_SAVE_SUB_AMT)(연도/종류별) — investmentList 로 조회(단일 resultCol 아님). 코드·연도·종류 라이브 캡처 실측확정(2026-07-18).
-  { group: "그밖의소득공제", ntsCode: "8416", label: "벤처등", ytsCol: "OTHER_8416", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8415", label: "조합1", ytsCol: "OTHER_8415", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8421", label: "조합2", ytsCol: "OTHER_8421", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8418", label: "벤처등", ytsCol: "OTHER_8418", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8417", label: "조합1", ytsCol: "OTHER_8417", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8422", label: "조합2", ytsCol: "OTHER_8422", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8420", label: "벤처등", ytsCol: "OTHER_8420", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8419", label: "조합1", ytsCol: "OTHER_8419", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true },
-  { group: "그밖의소득공제", ntsCode: "8423", label: "조합2", ytsCol: "OTHER_8423", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true },
+  { group: "그밖의소득공제", ntsCode: "8416", label: "벤처등", ytsCol: "OTHER_8416", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8415", label: "조합1", ytsCol: "OTHER_8415", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8421", label: "조합2", ytsCol: "OTHER_8421", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -2, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8418", label: "벤처등", ytsCol: "OTHER_8418", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8417", label: "조합1", ytsCol: "OTHER_8417", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8422", label: "조합2", ytsCol: "OTHER_8422", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: -1, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8420", label: "벤처등", ytsCol: "OTHER_8420", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8419", label: "조합1", ytsCol: "OTHER_8419", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true, displaySubtotal: "8410" },
+  { group: "그밖의소득공제", ntsCode: "8423", label: "조합2", ytsCol: "OTHER_8423", valueKey: "useAmt", rule: "value", status: "확정", send: true, yearOffset: 0, selfComparable: true, displaySubtotal: "8410" },
   { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: null, resultCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "확정", send: false, note: "소계 결과전용(send:false). NTS OUT 8410=Σ개별(8415~8423) ddcAmt·과표 1회 반영 — 개별도 self ddcAmt 반환(하이브리드). 프로브 hometax-investment-probe(2026-07-21): 8420 1천만+8418 8백만→8410 1,800만, 벤처당해100%·조합1 10% 실측. 대조 OTO_IU_ETC(YTS 투자조합 공제 합). runHometaxCalc ALL_CODES에 8410 포함해 소계 결과 수신." },
   // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
   //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)

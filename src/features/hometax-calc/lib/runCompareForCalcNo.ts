@@ -132,6 +132,28 @@ function injectInvestmentVals(
   }
 }
 
+// ── 복합유형(1:1·N:1) per-code YTS 공제(PEN_SAVE_SUB_AMT) → ytsDdcMap[개별코드] 배선 ──
+// 투자조합 8415~23(562-110, INVST_CLS×YY) + ISA 8707/08(562-130/120). ③표에서 개별코드 self 대조용.
+//   소계(8410/8705)는 resultCol(OTO_IU_ETC/RT_ISA_PEN_AMT)로 별도 대조 — 이건 그와 독립한 per-code 축.
+//   투자조합=종류·연도 독립계산이라 per-code 일치. ISA=합산공제 임의분할이라 이중케이스 갈림(✗ 그대로 표시, 계약표).
+const ISA_PEN_CLS: Record<string, string> = { "562-130": "8707", "562-120": "8708" }
+function collectCompositePerCodeYtsDdc(
+  specRows: { PEN_SAVE_CLS: string; PEN_SAVE_SUB_AMT: number; INVST_CLS: string | null; INVST_YY: string | null }[],
+  baseYear: number,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const row of specRows) {
+    const sub = Number(row.PEN_SAVE_SUB_AMT ?? 0)
+    if (row.PEN_SAVE_CLS === "562-110" && row.INVST_CLS && row.INVST_YY) {
+      const code = investmentCode(String(row.INVST_CLS), Number(row.INVST_YY) - baseYear)
+      if (code) out[code] = (out[code] ?? 0) + sub
+    }
+    const isa = ISA_PEN_CLS[row.PEN_SAVE_CLS]
+    if (isa) out[isa] = (out[isa] ?? 0) + sub
+  }
+  return out
+}
+
 // ── 그밖의소득공제 중 PAY_WRK_MAIN 원본 컬럼 기반 → OTHER_{코드} 주입 ──
 // 노란우산(8402): SM_ETPR_AMT(납입액). NTS self ddcAmt=min(납입액, 소득금액별한도) 자체계산 ↔ OTO_SM_ETPR_AMT. (2026-07-18 실측)
 function injectOtherMainVals(mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
@@ -274,6 +296,7 @@ export interface CompareInput {
   unknownCols: string[]
   inputHash:   string
   giftDdc:     Record<string, number>   // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) — ③표 OUT 대조용(vals와 분리해 지문 불변)
+  perCodeYtsDdc: Record<string, number> // 복합유형(1:1·N:1) per-code YTS 공제(PEN_SAVE_SUB_AMT) — 투자조합·ISA ③표 per-code 대조용(소계와 별개)
 }
 
 // 보낼 값(vals)을 이름순 정렬·직렬화 후 ntsYear 를 붙여 sha256. 같은 값=같은 지문(재현), 하나만 바뀌어도 달라짐.
@@ -316,13 +339,14 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   injectCardVals((row.CALC_PROC_CARD as string) ?? null, vals)
   injectMediVals((row.CALC_PROC_MEDI as string) ?? null, vals)
 
-  const penSpec = await ytsDb.query<{ PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number; INVST_CLS: string | null; INVST_YY: string | null }>(
-    `SELECT PEN_SAVE_CLS, PEN_SAVE_PMT_AMT, INVST_CLS, INVST_YY FROM YTS39.PAY_WRK_PEN_SAVE_SPEC WHERE CALC_NO = :1`,
+  const penSpec = await ytsDb.query<{ PEN_SAVE_CLS: string; PEN_SAVE_PMT_AMT: number; PEN_SAVE_SUB_AMT: number; INVST_CLS: string | null; INVST_YY: string | null }>(
+    `SELECT PEN_SAVE_CLS, PEN_SAVE_PMT_AMT, PEN_SAVE_SUB_AMT, INVST_CLS, INVST_YY FROM YTS39.PAY_WRK_PEN_SAVE_SPEC WHERE CALC_NO = :1`,
     [calcNo]
   )
   injectPensionVals(penSpec, vals)
   injectOtherSavingsVals(penSpec, vals)
   injectInvestmentVals(penSpec, Number(dataYear), vals)   // 오프셋 기준=YTS 당해(dataYear), NTS 당해로 정렬
+  const perCodeYtsDdc = collectCompositePerCodeYtsDdc(penSpec, Number(dataYear))   // 복합유형 per-code YTS 공제(투자조합·ISA)
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
     `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
@@ -347,7 +371,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   const giftDdc: Record<string, number> = {}
   injectGiftDdc(giftAdj, Number(dataYear), Number(ntsYear), giftDdc)
 
-  return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear), giftDdc }
+  return { calcNo, vals, unknownCols, inputHash: computeInputHash(vals, ntsYear), giftDdc, perCodeYtsDdc }
 }
 
 // ② 조립된 입력을 국세청 L03에 보내 비교결과 조립(여기서만 NTS 호출).
@@ -368,6 +392,8 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
   }
   // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) 주입 — 유일 소스(위 resultCol 제외와 짝).
   Object.assign(ytsDdcMap, input.giftDdc)
+  // 복합유형(투자조합·ISA) per-code YTS 공제(PEN_SAVE_SUB_AMT) 주입 — 소계(8410/8705)와 별개인 per-code 대조축.
+  Object.assign(ytsDdcMap, input.perCodeYtsDdc)
 
   return {
     calcNo,

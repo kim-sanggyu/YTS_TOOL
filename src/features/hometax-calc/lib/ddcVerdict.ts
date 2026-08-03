@@ -64,6 +64,9 @@ export interface YearVerdict {
   diffCodesOf: (res: DdcCells, codes: Iterable<string | null>) => string[]
   hiddenDiffCodes: (res: DdcCells, domain: Iterable<string | null>, lineCodes: Iterable<string>) => string[]
   relationTypeOf: (m: MappingRow) => RelationType
+  /** 복합유형(1:1·N:1) 멤버코드 = selfComparable(투자조합·ISA). ③표에서 소계 밑에 그룹핑하되
+   *  per-code OUT을 유지(순수 멤버처럼 IN-only로 죽이지 않음). */
+  COMPOSITE_MEMBERS: Set<string>
 }
 
 /**
@@ -77,8 +80,11 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   for (const row of mapping) {
     const oc = outCodeOf(row)
     if (SUBTOTAL_CODES.has(oc) && oc !== row.ntsCode) SUBTOTAL_OF.set(row.ntsCode, oc)
-    else if (row.displaySubtotal) SUBTOTAL_OF.set(row.ntsCode, row.displaySubtotal)   // 표시전용 그룹핑(부양가족 8004~09→8003) — outCode 무관, ③표 정렬만
+    else if (row.displaySubtotal) SUBTOTAL_OF.set(row.ntsCode, row.displaySubtotal)   // 표시전용 그룹핑(부양가족 8004~09→8003, 투자조합 8415~23→8410) — outCode 무관, ③표 정렬만
   }
+
+  // 복합유형(self+멤버) 코드 = selfComparable(투자조합·ISA). ③표 렌더가 그룹핑하되 per-code 유지 판정에 씀.
+  const COMPOSITE_MEMBERS = new Set(mapping.filter(m => m.selfComparable).map(m => m.ntsCode))
 
   // ③ 항목대조 순서·필터용 — 매핑 정의순(단일원천). 컴포넌트 mapOrder 도 이걸 참조한다.
   const MAP_ORDER = new Map<string, number>()
@@ -94,7 +100,7 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   const ddcVerdict = (res: DdcCells, code: string): Verdict => {
     if (FLOW_CODES.has(code)) return null
     if (!MAP_ORDER.has(code) && !SUBTOTAL_CODES.has(code)) return null
-    if (SUBTOTAL_OF.has(code)) return null
+    if (SUBTOTAL_OF.has(code) && !COMPOSITE_MEMBERS.has(code)) return null   // 순수 멤버는 소계서만 대조. 복합멤버(투자조합·ISA)는 per-code 대조함(ytsDdcMap에 per-code YTS 배선 필요)
     const nts = res.ntsMap[code] as number | undefined
     const yts = res.ytsDdcMap[code] ?? (GIFT_CODES.has(code) ? 0 : undefined)
     return (yts != null && nts != null && (yts || nts)) ? (yts === nts ? "match" : "diff") : null
@@ -142,5 +148,5 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
     return "1:0"
   }
 
-  return { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes, relationTypeOf }
+  return { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes, relationTypeOf, COMPOSITE_MEMBERS }
 }

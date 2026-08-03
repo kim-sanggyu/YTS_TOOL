@@ -2024,7 +2024,7 @@ function MismatchBadge({ n }: { n: number }) {
 function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { res: RowResult; row: DetailRowLike | null; calcNo: string; procOrder?: string[]; nm?: string; listCodes?: string[]; ntsYear: string }) {
   const { mapping, procLabelCode } = getYearConfig(ntsYear)   // ②표 원천컬럼·③표 로스터 순서를 드롭다운 연도로 라우팅
   // 판정·정렬 단일원천(연도별 인스턴스) — 이름을 그대로 구조분해해 이하 코드는 무변경.
-  const { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes } = useYearVerdict()
+  const { MAP_ORDER, SUBTOTAL_OF, DDC_DOMAIN, ddcVerdict, diffCodesOf, hiddenDiffCodes, COMPOSITE_MEMBERS } = useYearVerdict()
   const codeLabel = useCodeLabel()
   const yts = res.yts
   const nts = res.nts
@@ -2316,11 +2316,13 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                   if (subParent && !openSubs.has(subParent)) return null       // 소계가 접혀 있으면 멤버 숨김(기본은 펼침)
                   const isSubtotal = SUBTOTAL_CODES.has(code) || displaySubCodes.has(code)   // 소계코드 행(카드8430/의료8726/부양가족8003 등)
                   const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
-                  // 소계 멤버(카드8431·ISA8707 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT(한도·인원)은 소계행이 담당(카드·의료 동형).
-                  //   ISA는 국세청이 per-code OUT도 주지만(카드·의료는 소계만), 소계형은 8705가 유일 YTS 대조점이라 멤버는 입력만.
+                  // 순수 소계 멤버(카드8431 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT은 소계행이 담당(카드·의료 동형).
+                  //   ★복합멤버(투자조합8415~23·ISA8707/08, selfComparable)는 국세청 per-code OUT을 유지 표시 — 소계 밑에 그룹핑만 하고
+                  //     per-code를 죽이지 않는다(YTS per-code 배선 전이라 YTS공제·판정은 "—", per-code 대조는 다음 단계).
                   const isSubMember = subParent != null
-                  const oOut = isSubMember ? undefined : o
-                  const ytsD = isSubMember ? undefined : res.ytsDdcMap[code]
+                  const keepPerCode = isSubMember && COMPOSITE_MEMBERS.has(code)   // 복합멤버 = 그룹핑하되 per-code 유지
+                  const oOut = isSubMember && !keepPerCode ? undefined : o
+                  const ytsD = isSubMember && !keepPerCode ? undefined : res.ytsDdcMap[code]
                   const ntsD = oOut?.ddcAmt
                   const cmp  = ddcVerdict(res, code)   // 판정 단일원천(리스트 배지·불일치 건수와 공유)
                   const cmpCls = cmp === "diff" ? "text-red-600 font-semibold" : cmp === "match" ? "text-blue-600" : ""
