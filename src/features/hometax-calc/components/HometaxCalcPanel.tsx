@@ -1130,12 +1130,17 @@ export function HometaxCalcPanel() {
           </span>
         )}
 
-        {/* 현황 탭 — NTS 세션 영역 바로 앞(우측) */}
+        {/* 맵현황 — 탭 인라인이 아니라 바로 전용 팝업 창으로(기부금 등 다른 탭 보며 나란히). 차단 시 새 탭 폴백 */}
         <div className="ml-auto flex shrink-0 whitespace-nowrap rounded-md border overflow-hidden text-xs font-medium">
           <button
-            className={`px-3 py-1.5 transition-colors ${selectedTab === "status" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
-            onClick={() => selectTab("status")}
-          >맵현황</button>
+            className="px-3 py-1.5 transition-colors hover:bg-muted"
+            title="맵현황을 새 창으로 열기 — 다른 탭과 나란히 보기"
+            onClick={() => {
+              const url = `/hometax-calc-map?year=${ntsYear}`
+              const w = window.open(url, "mapStatus", "popup,width=1200,height=900,left=120,top=80")
+              if (!w) window.open(url, "_blank")   // 팝업 차단 → 새 탭으로라도
+            }}
+          >맵현황 ↗</button>
         </div>
 
         {/* 세션 상태 = 아이콘 하나. 활성=녹색·없음=회색. 실행 시 세션 자동 생성(getOrCreateSession)이라 시작 버튼 불필요.
@@ -1177,7 +1182,6 @@ export function HometaxCalcPanel() {
         {tab === "etc" && (isGroup
           ? <PersonalTableMemo items={shownGroupItems} title={etcLabel} loading={loading || groupLoading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />
           : <EtcTableMemo items={shownEtcItems} loading={loading} results={results} running={running} onRun={runCompare} onDetail={setDetailFor} onShowProc={showProc} onSelect={setSelectedCalcNo} selectedCalcNo={selectedCalcNo} listSort={listSort} onListSort={setListSort} />)}
-        {tab === "status" && <MappingStatusView ntsYear={ntsYear} />}
         </>)}
       </div>
 
@@ -2479,7 +2483,15 @@ function SrcCell({ text }: { text: string }) {
 // yts 원천컬럼에 소속 테이블 접두(소문자 축약, PAY_WRK_ 제거): route 가 주입하는 가상컬럼(CARD_/MEDI_/PEN_/GIFT_ 등)은
 //   실제 원천으로 환원하고, 소속 테이블을 소문자 축약(calc/main/gift_adj/pen_save_spec 등)으로 앞에 붙인다. ②표·현황표 공용.
 //   렌더(SrcCell)가 테이블명만 볼드 처리. (2026-07-31 테이블명 굵게·소문자 통일)
+// inSource(구조화 취득 명세) → "table.field [where] ·agg" 문자열. 테이블은 PAY_WRK_ 제거·소문자(SrcCell 볼드 규칙과 일관).
+function inSourceToStr(s: NonNullable<MappingRow["inSource"]>): string {
+  let out = s.table.replace(/^PAY_WRK_/, "").toLowerCase() + "." + s.field
+  if (s.where) out += ` [${s.where}]`
+  if (s.agg && s.agg !== "none") out += ` ·${s.agg}`
+  return out
+}
 function ytsSrcWithTable(m: MappingRow): string {
+  if (m.inSource) return inSourceToStr(m.inSource)   // 구조화 명세가 있으면 정본(가상컬럼 폴백보다 우선)
   const c = m.ytsCol
   if (!c) return "—"
   if (c.startsWith("CARD_")) return "calc.CALC_PROC_CARD"
@@ -2627,7 +2639,8 @@ function VerdictBadge({ verdict }: { verdict?: Coverage["verdict"] }) {
   return <span className={`px-1.5 py-0.5 rounded text-[10px] ${COV_CLS[verdict] ?? "bg-muted text-muted-foreground"}`}>{verdict}</span>
 }
 
-function MappingStatusView({ ntsYear }: { ntsYear: string }) {
+// 맵현황 뷰 — 탭 인라인이 아니라 전용 팝업 창(/hometax-calc-map)에서 렌더. HometaxCalcPanel 의 "맵현황" 버튼이 window.open 으로 연다.
+export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   const yy = Number(ntsYear)
   // 연도 설정(매핑·커버리지·로스터)은 registry 단일원천에서 라우팅 — 드롭다운 연도(ntsYear)를 그대로 따라간다.
   const { mapping, coverage, procLabelCode } = getYearConfig(ntsYear)
@@ -2737,10 +2750,10 @@ function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <col className="w-40" />
             {/* nts OUT */}
             <col className="w-16" />
-            {/* yts IN (가변 흡수) */}
+            {/* yts IN (가변 흡수 — 정보 최다: table.field [where] ·agg 담아 남는 폭 독차지 → 제일 넓게) */}
             <col />
-            {/* yts OUT (가변 흡수) */}
-            <col />
+            {/* yts OUT (고정 — resultCol 한 컬럼. 최장 calc.OTO_YM_LONG_STOCK_SAVING 수용) */}
+            <col className="w-56" />
             {/* 커버리지 (판정) */}
             <col className="w-16" />
             {/* 검토 (상태) */}
