@@ -2125,11 +2125,14 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
     { label: "소득공제", code: "",     ytsCol: "총급여−과세표준", yts: ytsIncomeDdc,                               nts: ntsIncomeDdc },
     { label: "과세표준", code: "8903", ytsCol: "TOT_PTB",        yts: ytsTaxBase,                                 nts: ntsTaxBase },
     { label: "산출세액", code: "8990", ytsCol: "PROD_TAX_AMT",   yts: yts?.prodTaxAmt ?? row?.prodTaxAmt ?? null, nts: res.ntsMap["8990"] ?? null },
+    // 근로소득세액공제(8700)=국세청이 산출세액서 자체계산하는 흐름코드(min((산출세액−하한)×율+누진, 한도)). 세액공제 합(8923)에
+    //   묻히던 것을 산출세액 바로 아래 self 대조로 노출 — 산출세액과 함께 갈렸나 / 여기서만 갈렸나(한도·율·2026개정) 구분.
+    { label: "근로소득세액공제", code: "8700", ytsCol: "RT_WIA", yts: yts?.wiaCredit ?? null,                     nts: res.ntsMap["8700"] ?? null },
     { label: "세액감면", code: "8924", ytsCol: "TAX_CUT",        yts: yts?.taxCut ?? null,                        nts: res.ntsMap["8924"] ?? null },
     { label: "세액공제", code: "8923", ytsCol: "RT_SUM",         yts: yts?.rtSum ?? null,                         nts: res.ntsMap["8923"] ?? null },
     { label: "결정세액", code: "8999", ytsCol: "RES_INCM_TAX",   yts: yts?.resIncmTax ?? row?.resIncmTax ?? null, nts: res.ntsMap["8999"] ?? null },
   ]
-  const compareCodes = new Set(compareRows.map(r => r.code))   // ①결과비교에 나오는 계산흐름 코드(8900~8999) — ③표에서 중복 제거
+  const compareCodes = new Set(compareRows.map(r => r.code))   // ①결과비교에 나오는 계산흐름 코드(8900~8999·8700) — ③표에서 중복 제거
 
   // NTS 원본 IN/OUT 코드 union (전송 payload ∪ 회신) — 코드별 전 필드 대조
   const ioMap = new Map<string, { i?: NtsIoRow; o?: NtsIoRow }>()
@@ -2197,7 +2200,7 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
   }
   const ioRowsByMap = [...ioRows].sort((a, b) => { const x = anchorMap(a.code), y = anchorMap(b.code); return x[0] - y[0] || x[1] - y[1] || x[2].localeCompare(y[2]) })
 
-  // ① 결과비교 불일치 건수 (계산흐름 7행 중 차이≠0)
+  // ① 결과비교 불일치 건수 (계산흐름 8행 중 차이≠0)
   const compareDiffCount = compareRows.filter(r => r.yts != null && r.nts != null && r.nts - r.yts !== 0).length
 
   // 백단위(코드 8XYZ 의 XY, 예 8201→82) 그룹이 바뀌는 행 = 굵은 윗선 대상. ②③표에서 그룹 경계 시각 구분.
@@ -2237,13 +2240,13 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
 
       <div className="flex-1 min-h-0 flex flex-col gap-3 px-4 py-3 overflow-hidden">
         {/* 1) 결과 비교 */}
-        <DetailPanel title="① 결과 비교 (YTS39 ↔ NTS)" extra={<MismatchBadge n={compareDiffCount} />} collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} maximized={focusedPanel === "compare"} grow={isGrow("compare", false)}>
+        <DetailPanel title="① 결과 비교 (YTS ↔ NTS)" extra={<MismatchBadge n={compareDiffCount} />} collapsed={isCollapsed("compare")} onToggle={() => toggle("compare")} onExpandOnly={() => expandOnly("compare")} maximized={focusedPanel === "compare"} grow={isGrow("compare", false)}>
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b text-[11px] text-muted-foreground">
                 <th className="py-1.5 px-3 text-left font-medium">항목</th>
                 <th className="py-1.5 px-3 text-right font-medium">필드명</th>
-                <th className="py-1.5 px-3 text-right font-medium">YTS39</th>
+                <th className="py-1.5 px-3 text-right font-medium">YTS</th>
                 <th className="py-1.5 px-3 text-right font-medium">NTS</th>
                 <th className="py-1.5 px-3 text-right font-medium w-14">차이</th>
               </tr>
@@ -2258,8 +2261,8 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                       <span className="ml-1 font-mono text-[10px] text-muted-foreground/50">{r.code}</span>
                     </td>
                     <td className="py-1.5 px-3 text-right font-mono text-[10px] text-muted-foreground/50 whitespace-nowrap">{r.ytsCol}</td>
-                    <td className="py-1.5 px-3 text-right tabular-nums">{won(r.yts)}</td>
-                    <td className="py-1.5 px-3 text-right tabular-nums">{won(r.nts)}</td>
+                    <td className={`py-1.5 px-3 text-right tabular-nums ${diff ? "text-red-600" : ""}`}>{won(r.yts)}</td>
+                    <td className={`py-1.5 px-3 text-right tabular-nums ${diff ? "text-red-600" : ""}`}>{won(r.nts)}</td>
                     <td className={`py-1.5 px-3 text-right tabular-nums text-xs ${diff ? "text-red-600" : "text-muted-foreground/50"}`}>
                       {diff == null ? "—" : diff === 0 ? "0" : (diff > 0 ? "+" : "") + diff.toLocaleString("ko-KR")}
                     </td>
