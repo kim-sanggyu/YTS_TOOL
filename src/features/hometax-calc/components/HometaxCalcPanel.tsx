@@ -13,7 +13,7 @@ import { type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/
 import { coverageOf } from "@/features/hometax-calc/mapping/engine"
 import { checkMappingConsistency, type ConsistencyResult } from "@/features/hometax-calc/mapping/consistency"
 import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
-import { GIFT_CARRY_BASE, GIFT_CODES } from "@/features/hometax-calc/mapping/gift"
+import { GIFT_CARRY_BASE, GIFT_CODES, giftSourceOf } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
 import { sortItems, type SortState } from "@/features/hometax-calc/lib/sortItems"
 import { outCodeOf, SUBTOTAL_CODES, makeYearVerdict, type YearVerdict, type RelationType } from "@/features/hometax-calc/lib/ddcVerdict"
@@ -2497,7 +2497,7 @@ function ytsSrcWithTable(m: MappingRow): string {
   if (c.startsWith("CARD_")) return "calc.CALC_PROC_CARD"
   if (c.startsWith("MEDI_")) return "calc.CALC_PROC_MEDI"
   if (c.startsWith("PEN_"))  return "pen_save_spec.PEN_SAVE_PMT_AMT"
-  if (c.startsWith("GIFT_")) return "gift_adj.GIFT_ABLE_SUB_AMT"
+  if (c.startsWith("GIFT_")) { const s = giftSourceOf(c.slice(5)); return s ? `gift_adj.GIFT_ABLE_SUB_AMT [${s.cls} · ${s.year}]` : "gift_adj.GIFT_ABLE_SUB_AMT" }
   if (c.startsWith("RENT_")) return "main.HOUSE_RENT"
   if (c.startsWith("FAM_"))  return FAM_RELN[c] ? `fmly ${FAM_RELN[c]}` : "fmly"   // 인원 집계 + FMLY_RELN 원천
   if (c.startsWith("ETX_"))  return "main." + (ETX_SRC[c] ?? c)

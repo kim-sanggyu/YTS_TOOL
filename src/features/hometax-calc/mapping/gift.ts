@@ -50,6 +50,16 @@ export function giftTypeLabel(giftCls: string): string {
   return GIFT_TYPES[giftCls]?.label ?? giftCls
 }
 
+/** 기부금 코드(8740·8811 등) → 원천 표기용 (GIFT_CLS · 당해/이월연차). 맵현황 yts IN 표시(PAY_WRK_GIFT_ADJ 필터) 파생. */
+export function giftSourceOf(code: string): { cls: string; year: string } | null {
+  for (const [cls, t] of Object.entries(GIFT_TYPES)) {
+    if (t.base === code) return { cls, year: "당해" }
+    const i = t.carry?.indexOf(code) ?? -1
+    if (i >= 0) return { cls, year: `-${i + 1}년이월` }
+  }
+  return null
+}
+
 export function giftTypeRank(giftCls: string): number {
   return GIFT_TYPES[giftCls]?.rank ?? 99
 }
