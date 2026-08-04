@@ -125,19 +125,20 @@ export function checkMappingConsistency(mapping: MappingRow[]): ConsistencyResul
   }
 
   // ③ 유형 서명: 각 행의 (전송·self OUT 존재)가 대응관계 유형과 맞는가.
-  //    self(1:1)=IN·OUT 둘 다 / 멤버(·N:1)=IN만 / 집계(N:1·)=OUT만 / 입력전용(1:0)=IN만. 어긋나면 배선 사고.
+  //    self(1:1)=IN·OUT 둘 다 / 멤버(·N:1)=IN만 / 집계(N:1·)=OUT만 / 입력전용(1:0)=IN만 / 회신전용(0:1)=OUT만(자체계산). 어긋나면 배선 사고.
   //    relationTypeOf 는 SUBTOTAL_OF 로 유형을 파생 → 여기선 "그 유형이 요구하는 속성이 실제로 있는지"를 대조(순환 아님).
   //    self OUT = outCodeOf self · 소계코드 · FLOW echo(총급여 8900). (A5의 8003 send:true 오배선이 이 검사에 걸렸을 위반.)
   const { relationTypeOf } = makeYearVerdict(mapping)
   const REL_SIG: Record<string, [inNts: boolean, outSelf: boolean]> = {
     "1:1": [true, true], "·N:1": [true, false], "N:1·": [false, true], "1:0": [true, false],
     "1:1·N:1": [true, true],   // 복합 = IN(전송) + self OUT(per-code YTS) 둘 다. 멤버성은 소계행이 담당.
+    "0:1": [false, true],      // 입력없이 회신만 대조 = IN(전송) 없음 + self OUT(국세청 자체계산). 근로소득세액공제 8700.
   }
   const mark = (b: boolean) => (b ? "○" : "✗")
   for (const row of mapping) {
     const rel = relationTypeOf(row)
     const sig = REL_SIG[rel]
-    if (!sig) continue   // 1:N·0:1 등 미파생 유형은 스킵
+    if (!sig) continue   // 1:N 등 미파생 유형은 스킵
     const inNts   = row.send
     // self OUT = outCodeOf self · 소계코드 · FLOW echo · 복합의 per-code YTS(selfComparable)
     const outSelf = outCodeOf(row) === row.ntsCode || SUBTOTAL_CODES.has(row.ntsCode) || FLOW_CODES.has(row.ntsCode) || !!row.selfComparable

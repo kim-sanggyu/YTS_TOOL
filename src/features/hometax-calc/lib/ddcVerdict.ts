@@ -40,16 +40,17 @@ export const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>
   ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. 복합유형이라 per-code(PEN_SAVE_SUB_AMT)도 함께 판정 + 이 소계도 대조(2026-08-04 통일). RT_ISA_PEN_AMT 합산은 이 소계행 몫
 ])
 
-// 계산흐름 7행(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.
-export const FLOW_CODES = new Set(["8900", "8901", "8902", "8903", "8990", "8700", "8999"])
+// 계산흐름(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.
+//   ※ 8700(근로소득세액공제)은 ①→③ 이동(2026-08-05): 국세청 자체계산 OUT ↔ RT_WIA self 대조로 ③에서 판정. FLOW 제외.
+export const FLOW_CODES = new Set(["8900", "8901", "8902", "8903", "8990", "8999"])
 
 export type Verdict = "match" | "diff" | null
 
 /** 실행과정 대응관계 유형 = 송신 코드 개수 : 대조 회신 개수.
  *  1:0=입력만(대조 회신 없음) · 1:1=self 대조 · ·N:1=N-멤버(전송만) · N:1·=1-집계(대조점).
  *  ※ N:1은 정반대 서명의 두 종류 — 멤버(IN 있음·OUT 없음)·집계(OUT 있음·IN 없음). 배지 점 위치로 구분(·N:1 / N:1·).
- *  ※ 자동 파생은 이들만. 1:N(국세청 구간분해)·0:1(결과계 코드)은 보류
- *    — 1:N은 현재 1:1로 잡히고, 0:1 결과계 코드는 매핑 배열 밖이라 맵현황에 나타나지 않는다. */
+ *  ※ 자동 파생: 위 + 0:1(입력없이 회신만 대조 — self OUT 있고 send:false. 근로소득세액공제 8700).
+ *    1:N(국세청 구간분해)은 아직 보류(현재 1:1로 잡힘). */
 export type RelationType = "1:0" | "1:1" | "·N:1" | "N:1·" | "1:1·N:1" | "1:N" | "0:1"
 
 /** 판정 입력 = 코드별 NTS OUT(ntsMap)·YTS 공제(ytsDdcMap) 두 맵. RowResult 가 구조적으로 만족한다. */
@@ -141,7 +142,7 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
     if (m.selfComparable) return "1:1·N:1"                                              // 복합: self(per-code YTS 있음) + 소계멤버. 투자조합8415~23·ISA8707/08(계약표)
     if (SUBTOTAL_OF.has(m.ntsCode)) return "·N:1"                                       // N-멤버(전송만, 대조는 집계코드서): 카드·의료·출산·교육·부양가족 8004~09
     if (AGGREGATE_CODES.has(m.ntsCode) || SUBTOTAL_CODES.has(m.ntsCode)) return "N:1·"  // 1-집계(IN 없이 통합 회신 받아 대조): 8003·8410·8430·8726…
-    if (outCodeOf(m) !== "—") return "1:1"                                             // self 대조(resultCol·prefix로 self OUT 확정)
+    if (outCodeOf(m) !== "—") return m.send ? "1:1" : "0:1"                            // self OUT 보유: 전송하면 self 대조(1:1), 미전송(국세청 자체계산 OUT)이면 0:1(입력없이 회신만 대조 — 근로소득세액공제 8700)
     // outCodeOf "—" = self OUT 없음: FLOW echo(총급여 8900, useAmt로 대조)면 1:1, 순수 동반입력(8754)이면 1:0.
     //   (resultCol 있는 self는 위 outCodeOf 에서 이미 self 로 잡혀 여기 안 옴 — B4 이후)
     if (FLOW_CODES.has(m.ntsCode)) return "1:1"
