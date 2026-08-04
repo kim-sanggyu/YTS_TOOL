@@ -2484,7 +2484,8 @@ function SrcCell({ text }: { text: string }) {
 //   렌더(SrcCell)가 테이블명만 볼드 처리. (2026-07-31 테이블명 굵게·소문자 통일)
 // inSource(구조화 취득 명세) → "table.field [where] ·agg" 문자열. 테이블은 PAY_WRK_ 제거·소문자(SrcCell 볼드 규칙과 일관).
 function inSourceToStr(s: NonNullable<MappingRow["inSource"]>): string {
-  let out = s.table.replace(/^PAY_WRK_/, "").toLowerCase() + "." + s.field
+  let out = s.table.replace(/^PAY_WRK_/, "").toLowerCase()
+  if (s.field) out += "." + s.field   // field 없으면(행 카운트 등) 테이블명만
   if (s.where) out += ` [${s.where}]`
   if (s.agg && s.agg !== "none") out += ` ·${s.agg}`
   return out
@@ -2528,6 +2529,7 @@ interface StatusRow {
   ytsIn:      string   // 전송 원천 YTS39 컬럼 (ytsCol) — 소계행은 "—"
   ytsOut:     string   // YTS39 자체 공제액 컬럼 (resultCol) — 소계 멤버는 소계행으로 모음
   status:     string
+  doneSeq?:   number   // 완료 순번(status="완료"만) — 상태열 "완료 N" 표시
   isSubtotal: boolean
   relation:   RelationType   // 실행과정 대응관계 유형(1:0·1:1·N:1) — relationTypeOf 파생
 }
@@ -2552,10 +2554,11 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
       // 실제 국세청 입력코드가 표시코드와 다르면 병기(sendCode 지정 행. 현재 없음 — 인프라만 유지)
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
       ntsIn: !m.send ? "—" : isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,   // send:false(8003 통합=altSent 등)는 자기전송 안 함 → IN "—"(실제 전송은 8004~09 유형별)
-      ntsOut: isMrrg ? "—" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 소계 멤버는 결과를 소계행이 받으므로 self OUT 없음
+      ntsOut: selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 혼인(8790)도 소진캡 후 ddcAmt 회신→self 대조(2026-07-25). 소계 멤버는 소계행이 받아 self OUT 없음
       ytsIn:  !m.send ? "—" : selfSub ? "—" : ytsSrcWithTable(m),
-      ytsOut: isMrrg ? "—" : selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 소계 멤버의 공제액은 소계행에 몰아 nts OUT과 대칭
+      ytsOut: selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 혼인=calc.RT_MRRG self 대조. 소계 멤버 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
+      doneSeq: m.doneSeq,
       isSubtotal: !!selfSub,
       relation: relationOf(m),
     })
@@ -2571,7 +2574,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
         ntsOut: "ddcAmt",
         ytsIn:  "—",
         ytsOut: "calc." + meta.ytsOut,
-        status: "확정",   // 소계 대조 = 실측확정된 부분
+        status: "진행",   // 소계 합성행 — 작업 진행판 기본값
         isSubtotal: true,
         relation: "N:1·",   // 합성 소계행 = 1-집계 대조코드(카드8430·의료8726 등)
       })
@@ -2580,11 +2583,11 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
   return out
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const cls = status === "확정" ? "bg-green-100 text-green-700"
-            : status === "추정" ? "bg-amber-100 text-amber-700"
-            : "bg-muted text-muted-foreground"
-  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>
+function StatusBadge({ status, seq }: { status: string; seq?: number }) {
+  const cls = status === "완료" ? "bg-green-100 text-green-700"
+            : "bg-muted text-muted-foreground"   // 진행
+  const label = status === "완료" && seq != null ? `완료 ${seq}` : status   // 완료는 검증 끝낸 순번 병기
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{label}</span>
 }
 
 // 실행과정 대응관계 유형 배지(1:0·1:1·N:1). 커버리지/상태 배지(녹/적/황/muted)와 안 겹치게 sky/violet/slate 계열.
@@ -2662,7 +2665,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
     g.rows.push(m)
   }
   const totCnt  = mapping.length
-  const totConf = mapping.filter(m => m.status === "확정").length
+  const totDone = mapping.filter(m => m.status === "완료").length
   const totSend = mapping.filter(m => m.send).length
 
   // 검증 커버리지 롤업 — 판정별 개수 + 미분류(send:true 인데 COVERAGE 누락) + 검토중 진행도
@@ -2695,7 +2698,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
     <div className="flex flex-col h-full min-h-0 p-3 gap-3">
       {/* 매핑 현황 — 그룹별 진도판 */}
       <DetailPanel
-        title={`매핑 현황 (전체 ${totCnt} · 확정 ${totConf} · 전송 ${totSend}) — 실행과정 ②표 정렬·원천 기준`}
+        title={`매핑 현황 (전체 ${totCnt} · 완료 ${totDone} · 전송 ${totSend}) — 실행과정 ②표 정렬·원천 기준`}
         extra={<span className="text-[10px] font-normal text-muted-foreground">국세청 in-out 정리 진도 · <span className="font-mono">mapping/{ntsYear}.ts › MAPPING_{ntsYear}</span></span>}
         collapsed={isCollP("mapping")} onToggle={() => toggleP("mapping")} onExpandOnly={() => expandOnlyP("mapping")} maximized={focused === "mapping"}
         headerBg="bg-sky-100"
@@ -2757,7 +2760,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <col className="w-16" />
             {/* 검토 (상태) */}
             <col className="w-14" />
-            {/* 확정 */}
+            {/* 상태(진행/완료) */}
             <col className="w-12" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted">
@@ -2771,7 +2774,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts OUT</th>
               <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">커버리지</th>
               <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">검토</th>
-              <th className="px-2 py-1.5 border-b font-medium text-center bg-muted">확정</th>
+              <th className="px-2 py-1.5 border-b font-medium text-center bg-muted">상태</th>
             </tr>
           </thead>
           <tbody>
@@ -2783,7 +2786,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                   </td>
                 </tr>,
                 ...statusRowsOf(g.rows, yy, relationTypeOf).map(r => (
-                  <tr key={r.key} className={`border-t ${r.isSubtotal ? "bg-muted/40" : ""}`}>
+                  <tr key={r.key} className={`border-t ${r.status === "완료" ? "bg-orange-100" : r.isSubtotal ? "bg-muted/40" : ""}`}>
                     <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
                     <td className="px-2 py-1 border-l text-center whitespace-nowrap"><RelationBadge rel={r.relation} /></td>
@@ -2807,7 +2810,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                         </>
                       )
                     })()}
-                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} /></td>
+                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} seq={r.doneSeq} /></td>
                   </tr>
                 )),
               ]

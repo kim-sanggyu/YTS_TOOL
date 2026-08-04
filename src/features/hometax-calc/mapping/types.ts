@@ -3,7 +3,7 @@
  * 데이터(mapping/2025.ts 등)와 로직(mapping/engine.ts)이 공유한다.
  */
 
-export type MappingStatus = "확정" | "추정" | "미확보"
+export type MappingStatus = "진행" | "완료"   // 맵현황 오른쪽 끝 열 = 항목별 정리 작업 진행판(기본 진행, 검증 끝난 항목만 완료)
 export type ValueKey = "useAmt" | "incDdcNfpCnt" | "ddcTrgtAmt"
 export type SendRule = "value" | "flag" | "const1"
 
@@ -40,7 +40,9 @@ export interface MappingRow {
   /** yts in 원천 취득 명세(구조화) — 맵현황 ②표 yts IN 에 table·field·where·agg 로 표시.
    *  가상컬럼형(injectXxx)의 취득 규칙을 note 자유텍스트 대신 구조로 담는다. 미지정=ytsSrcWithTable 폴백(ytsCol 기반).
    *  ★injectXxx(runCompareForCalcNo) 실제 SQL 과 동기 유지 — 코드 바뀌면 여기도. */
-  inSource?: { table: string; field: string; where?: string; agg?: string }
+  inSource?: { table: string; field?: string; where?: string; agg?: string }   // field 생략 = 컬럼 아닌 행 카운트 등(예 혼인 COUNT)
+  /** 완료 순번 — status="완료"인 항목을 검증 끝낸 순서대로 매긴다(맵현황 상태열에 "완료 N" 표시). */
+  doneSeq?:  number
   note?:     string
 }
 
