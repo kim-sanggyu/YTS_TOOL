@@ -452,7 +452,7 @@ export function HometaxCalcPanel() {
   const verdict = useMemo(() => makeYearVerdict(cfg.mapping), [cfg])
   const codeLabel = useMemo(() => makeCodeLabel(cfg.mapping), [cfg])
   const etcTabItems = useMemo(() => makeEtcTabItems(cfg.mapping), [cfg])
-  type Tab = "all" | "gift" | "card" | "medi" | "pension" | "etc" | "status"
+  type Tab = "all" | "gift" | "card" | "medi" | "pension" | "etc"   // 맵현황은 팝업(/hometax-calc-map)으로 분리 — 탭 아님
   const [tab,            setTab]            = useState<Tab>("all")   // 콘텐츠 구동(무거운 렌더) — 전환은 백그라운드
   const [selectedTab,    setSelectedTab]   = useState<Tab>("all")   // 탭 하이라이트 전용 — 클릭 즉시 반영(체감 반응성)
   const [isTabPending,   startTabTransition] = useTransition()
@@ -638,8 +638,7 @@ export function HometaxCalcPanel() {
   // 현재 탭 목록 로드 — 이미 로드한 (tab,year,ntsYear)면 재조회 스킵(탭 전환마다 DB 재조회 방지).
   useEffect(() => {
     setDiffOnly(false)
-    if (tab === "status") { setLoading(false); return }   // 현황 탭은 정적(MAPPING_2025 렌더) — fetch 없음
-    if (!ntsAvailable)    { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
+    if (!ntsAvailable) { setLoading(false); return }   // 국세청 미개시 연도(2026 등)는 조회 없음 → 안내 배너
     const key = `${tab}|${year}|${ntsYear}`
     if (listLoaded.current.has(key)) { setLoading(false); return }
     let cancelled = false
@@ -1168,7 +1167,7 @@ export function HometaxCalcPanel() {
       )}
       {/* 테이블 */}
       <div className="flex-1 min-h-0 overflow-auto">
-        {!ntsAvailable && tab !== "status" ? (
+        {!ntsAvailable ? (
           <div className="flex flex-col items-center justify-center h-full gap-1 p-8 text-center text-sm text-muted-foreground">
             <span className="font-medium">{ntsYear}년 국세청 모의계산은 아직 제공되지 않습니다.</span>
             <span>국세청 서비스가 개시되면 지원 예정입니다.</span>
