@@ -2157,10 +2157,16 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
     if (gb) { const gi = rosterOrder.get(gb); if (gi != null) return [gi, 1, c] }  // 이월 기부금은 당해 유형(base) 뒤(코드순 -1년,-2년…)
     return [Number.MAX_SAFE_INTEGER, mapOrder.get(c) ?? 0, c]                     // 로스터에 없는 매핑항목은 맨 뒤(매핑순)
   }
-  // 전체보기: 매핑+소계 전 항목(값 없으면 —). 값보기: 실제 IN/OUT 이 오간 코드만. 둘 다 매핑 밖(국세청 내부) 제외.
+  // 전체보기: 매핑+소계 전 항목(값 없으면 —). 값보기: IN(전송) 또는 공제(YTS/NTS ddcAmt)가 있는 코드만 —
+  //   OUT의 대상(ddcTrgtAmt)·한도(ddcLmtAmt)·인원(incDdcNfpCnt)만 있고 IN·공제가 없는 코드는 제외. 둘 다 매핑 밖 제외.
   const ioBaseCodes = ioShowAll
     ? new Set<string>([...mapOrder.keys(), ...SUBTOTAL_CODES.keys()])
-    : new Set<string>(ioMap.keys())
+    : new Set<string>([...ioMap.keys()].filter(code => {
+        const io = ioMap.get(code)
+        const hasIn  = !!(io?.i && (io.i.useAmt || io.i.incDdcNfpCnt || io.i.ddcTrgtAmt))   // 전송(IN)
+        const hasDdc = !!io?.o?.ddcAmt || !!res.ytsDdcMap[code]                              // 공제(NTS ddcAmt / YTS)
+        return hasIn || hasDdc
+      }))
   const ioRows = [...ioBaseCodes]
     .filter(code => mapOrder.has(code) || SUBTOTAL_CODES.has(code))
     .map(code => ({ code, i: ioMap.get(code)?.i, o: ioMap.get(code)?.o }))
