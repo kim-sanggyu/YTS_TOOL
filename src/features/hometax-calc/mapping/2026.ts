@@ -210,15 +210,16 @@ export const MAPPING_2026: MappingRow[] = [
   //   ★납입액 전송(공제대상 아님) — NTS가 한도·공제율 자체계산. ISA도 전환액 원본이라 ×10 불필요.
   //   OUT = 각 code self ddcAmt(항목별 공제금액, 실측확정 2026-07-15). 국세청이 한도·공제율(12%) 자체계산.
   //   집계 OUT 8705(ISA합)·8706(총합)은 국세청이 별도로도 반환(IN 없는 결과전용) — 카탈로그 반영 예정.
-  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8701", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-020'", agg: "sum" } },
-  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8702", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS IN ('562-010','562-025')", agg: "sum" } },
-  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8703", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-040'", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 13, send: true, outCode: "8701", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-020'", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 13, send: true, outCode: "8702", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS IN ('562-010','562-025')", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 13, send: true, outCode: "8703", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-040'", agg: "sum" } },
   // ISA(8707/8708)는 IN은 코드별 전송(각 계좌 납입액), OUT은 국세청이 코드별 ddcAmt + 소계 8705(ISA합)를 함께 반환.
-  //   ★YTS는 ISA 세액공제를 RT_ISA_PEN_AMT 단일(합산)컬럼으로만 보관 → ③표 per-code 대조 불가(둘 다 non-zero면
-  //   8707/8708 각각 합산값과 비교돼 오탐). 그래서 소계 8705에서만 대조(카드8430·의료8726 동형). outCode=8705.
-  //   (2026-07-26 이중케이스 X202600349 실측: 8707=88,429·8708=163,002·8705=251,431=합, 계좌별 한도 9M/6M 독립)
-  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-130'", agg: "sum" } },
-  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-120'", agg: "sum" } },
+  //   ★복합유형(selfComparable): per-code YTS=계좌별 PEN_SAVE_SUB_AMT(세액공제액, collectCompositePerCodeYtsDdc→ytsDdcMap 병합)로
+  //   per-code 판정 + 소계 8705 판정 둘 다(투자조합과 동일 규칙, 2026-08-04 상규님 통일결정). RT_ISA_PEN_AMT(합산)는 outCode=8705로만 감.
+  //   ※복수 ISA 계좌 시 배분차로 per-code ✗ 가능(합·세액은 동일): SW=한 계좌 몰빵 vs 국세청=납입액 비례. 실무엔 단일계좌뿐이라 무해.
+  //   (Y202600235 실측: SW 8707=20,114/8708=0, 국세청 8707=7,074/8708=13,040, 합 20,114 동일. docs/isa-y235-probe.mjs)
+  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 13, send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-130'", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 13, send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-120'", agg: "sum" } },
 
 
 ]

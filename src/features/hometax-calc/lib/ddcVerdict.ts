@@ -37,7 +37,7 @@ export const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>
   ["8761",             { label: "출산·입양 세액공제 소계", ytsOut: "RT_PER_CHI_AMT" }],   // 순번별 8764~8766(outCode 8761)의 소계 OUT. 8761엔 값 미전송(잉여, 2026-07-17 실측)
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
   ["8410",             { label: "투자조합출자 소계", ytsOut: "OTO_IU_ETC" }],               // self-subtotal(매핑행 8410 자체가 소계). 개별 8415~8423은 self OUT도 반환(하이브리드) → 멤버 아닌 결과전용행으로 렌더(2026-07-21 프로브)
-  ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. YTS는 RT_ISA_PEN_AMT 합산단일컬럼뿐이라 per-code 불가 → 소계 대조(2026-07-26 실측)
+  ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. 복합유형이라 per-code(PEN_SAVE_SUB_AMT)도 함께 판정 + 이 소계도 대조(2026-08-04 통일). RT_ISA_PEN_AMT 합산은 이 소계행 몫
 ])
 
 // 계산흐름 7행(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.

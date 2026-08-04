@@ -2370,8 +2370,8 @@ function DetailView({ res, row, calcNo, procOrder, nm, listCodes, ntsYear }: { r
                   const isSubtotal = SUBTOTAL_CODES.has(code) || displaySubCodes.has(code)   // 소계코드 행(카드8430/의료8726/부양가족8003 등)
                   const label = codeLabel[code] ?? SUBTOTAL_CODES.get(code)?.label ?? "—"
                   // 순수 소계 멤버(카드8431 등)는 입력(IN)만 표시 — YTS·NTS·판정·OUT은 소계행이 담당(카드·의료 동형).
-                  //   ★복합멤버(투자조합8415~23·ISA8707/08, selfComparable)는 국세청 per-code OUT을 유지 표시 — 소계 밑에 그룹핑만 하고
-                  //     per-code를 죽이지 않는다(YTS per-code 배선 전이라 YTS공제·판정은 "—", per-code 대조는 다음 단계).
+                  //   ★복합멤버(투자조합8415~23·ISA8707/08, selfComparable)는 per-code OUT 유지 — 소계 밑에 그룹핑하되
+                  //     per-code YTS(PEN_SAVE_SUB_AMT, ytsDdcMap 병합)로 per-code 판정·표시까지 한다(2026-08-04 통일).
                   const isSubMember = subParent != null
                   const keepPerCode = isSubMember && COMPOSITE_MEMBERS.has(code)   // 복합멤버 = 그룹핑하되 per-code 유지
                   const oOut = isSubMember && !keepPerCode ? undefined : o
