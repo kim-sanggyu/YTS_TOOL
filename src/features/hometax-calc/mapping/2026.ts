@@ -169,7 +169,7 @@ export const MAPPING_2026: MappingRow[] = [
   { group: "기타세액공제", ntsCode: "8752", label: "주택차입금이자상환액", ytsCol: "ETX_8752", resultCol: "RT_HBA", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "PAY_WRK_MAIN.HOUSE_ALR(이자상환액,대상) → self ddcAmt(=30%) ↔ RT_HBA. 부수 8906 농특세20%" },
   { group: "기타세액공제", ntsCode: "8751", label: "외국납부_국외납부세액",  ytsCol: "ETX_8751", resultCol: "RT_FCG", valueKey: "useAmt", rule: "value", status: "확정", send: true, note: "PAY_WRK_MAIN.FRGN_PAY_TAX(국외납부세액,대상) → self ddcAmt ↔ RT_FCG. ★8754(국외총급여) 동반 필수(없으면 결과0, 한도=산출세액×국외소득/총급여)" },
   { group: "세액공제", ntsCode: "8754", label: "외국납부_국외총급여",   ytsCol: "ETX_8754", valueKey: "useAmt", rule: "value", status: "확정", send: true, outCode: "—", note: "외국납부세액공제 한도계산용 동반입력. 자체 결과 없음. PAY_WRK_MAIN.FRGN_TOT_PAY_AMT" },
-  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", note: "PAY_WRK_RENT_HABT_SPEC A0 SUM(HOUSE_RENT)(원본 지급총액 독립재집계) 주입 — NTS가 한도·공제율 자체계산. MAIN.HOUSE_RENT(세액계산SW 집계) 대신 SPEC 상세로 재집계해 MAIN 집계오류까지 대조로 표면화(2026-07-15 실측확정, 2026-08-04 소스 SPEC 전환)" },
+  { group: "세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "확정", send: true, tab: "기타", inSource: { table: "PAY_WRK_RENT_HABT_SPEC", field: "HOUSE_RENT", where: "RENT_HABT_CLS='A0'", agg: "sum" }, note: "PAY_WRK_RENT_HABT_SPEC A0 SUM(HOUSE_RENT)(원본 지급총액 독립재집계) 주입 — NTS가 한도·공제율 자체계산. MAIN.HOUSE_RENT(세액계산SW 집계) 대신 SPEC 상세로 재집계해 MAIN 집계오류까지 대조로 표면화(2026-07-15 실측확정, 2026-08-04 소스 SPEC 전환)" },
 
 
   // ── 세액공제: 의료비 — CALC_PROC_MEDI(JSON) 대상자별 "지출금액"을 MEDI_{코드} 가상컬럼으로 주입 ──

@@ -37,6 +37,10 @@ export interface MappingRow {
    *  = "대조할 YTS per-code 원천이 있다"(투자조합·ISA의 PAY_WRK_PEN_SAVE_SPEC.PEN_SAVE_SUB_AMT).
    *  relationTypeOf 가 이 플래그로 1:1·N:1 을 판정. 계약표: docs/hometax-relation-contract-backlog.md */
   selfComparable?: boolean
+  /** yts in 원천 취득 명세(구조화) — 맵현황 ②표 yts IN 에 table·field·where·agg 로 표시.
+   *  가상컬럼형(injectXxx)의 취득 규칙을 note 자유텍스트 대신 구조로 담는다. 미지정=ytsSrcWithTable 폴백(ytsCol 기반).
+   *  ★injectXxx(runCompareForCalcNo) 실제 SQL 과 동기 유지 — 코드 바뀌면 여기도. */
+  inSource?: { table: string; field: string; where?: string; agg?: string }
   note?:     string
 }
 
