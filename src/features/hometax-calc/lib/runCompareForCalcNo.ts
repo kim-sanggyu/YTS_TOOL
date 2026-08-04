@@ -210,6 +210,7 @@ function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Re
 async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   const [r] = await ytsDb.query<Record<string, number>>(`
     SELECT
+      SUM(CASE WHEN CHILD_YN = 'Y' AND FMLY_RELN IN ('550-050','550-080') THEN 1 ELSE 0 END) AS CHLD,
       SUM(CASE WHEN FMLY_RELN IN ('550-020','550-030') THEN 1 ELSE 0 END) AS FAM_8004,
       SUM(CASE WHEN FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8005,
       SUM(CASE WHEN FMLY_RELN = '550-055' THEN 1 ELSE 0 END) AS FAM_8006,
@@ -229,6 +230,9 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   }
   // 혼인세액공제 자격(소진 무관 원데이터): >0 이면 buildCompareBody 가 원본 500,000 전송(8790). (2026-07-25 실측)
   if (Number(r.FAM_MRRG ?? 0) > 0) vals.FAM_MRRG = Number(r.FAM_MRRG)
+  // 자녀세액공제(8763) 총인원 — RT_HWC_CNT(세액계산SW 중간값) 대신 PAY_WRK_FMLY 원천 독립재집계.
+  //   CHILD_YN='Y'·직계비속(550-050)/위탁아동(550-080) 카운트 → 자녀 인원 집계오류까지 국세청 대조로 표면화(월세 SPEC 전환과 동형).
+  if (Number(r.CHLD ?? 0) > 0) vals.CHLD = Number(r.CHLD)
 }
 
 // ── 보장성보험료 원본전송(INS_) — PAY_WRK_FMLY_DTL 원본 지출총액 합 주입 ──
@@ -315,7 +319,7 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   const dataYear = calcNo.length >= 5 ? calcNo.substring(1, 5) : ntsYear
   const cfg = getYearConfig(ntsYear)
 
-  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_") || c.startsWith("INS_")
+  const isVirtual = (c: string) => c.startsWith("GIFT_") || c.startsWith("CARD_") || c.startsWith("MEDI_") || c.startsWith("PEN_") || c.startsWith("RENT_") || c.startsWith("FAM_") || c.startsWith("ETX_") || c.startsWith("LOAN_") || c.startsWith("OTHER_") || c.startsWith("CUT_") || c.startsWith("INS_") || c === "CHLD"
   const existing = await existingCalcCols()
   const wanted   = mappingSelectCols(cfg.mapping)
   const mapCols  = wanted.filter(c => !isVirtual(c) && existing.has(c))

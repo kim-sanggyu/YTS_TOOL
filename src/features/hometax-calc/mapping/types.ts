@@ -43,6 +43,9 @@ export interface MappingRow {
   inSource?: { table: string; field?: string; where?: string; agg?: string }   // field 생략 = 컬럼 아닌 행 카운트 등(예 혼인 COUNT)
   /** 완료 순번 — status="완료"인 항목을 검증 끝낸 순서대로 매긴다(맵현황 상태열에 "완료 N" 표시). */
   doneSeq?:  number
+  /** 동반/참조 의존 안내 — 이 항목 산출이 다른 항목 입력에 의존할 때(예 자녀8763←직계비속8005, 외국납부8751←국외총급여8754).
+   *  맵현황 항목 옆 "?" 버블(툴팁)로 표시. */
+  depNote?:  string
   note?:     string
 }
 

@@ -2485,8 +2485,8 @@ function SrcCell({ text }: { text: string }) {
 // inSource(구조화 취득 명세) → "table.field [where] ·agg" 문자열. 테이블은 PAY_WRK_ 제거·소문자(SrcCell 볼드 규칙과 일관).
 function inSourceToStr(s: NonNullable<MappingRow["inSource"]>): string {
   let out = s.table.replace(/^PAY_WRK_/, "").toLowerCase()
-  if (s.field) out += "." + s.field   // field 없으면(행 카운트 등) 테이블명만
-  if (s.where) out += ` [${s.where}]`
+  if (s.field) out += "." + s.field   // sum 대상 컬럼 등
+  if (s.where) out += (s.field ? " " : ".") + `[${s.where}]`   // field 있으면 "field [where]", 없으면(카운트) "table.[where]"
   if (s.agg && s.agg !== "none") out += ` ·${s.agg}`
   return out
 }
@@ -2530,6 +2530,7 @@ interface StatusRow {
   ytsOut:     string   // YTS39 자체 공제액 컬럼 (resultCol) — 소계 멤버는 소계행으로 모음
   status:     string
   doneSeq?:   number   // 완료 순번(status="완료"만) — 상태열 "완료 N" 표시
+  depNote?:   string   // 동반/참조 의존 안내 — 항목 옆 "?" 버블
   isSubtotal: boolean
   relation:   RelationType   // 실행과정 대응관계 유형(1:0·1:1·N:1) — relationTypeOf 파생
 }
@@ -2559,6 +2560,7 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
       ytsOut: selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 혼인=calc.RT_MRRG self 대조. 소계 멤버 공제액은 소계행에 몰아 nts OUT과 대칭
       status: m.status,
       doneSeq: m.doneSeq,
+      depNote: m.depNote,
       isSubtotal: !!selfSub,
       relation: relationOf(m),
     })
@@ -2566,6 +2568,8 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
     if (isSub && !emitted.has(oc) && !rows.slice(i + 1).some(r => outCodeOf(r) === oc)) {
       emitted.add(oc)
       const meta = SUBTOTAL_CODES.get(oc)!
+      const members = rows.filter(r => outCodeOf(r) === oc)   // 이 소계로 몰리는 멤버들
+      const subDone = members.length > 0 && members.every(r => r.status === "완료")   // 멤버 전원 완료면 소계도 완료
       out.push({
         key:   "sub-" + oc,
         label: meta.label,
@@ -2574,7 +2578,8 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
         ntsOut: "ddcAmt",
         ytsIn:  "—",
         ytsOut: "calc." + meta.ytsOut,
-        status: "진행",   // 소계 합성행 — 작업 진행판 기본값
+        status: subDone ? "완료" : "진행",   // 멤버 전원 완료면 소계도 완료(순번은 멤버 승계)
+        doneSeq: subDone ? members.find(r => r.doneSeq != null)?.doneSeq : undefined,
         isSubtotal: true,
         relation: "N:1·",   // 합성 소계행 = 1-집계 대조코드(카드8430·의료8726 등)
       })
@@ -2787,7 +2792,13 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                 </tr>,
                 ...statusRowsOf(g.rows, yy, relationTypeOf).map(r => (
                   <tr key={r.key} className={`border-t ${r.status === "완료" ? "bg-orange-100" : r.isSubtotal ? "bg-muted/40" : ""}`}>
-                    <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>{r.label}</td>
+                    <td className={`px-2 py-1 truncate ${r.isSubtotal ? "pl-4 text-muted-foreground" : ""}`} title={r.label}>
+                      {r.label}
+                      {r.depNote && (
+                        <span title={r.depNote}
+                          className="ml-1 inline-flex items-center rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700 cursor-help align-middle">depNote</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1 border-l font-mono text-[11px] font-semibold">{r.code}</td>
                     <td className="px-2 py-1 border-l text-center whitespace-nowrap"><RelationBadge rel={r.relation} /></td>
                     <td className={`px-2 py-1 border-l font-mono text-[10px] truncate ${r.ntsIn === "—" ? "text-muted-foreground/40" : "text-foreground"}`}>{r.ntsIn}</td>
