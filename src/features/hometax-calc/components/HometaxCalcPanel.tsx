@@ -2555,9 +2555,9 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
       // 실제 국세청 입력코드가 표시코드와 다르면 병기(sendCode 지정 행. 현재 없음 — 인프라만 유지)
       code:  m.sendCode && m.sendCode !== m.ntsCode ? `${m.ntsCode} (입력 ${m.sendCode})` : m.ntsCode,
       ntsIn: !m.send ? "—" : isMrrg ? "incDdcNfpCnt+ddcAmt" : selfSub ? "—" : m.valueKey,   // send:false(8003 통합=altSent 등)는 자기전송 안 함 → IN "—"(실제 전송은 8004~09 유형별)
-      ntsOut: selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 혼인(8790)도 소진캡 후 ddcAmt 회신→self 대조(2026-07-25). 소계 멤버는 소계행이 받아 self OUT 없음
+      ntsOut: m.selfComparable ? "ddcAmt" : selfSub ? "ddcAmt" : (oc === "—" || isSub ? "—" : "ddcAmt"),   // 복합유형(ISA·투자조합)은 국세청 per-code ddcAmt 회신 → OUT 채움. 혼인(8790)도 self(소진캡후 ddcAmt). 소계 멤버는 소계행이 받음
       ytsIn:  !m.send ? "—" : selfSub ? "—" : ytsSrcWithTable(m),
-      ytsOut: selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 혼인=calc.RT_MRRG self 대조. 소계 멤버 공제액은 소계행에 몰아 nts OUT과 대칭
+      ytsOut: m.selfComparable ? "pen_save_spec.PEN_SAVE_SUB_AMT" : selfSub ? "calc." + selfSub.ytsOut : (isSub ? "—" : ytsOutWithTable(m)),   // 복합유형 per-code YTS = SPEC 공제대상액(collectCompositePerCodeYtsDdc). RT_ISA_PEN_AMT는 합산이라 per-code 불가. 혼인=calc.RT_MRRG. 소계 멤버는 소계행에 몰림
       status: m.status,
       doneSeq: m.doneSeq,
       depNote: m.depNote,

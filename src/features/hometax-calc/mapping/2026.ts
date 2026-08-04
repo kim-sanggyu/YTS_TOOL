@@ -107,14 +107,14 @@ export const MAPPING_2026: MappingRow[] = [
   { group: "그밖의소득공제", ntsCode: "8410", label: "투자조합출자 소계", ytsCol: null, resultCol: "OTO_IU_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: false, note: "소계 결과전용(send:false). NTS OUT 8410=Σ개별(8415~8423) ddcAmt·과표 1회 반영 — 개별도 self ddcAmt 반환(하이브리드). 프로브 hometax-investment-probe(2026-07-21): 8420 1천만+8418 8백만→8410 1,800만, 벤처당해100%·조합1 10% 실측. 대조 OTO_IU_ETC(YTS 투자조합 공제 합). runHometaxCalc ALL_CODES에 8410 포함해 소계 결과 수신." },
   // 신용카드 등 — CALC_PROC_CARD(JSON) 가~아를 CARD_{코드} 가상컬럼으로 주입 (route.injectCardVals).
   //   NTS 8430(카드소계)에 총공제 반환 → YTS 최종공제금액(=OTO_CARD_ETC)과 대조. (2026-07-12 실측확정)
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8432", label: "직불·선불카드",  ytsCol: "CARD_8432", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8433", label: "현금영수증",     ytsCol: "CARD_8433", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8435", label: "전통시장",       ytsCol: "CARD_8435", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8434", label: "대중교통",       ytsCol: "CARD_8434", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
-  { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8431", label: "신용카드",       ytsCol: "CARD_8431", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8432", label: "직불·선불카드",  ytsCol: "CARD_8432", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8433", label: "현금영수증",     ytsCol: "CARD_8433", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8435", label: "전통시장",       ytsCol: "CARD_8435", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8434", label: "대중교통",       ytsCol: "CARD_8434", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8461", label: "도서공연-신용",  ytsCol: "CARD_8461", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8462", label: "도서공연-직불",  ytsCol: "CARD_8462", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
+  { group: "그밖의소득공제(신용카드)", ntsCode: "8463", label: "도서공연-현금",  ytsCol: "CARD_8463", resultCol: "OTO_CARD_ETC", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 11, send: true, outCode: "8430" },
   { group: "그밖의소득공제", ntsCode: "8452", label: "우리사주출연금 소득공제",       ytsCol: "OTHER_8452", resultCol: "OTO_SU",                 valueKey: "useAmt", rule: "value", status: "진행", send: true, tab: "기타", note: "IN=PAY_WRK_MAIN.STOCK_URDM→OTHER_8452. OUT self 전액(한도1500만) ↔ OTO_SU. 라이브 캡처 실측(2026-07-19, 1,000,000→1,000,000)" },
   { group: "그밖의소득공제", ntsCode: "8451", label: "장기집합투자증권저축",          ytsCol: "OTHER_8451", resultCol: "OTO_LONG_STOCK_SAVING",   valueKey: "useAmt", rule: "value", status: "진행", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-100 Σ납입액→OTHER_8451. OUT self ×40%(한도240만) ↔ OTO_LONG_STOCK_SAVING. 라이브 캡처 실측(2026-07-19, 2,000,000→800,000)" },
   { group: "그밖의소득공제", ntsCode: "8501", label: "청년형 장기집합투자증권저축",     ytsCol: "OTHER_8501", resultCol: "OTO_YM_LONG_STOCK_SAVING", valueKey: "useAmt", rule: "value", status: "진행", send: true, tab: "기타", note: "IN=PEN_SAVE_SPEC CLS 562-140 Σ납입액→OTHER_8501. OUT self ×40%(한도240만) ↔ OTO_YM_LONG_STOCK_SAVING. 카탈로그 미등재 코드였음, 라이브 캡처 실측(2026-07-19, 3,000,000→1,200,000)" },
@@ -165,20 +165,20 @@ export const MAPPING_2026: MappingRow[] = [
   // ── 세액공제: 기타 ─────────────────────────────────────────────────────────
   // ── 기타세액공제(납세조합·주택차입금이자·외국납부) = self형(결과 ddcAmt). 원천=PAY_WRK_MAIN, useAmt 대상금액 전송 ──
   //   국세청 코드·필드·결과key 실측확정(2026-07-17, docs/hometax-capture + edu-rules-probe). ★X2026 대상자 0이라 원단위 미검증(첫 대상자 시 확인).
-  { group: "기타세액공제", ntsCode: "8753", label: "납세조합공제",        ytsCol: "ETX_8753", resultCol: "RT_PTU", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "PAY_WRK_MAIN.ASSO_SUB_TAX_AMT(대상금액,'공제세액'名이나 실제 대상) → self ddcAmt ↔ RT_PTU. ddcLmtAmt 불필요(서버 자체계산)" },
-  { group: "기타세액공제", ntsCode: "8752", label: "주택차입금이자상환액", ytsCol: "ETX_8752", resultCol: "RT_HBA", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "PAY_WRK_MAIN.HOUSE_ALR(이자상환액,대상) → self ddcAmt(=30%) ↔ RT_HBA. 부수 8906 농특세20%" },
-  { group: "기타세액공제", ntsCode: "8751", label: "외국납부_국외납부세액",  ytsCol: "ETX_8751", resultCol: "RT_FCG", valueKey: "useAmt", rule: "value", status: "진행", send: true, depNote: "국외총급여(8754)를 동반 input으로 사용 — 외국납부세액 한도(산출세액×국외소득/총급여) 계산용. 없으면 결과 0.", note: "PAY_WRK_MAIN.FRGN_PAY_TAX(국외납부세액,대상) → self ddcAmt ↔ RT_FCG. ★8754(국외총급여) 동반 필수(없으면 결과0, 한도=산출세액×국외소득/총급여)" },
-  { group: "기타세액공제", ntsCode: "8754", label: "외국납부_국외총급여",   ytsCol: "ETX_8754", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "—", note: "외국납부세액공제 한도계산용 동반입력. 자체 결과 없음. PAY_WRK_MAIN.FRGN_TOT_PAY_AMT" },
+  { group: "기타세액공제", ntsCode: "8753", label: "납세조합공제",        ytsCol: "ETX_8753", resultCol: "RT_PTU", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 7, send: true, note: "PAY_WRK_MAIN.ASSO_SUB_TAX_AMT(대상금액,'공제세액'名이나 실제 대상) → self ddcAmt ↔ RT_PTU. ddcLmtAmt 불필요(서버 자체계산)" },
+  { group: "기타세액공제", ntsCode: "8752", label: "주택차입금이자상환액", ytsCol: "ETX_8752", resultCol: "RT_HBA", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 8, send: true, note: "PAY_WRK_MAIN.HOUSE_ALR(이자상환액,대상) → self ddcAmt(=30%) ↔ RT_HBA. 부수 8906 농특세20%" },
+  { group: "기타세액공제", ntsCode: "8751", label: "외국납부_국외납부세액",  ytsCol: "ETX_8751", resultCol: "RT_FCG", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 9, send: true, depNote: "국외총급여(8754)를 동반 input으로 사용 — 외국납부세액 한도(산출세액×국외소득/총급여) 계산용. 없으면 결과 0.", note: "PAY_WRK_MAIN.FRGN_PAY_TAX(국외납부세액,대상) → self ddcAmt ↔ RT_FCG. ★8754(국외총급여) 동반 필수(없으면 결과0, 한도=산출세액×국외소득/총급여)" },
+  { group: "기타세액공제", ntsCode: "8754", label: "외국납부_국외총급여",   ytsCol: "ETX_8754", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 10, send: true, outCode: "—", note: "외국납부세액공제 한도계산용 동반입력. 자체 결과 없음. PAY_WRK_MAIN.FRGN_TOT_PAY_AMT" },
   { group: "기타세액공제", ntsCode: "8750", label: "월세액",           ytsCol: "RENT_8750",           resultCol: "RT_HOUSE_RENT_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 1, send: true, tab: "기타", inSource: { table: "PAY_WRK_RENT_HABT_SPEC", field: "HOUSE_RENT", where: "RENT_HABT_CLS='A0'", agg: "sum" }, note: "PAY_WRK_RENT_HABT_SPEC A0 SUM(HOUSE_RENT)(원본 지급총액 독립재집계) 주입 — NTS가 한도·공제율 자체계산. MAIN.HOUSE_RENT(세액계산SW 집계) 대신 SPEC 상세로 재집계해 MAIN 집계오류까지 대조로 표면화(2026-07-15 실측확정, 2026-08-04 소스 SPEC 전환)" },
 
 
   // ── 세액공제: 의료비 — CALC_PROC_MEDI(JSON) 대상자별 "지출금액"을 MEDI_{코드} 가상컬럼으로 주입 ──
   //   NTS 8726(의료비집계)에 세액공제 총액 반환 → YTS 의료비_공제금액(=RT_MEDI_AMT)과 대조. (2026-07-12 실측확정)
   //   ★지출금액 전송(공제대상금액 아님) — NTS가 3% 최저사용액 차감 자체계산.
-  { group: "의료비", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "MEDI_8720", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8726" },
-  { group: "의료비", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "MEDI_8721", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8726" },
-  { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8726" },
-  { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8720", label: "의료비-본인/65세이상/장애인", ytsCol: "MEDI_8720", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 12, send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8721", label: "의료비-그밖의 공제대상자",   ytsCol: "MEDI_8721", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 12, send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8725", label: "의료비-난임시술비",          ytsCol: "MEDI_8725", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 12, send: true, outCode: "8726" },
+  { group: "의료비", ntsCode: "8729", label: "의료비-미숙아·선천성이상아", ytsCol: "MEDI_8729", resultCol: "RT_MEDI_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 12, send: true, outCode: "8726" },
 
   // ── 기부금 당해분 (PAY_WRK_GIFT → GIFT_{코드} 가상컬럼으로 주입) ──
   { group: "기부금", ntsCode: "8740", label: "정치자금기부금",    ytsCol: "GIFT_8740", valueKey: "useAmt", rule: "value", status: "진행", send: true,  note: "전액 8740 전송 → NTS가 10만 이하/초과 자동분리(8741 별도전송 금지). OUT self 8740=전체공제액(10만이하 100/110+초과 15%), 8741=10만이하 소계. 실측확정 2026-07-16" },
@@ -210,15 +210,15 @@ export const MAPPING_2026: MappingRow[] = [
   //   ★납입액 전송(공제대상 아님) — NTS가 한도·공제율 자체계산. ISA도 전환액 원본이라 ×10 불필요.
   //   OUT = 각 code self ddcAmt(항목별 공제금액, 실측확정 2026-07-15). 국세청이 한도·공제율(12%) 자체계산.
   //   집계 OUT 8705(ISA합)·8706(총합)은 국세청이 별도로도 반환(IN 없는 결과전용) — 카탈로그 반영 예정.
-  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8701" },
-  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8702" },
-  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8703" },
+  { group: "연금계좌", ntsCode: "8701", label: "연금계좌-과학기술인",   ytsCol: "PEN_8701", resultCol: "RT_RSIGN_PEN_TECH_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8701", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-020'", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8702", label: "연금계좌-IRP퇴직급여",  ytsCol: "PEN_8702", resultCol: "RT_RSIGN_PEN_RET_AMT",  valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8702", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS IN ('562-010','562-025')", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8703", label: "연금계좌-연금저축",     ytsCol: "PEN_8703", resultCol: "RT_RSIGN_PEN_PF_AMT",   valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8703", inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-040'", agg: "sum" } },
   // ISA(8707/8708)는 IN은 코드별 전송(각 계좌 납입액), OUT은 국세청이 코드별 ddcAmt + 소계 8705(ISA합)를 함께 반환.
   //   ★YTS는 ISA 세액공제를 RT_ISA_PEN_AMT 단일(합산)컬럼으로만 보관 → ③표 per-code 대조 불가(둘 다 non-zero면
   //   8707/8708 각각 합산값과 비교돼 오탐). 그래서 소계 8705에서만 대조(카드8430·의료8726 동형). outCode=8705.
   //   (2026-07-26 이중케이스 X202600349 실측: 8707=88,429·8708=163,002·8705=251,431=합, 계좌별 한도 9M/6M 독립)
-  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true },
-  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true },
+  { group: "연금계좌", ntsCode: "8707", label: "ISA만기-퇴직연금계좌 추가납입", ytsCol: "PEN_8707", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-130'", agg: "sum" } },
+  { group: "연금계좌", ntsCode: "8708", label: "ISA만기-연금저축계좌 추가납입", ytsCol: "PEN_8708", resultCol: "RT_ISA_PEN_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true, outCode: "8705", selfComparable: true, inSource: { table: "PAY_WRK_PEN_SAVE_SPEC", field: "PEN_SAVE_PMT_AMT", where: "PEN_SAVE_CLS='562-120'", agg: "sum" } },
 
 
 ]
