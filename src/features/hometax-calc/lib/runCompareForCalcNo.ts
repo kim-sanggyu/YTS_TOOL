@@ -163,9 +163,11 @@ function injectOtherMainVals(mainRow: Record<string, number> | undefined, vals: 
   put("OTHER_8453", mainRow?.EMPL_MTN_WAGE_CUT)  // 고용유지중소기업 임금삭감액 (×50%, 한도1000만)
 }
 
-// ── 월세 PAY_WRK_MAIN.HOUSE_RENT → RENT_8750 가상컬럼 주입 (원본 지급총액) ──
+// ── 월세 PAY_WRK_RENT_HABT_SPEC(A0) SUM(HOUSE_RENT) → RENT_8750 가상컬럼 주입 (원본 지급총액 독립재집계) ──
 // NTS 8750 에 지급총액 전송 → NTS 가 한도(1000만)·공제율(총급여 15/17%)을 자체계산.
 // 공제대상(SP_HOUSE_RENT_AMT=한도후)이 아닌 원본을 보내 우리 한도로직까지 NTS가 독립검증. (2026-07-15 실측확정)
+// ★MAIN.HOUSE_RENT(세액계산SW 집계) 대신 SPEC 상세 A0 SUM(HOUSE_RENT)로 독립 재집계 → MAIN 집계오류까지 대조로
+//   표면화(전송값만 MAIN 우회, OUT 대조는 그대로 RT_HOUSE_RENT_AMT). 8312 원리금 B0 서브쿼리 선례와 동형(2026-08-04).
 function injectRentVals(houseRent: number, vals: Record<string, number>) {
   if (houseRent > 0) vals["RENT_8750"] = houseRent
 }
@@ -349,16 +351,18 @@ export async function buildCompareInput(calcNo: string, ntsYear: string): Promis
   const perCodeYtsDdc = collectCompositePerCodeYtsDdc(penSpec, Number(dataYear))   // 복합유형 per-code YTS 공제(투자조합·ISA)
 
   const [mainRow] = await ytsDb.query<Record<string, number>>(
-    `SELECT HOUSE_RENT, ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
+    `SELECT ASSO_SUB_TAX_AMT, HOUSE_ALR, FRGN_PAY_TAX, FRGN_TOT_PAY_AMT,
             HOUSE_RALR_LENDER,
             (SELECT NVL(SUM(PNINT_SUM), 0) FROM YTS39.PAY_WRK_RENT_HABT_SPEC
               WHERE CALC_NO = m.CALC_NO AND RENT_HABT_CLS = 'B0') AS HOUSE_RALR_HABT,
+            (SELECT NVL(SUM(HOUSE_RENT), 0) FROM YTS39.PAY_WRK_RENT_HABT_SPEC
+              WHERE CALC_NO = m.CALC_NO AND RENT_HABT_CLS = 'A0') AS HOUSE_RENT_SPEC,
             LH_LRSF1, LH_LRSF2, LH_LRSF3, LH_LRSF10, LH_LRSF20, LH_LRSF30, LH_LRSF40, LH_LRSF50, LH_LRSF60,
             SM_ETPR_AMT, STOCK_URDM, EMPL_MTN_WAGE_CUT, HOUSE_HLDR_YN, TAX_GOVM_AGREE
      FROM YTS39.PAY_WRK_MAIN m WHERE m.CALC_NO = :1`,
     [calcNo]
   )
-  injectRentVals(Number(mainRow?.HOUSE_RENT ?? 0), vals)
+  injectRentVals(Number(mainRow?.HOUSE_RENT_SPEC ?? 0), vals)
   injectEtcCreditVals(mainRow, vals)
   injectHousingVals(mainRow, vals)
   injectOtherMainVals(mainRow, vals)
