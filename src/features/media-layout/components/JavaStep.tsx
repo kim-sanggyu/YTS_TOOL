@@ -113,7 +113,7 @@ export function JavaStep() {
   const scrollPosRef = useRef<Record<string, number>>({})
 
   const [file,      setFile]      = useState<File | null>(null)
-  const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
+  const [year,      setYear]      = useState(() => { const d = new Date(); return d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1 })   // 8월~=당해, ~7월=전년(귀속연도 기준)
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState("")
   const [checking,  setChecking]  = useState(false)
@@ -333,7 +333,7 @@ export function JavaStep() {
         {/* 귀속연도 */}
         <select value={year} onChange={e => setYear(parseInt(e.target.value))}
           className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
-          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
+          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map(y => (
             <option key={y} value={y}>{y}년</option>
           ))}
         </select>

@@ -272,7 +272,7 @@ export function MediaStep() {
   const scrollDivRef  = useRef<HTMLDivElement>(null)
   const scrollPosRef  = useRef<Record<string, number>>({})
 
-  const [year,      setYear]      = useState(() => new Date().getFullYear() - 1)
+  const [year,      setYear]      = useState(() => { const d = new Date(); return d.getMonth() >= 7 ? d.getFullYear() : d.getFullYear() - 1 })   // 8월~=당해, ~7월=전년(귀속연도 기준)
   const [hwpFile,   setHwpFile]   = useState<HwpFileRow | null>(null)
   const [javaFile,  setJavaFile]  = useState<JavaFileRow | null>(null)
   const [helpOpen,    setHelpOpen]    = useState(false)
@@ -1079,7 +1079,7 @@ export function MediaStep() {
       <div className="flex items-center gap-2 shrink-0 flex-wrap">
         <select value={year} onChange={e => setYear(parseInt(e.target.value))}
           className="h-8 border rounded px-2 font-mono text-sm bg-background cursor-pointer shrink-0">
-          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
+          {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - i).map(y => (
             <option key={y} value={y}>{y}년</option>
           ))}
         </select>
