@@ -829,8 +829,14 @@ export function HometaxCalcPanel() {
       es.close()
       batchEsRef.current = null
       const secs = (Date.now() - startedAt) / 1000
-      const elapsed = secs < 60 ? `${secs.toFixed(1)}초` : `${Math.floor(secs / 60)}분 ${Math.round(secs % 60)}초`
-      toast.success(`전체 실행 완료 — 총 ${doneCount}건${skipCount ? ` (스킵 ${skipCount})` : ""} · 소요 ${elapsed}`, { duration: Infinity })
+      const elapsed = secs < 60 ? `${secs.toFixed(1)}초` : `${Math.floor(secs / 60)}분${Math.round(secs % 60)}초`
+      toast.success(
+        <div className="leading-snug">
+          <div>전체 실행 완료</div>
+          <div className="text-xs">총 {doneCount}건{skipCount ? `(스킵 ${skipCount})` : ""}ㆍ소요 {elapsed}</div>
+        </div>,
+        { duration: Infinity },
+      )
       fetch(`/api/tools/hometax-calc/session?year=${ntsYear}`).then(r => r.json()).then(setSessionInfo).catch(() => {})
     })
 
@@ -2594,11 +2600,10 @@ function statusRowsOf(rows: MappingRow[], ntsYear: number, relationOf: (m: Mappi
   return out
 }
 
-function StatusBadge({ status, seq }: { status: string; seq?: number }) {
+function StatusBadge({ status }: { status: string }) {
   const cls = status === "완료" ? "bg-green-100 text-green-700"
             : "bg-muted text-muted-foreground"   // 진행
-  const label = status === "완료" && seq != null ? `완료 ${seq}` : status   // 완료는 검증 끝낸 순번 병기
-  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{label}</span>
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] ${cls}`}>{status}</span>   // doneSeq 순번은 기록만, 표시는 '완료'만
 }
 
 // 실행과정 대응관계 유형 배지(1:0·1:1·N:1). 커버리지/상태 배지(녹/적/황/muted)와 안 겹치게 sky/violet/slate 계열.
@@ -2818,7 +2823,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                         </td>
                       )
                     })()}
-                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} seq={r.doneSeq} /></td>
+                    <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} /></td>
                   </tr>
                 )),
               ]
