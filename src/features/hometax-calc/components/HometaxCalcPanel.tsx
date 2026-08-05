@@ -1136,7 +1136,7 @@ export function HometaxCalcPanel() {
             title="맵현황을 새 창으로 열기 — 다른 탭과 나란히 보기"
             onClick={() => {
               const url = `/hometax-calc-map?year=${ntsYear}`
-              const w = window.open(url, "mapStatus", "popup,width=1200,height=900,left=120,top=80")
+              const w = window.open(url, "mapStatus", "popup,width=1480,height=900,left=80,top=60")
               if (!w) window.open(url, "_blank")   // 팝업 차단 → 새 탭으로라도
             }}
           >맵현황 ↗</button>
@@ -2751,7 +2751,7 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:0" />입력만</span>
           <span className="text-muted-foreground">· 1:N(구간분해)·0:1(결과계)은 보류</span>
         </div>
-        <table className="w-full border-collapse table-fixed text-xs">
+        <table className="w-full border-collapse text-xs">
           <colgroup>
             {/* 항목 (고정·truncate) — w-56(14rem)에서 확대(20%→추가 10%) */}
             <col className="w-[18.48rem]" />
@@ -2763,19 +2763,17 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             <col className="w-40" />
             {/* nts OUT */}
             <col className="w-16" />
-            {/* yts IN (가변 흡수 — 정보 최다: table.field [where] ·agg 담아 남는 폭 독차지 → 제일 넓게) */}
-            <col />
+            {/* yts IN (가변 흡수 — 정보 최다: table.field [where] ·agg 담아 남는 폭 독차지 → 제일 넓게). table-fixed 에선 width:100% 로 잔여폭 확실히 흡수(auto <col/> 은 잔여 미흡수·우측 여백 발생) */}
+            <col className="w-full" />
             {/* yts OUT (고정 — resultCol 한 컬럼. 최장 calc.OTO_YM_LONG_STOCK_SAVING 수용) */}
             <col className="w-56" />
             {/* 커버리지 (판정) */}
             <col className="w-16" />
-            {/* 검토 (상태) */}
-            <col className="w-14" />
             {/* 상태(진행/완료) */}
             <col className="w-12" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-muted">
-            <tr className="text-[10px] text-muted-foreground text-left">
+            <tr className="text-[10px] text-muted-foreground text-left whitespace-nowrap">
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">항목</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">nts코드</th>
               <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted" title="실행과정 대응관계 유형(송신:회신)">유형</th>
@@ -2784,7 +2782,6 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts IN</th>
               <th className="px-2 py-1.5 border-b border-r font-medium bg-muted">yts OUT</th>
               <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">커버리지</th>
-              <th className="px-2 py-1.5 border-b border-r font-medium text-center bg-muted">검토</th>
               <th className="px-2 py-1.5 border-b font-medium text-center bg-muted">상태</th>
             </tr>
           </thead>
@@ -2816,15 +2813,9 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
                       // 소계 합성행(자기 send 경로 없음)은 커버리지 대상 아님 → —. 미등록(send:true 누락)은 "미분류"(적색).
                       const noCov = !c && r.isSubtotal
                       return (
-                        <>
-                          <td className="px-2 py-1 border-l text-center whitespace-nowrap">
-                            {noCov ? <span className="text-muted-foreground/40">—</span> : <VerdictBadge verdict={c?.verdict} />}
-                          </td>
-                          <td className="px-2 py-1 border-l text-center whitespace-nowrap text-[9px]">
-                            {noCov || !c ? <span className="text-muted-foreground/40">—</span>
-                              : <span className={c.review === "확정" ? "text-green-600" : "text-muted-foreground"}>{c.review}</span>}
-                          </td>
-                        </>
+                        <td className="px-2 py-1 border-l text-center whitespace-nowrap">
+                          {noCov ? <span className="text-muted-foreground/40">—</span> : <VerdictBadge verdict={c?.verdict} />}
+                        </td>
                       )
                     })()}
                     <td className="px-2 py-1 border-l text-center whitespace-nowrap"><StatusBadge status={r.status} seq={r.doneSeq} /></td>
