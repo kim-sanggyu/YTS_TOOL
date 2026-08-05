@@ -4,7 +4,44 @@
 
 ---
 
-## 최신: 2026-08-01 — 의료비 fmly_dtl 독립재집계 + 색상규칙 + 부양가족 ③표 펼침 + 다수 분석·방침 (7커밋, push완료 origin/master=`2263d78`)
+## 최신: 2026-08-05 — 맵현황 그룹별 완료 처리 + yts in inSource 구조화 + 국민연금 소진 교차검증 실측 + UI 손질 (9커밋, **미push**)
+
+### 이번 세션 한 것 (9커밋, 미push)
+| 커밋 | 내용 |
+|---|---|
+| `e2b645a` | feat: 근로소득세액공제(8700) ①표→③표 이동 + 0:1 유형 파생 |
+| `9c2d2a4` | feat: 인적공제 yts in 원천화 (배우자 8002 재집계·부양가족 inSource·완료) |
+| `8799e25` | chore: 연금보험료 5종 검증·완료 (국민연금 소진 교차검증 실측 + 프로브) |
+| `7706eb6` | chore: 특별소득공제·기부금 완료 (+8312 inSource) |
+| `6069ef8` | chore: 그밖의소득공제 inSource + 완료 |
+| `25ff7e3` | style: 맵현황 검토 열 제거 + 테이블 레이아웃·팝업 크기 |
+| `e925cf7` | feat: 전산매체 4개 화면 연도 옵션 2024~2026 + 8월 기준 당해 기본선택 |
+| `df1bff3` | chore: 총급여(8900) status 완료 |
+| `ab35c5d` | style: 상태배지 '완료 N'→'완료' + 전체실행 toast 2줄 |
+
+### 핵심 결과물
+- **★근로소득세액공제(8700) ①→③ 이동 + 0:1 유형 신설**([[project_hometax_relation_type]]): 계산과정엔 있는데 실행과정③엔 없던 혼란 해소. FLOW_CODES서 분리, `send:false` OUT-only self 대조(국세청 자체계산 ddcAmt ↔ RT_WIA). `relationTypeOf`에 **0:1**(입력없이 회신만 대조) 파생 — 매핑 내 첫 0:1. 프로브(`docs/hometax-wia-8700-probe.mjs`)로 8700 IN(useAmt/ddcAmt/ddcTrgtAmt 3필드)에 담아도 국세청 무시·자체계산 실측(diff0).
+- **★국민연금(8201) 소진 교차검증 = 비에코 확정**([[project_nts_verification_coverage_model]]): 초기 "국민연금=전액공제=에코 사각" 가정이 **실측으로 반증**됨. `Y202500001` 소진케이스(공제대상 OBJ 156,370 → 공제액 AMT 49,818)에서 **국세청이 소진을 독립 재현**해 49,818 회신 → YTS `NP_INSU_AMT`와 원단위 일치. 혼인8790 소진캡과 동형(원본 전송+한도후 대조). `FN_PAY_GET_WRK_SOC_INSU_AMT` 전환은 값 동일(FN=OBJ 30/30)이라 **불필요**. 연금 5종 IN 적정(사각0, 공무원 1건 실증). 프로브: `docs/np-8201-fn-probe.mjs`·`etc-pension-in-probe.mjs`.
+- **배우자(8002) 인원 원천 재집계 전환**([[reference_nts_family_type_8004]]): 엔진판정(flag `BASC_SUB_MATE_AMT`) 대신 `PAY_WRK_FMLY` 550-040·`BAS_SUB_YN='Y'` count(`injectFamilyVals` 확장). 본인 제외 인적공제 원천통일. **★재실행 실증은 상규님 몫**.
+- **yts in inSource 구조화 대량 진행**([[project_hometax_four_data_model]]): 부양가족8004~09·8312(월세 형태)·그밖의소득공제 18항목(개인연금·노란우산·주택마련3·투자조합9·장기집합·청년형·우리사주·고용유지). 가상컬럼 소스(injectXxx)와 계약 일치. 투자조합은 `INVST_CLS`만 where에(연도는 기존 `yearOffset`).
+- **맵현황 그룹별 status 완료 처리**: 총급여·인적공제(`doneSeq`14)·연금보험료(15)·특별소득공제(16)·기부금(17)·그밖의소득공제(18). 상태배지는 순번 없이 '완료'만 표시(doneSeq는 데이터로 유지).
+- **맵현황 UI 손질**: 검토 열 제거(롤업 '검토중 N/총'은 유지), `table-fixed`→auto layout(우측 여백·가로스크롤 해소, yts IN col width:100% 흡수), 헤더 `whitespace-nowrap`, 팝업 초기 1480, 전체실행 완료 toast 2줄.
+- **전산매체 4화면 연도**: 옵션 2024~2026(`getFullYear()-i`), 8월 기준(`getMonth()>=7`) 당해 기본선택.
+
+### ⚠ 미해결 / 주의
+- **미push** — 9커밋 로컬(`ab35c5d`). 핸드오프 후 push 필요.
+- **배우자(8002) 재실행 실증 미완**(상규님): 원천전환 후 배우자 있는 건 `▶` 재실행해 인원1·✓, 550-040=배우자 확인.
+- 로컬 메모리는 PC간 안 이어짐 — 국민연금 소진 교차검증·연금 IN 적정은 위 핵심결과물에 보존. [[project_nts_verification_coverage_model]] 정련 근거.
+- `npx tsc` 기존 에러(tax-insight·hwp-layout route) 무관.
+
+### ▶ 다음 할 일 (우선순위)
+1. **세액감면·세액공제 계열 status 완료·inSource** — 남은 그룹(세액감면 8601~·기타세액공제 8751~·보험료·의료·교육·연금계좌 등). 세액감면은 RT_R_LAW 공유 사각도 함께([[project_hometax_taxcut_shared_column]]).
+2. **배우자 8002 재실행 실증**(상규님).
+3. 기존 이월: 신용카드 2026 자녀한도 대조(SW 수정 후), 연금 ISA 납입비례 재배분, 카드 fmly_dtl 독립재집계.
+
+---
+
+## 2026-08-01 — 의료비 fmly_dtl 독립재집계 + 색상규칙 + 부양가족 ③표 펼침 + 다수 분석·방침 (7커밋, push완료 origin/master=`2263d78`)
 
 ### 이번 세션 한 것 (7커밋, push완료)
 | 커밋 | 내용 |
