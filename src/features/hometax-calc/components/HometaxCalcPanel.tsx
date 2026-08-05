@@ -2451,6 +2451,7 @@ const ETX_SRC: Record<string, string> = {
 // 부양가족 FAM_ 가상컬럼 → PAY_WRK_FMLY.FMLY_RELN 관계코드(원천 필터). 맵현황 yts IN 에 원천을 구체화.
 //   ★injectFamilyVals(runCompareForCalcNo.ts) SQL 의 CASE 조건과 동기 유지할 것(코드 바뀌면 여기도).
 const FAM_RELN: Record<string, string> = {
+  FAM_8002: "550-040",
   FAM_8004: "550-020/030", FAM_8005: "550-050", FAM_8006: "550-055",
   FAM_8007: "550-060", FAM_8008: "550-070", FAM_8009: "550-080",
   FAM_8764: "550-050·순번3", FAM_8765: "550-050·순번5", FAM_8766: "550-050·순번7",

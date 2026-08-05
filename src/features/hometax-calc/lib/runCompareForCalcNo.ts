@@ -201,7 +201,8 @@ function injectHousingVals(mainRow: Record<string, number> | undefined, vals: Re
   put("8329", mainRow?.LH_LRSF60)           // 2012이후 10~15년  ※매핑(코드↔컬럼)은 정답, 라벨은 국세청 화면 2011이전5/2012이후4 기준(2025.ts). 카탈로그 3구분(2015이후)은 수기오류라 되돌리지 말 것
 }
 
-// ── 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) + 혼인자격(FAM_MRRG) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
+// ── 배우자(8002·550-040) + 부양가족 유형별(8004~8009) + 출산입양 순번별(8764~8766) + 혼인자격(FAM_MRRG) PAY_WRK_FMLY 집계 → FAM_{코드} 주입 ──
+//   배우자(8002)는 엔진판정(BASC_SUB_MATE_AMT flag) 대신 원천 카운트로 전환(2026-08-05, 본인 제외 인적공제 원천통일).
 // 국세청은 8003(통합) 아닌 8004~8009(유형별)로 받는다. 자녀공제(8763)는 유형별+8763 총인원 둘 다 필요,
 // 출산입양(8761)은 순번별 8764~8766 이 산출(총인원 잉여). (2026-07-17 실측 정정)
 // ★이 FMLY 집계를 CALC 통합인원(BASC_SUB_FAMILY_CNT)으로 대체하지 말 것: 기본공제는 유형 무관이나 자녀공제(8763)가
@@ -211,6 +212,7 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
   const [r] = await ytsDb.query<Record<string, number>>(`
     SELECT
       SUM(CASE WHEN CHILD_YN = 'Y' AND FMLY_RELN IN ('550-050','550-080') THEN 1 ELSE 0 END) AS CHLD,
+      SUM(CASE WHEN FMLY_RELN = '550-040' THEN 1 ELSE 0 END) AS FAM_8002,
       SUM(CASE WHEN FMLY_RELN IN ('550-020','550-030') THEN 1 ELSE 0 END) AS FAM_8004,
       SUM(CASE WHEN FMLY_RELN = '550-050' THEN 1 ELSE 0 END) AS FAM_8005,
       SUM(CASE WHEN FMLY_RELN = '550-055' THEN 1 ELSE 0 END) AS FAM_8006,
@@ -224,7 +226,7 @@ async function injectFamilyVals(calcNo: string, vals: Record<string, number>) {
     FROM YTS39.PAY_WRK_FMLY
     WHERE CALC_NO = :1 AND BAS_SUB_YN = 'Y'`, [calcNo])
   if (!r) return
-  for (const code of ["8004", "8005", "8006", "8007", "8008", "8009", "8764", "8765", "8766"]) {
+  for (const code of ["8002", "8004", "8005", "8006", "8007", "8008", "8009", "8764", "8765", "8766"]) {
     const n = Number(r[`FAM_${code}`] ?? 0)
     if (n > 0) vals[`FAM_${code}`] = n
   }
