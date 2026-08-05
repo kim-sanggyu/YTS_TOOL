@@ -30,7 +30,7 @@ import type { Coverage, MappingRow } from "./types"
 
 export const MAPPING_2026: MappingRow[] = [
   // ── 총급여 (계산 기본입력) ───────────────────────────────────────────────
-  { group: "기본입력", ntsCode: "8900", label: "총급여",       ytsCol: "TOT_PAY_AMT",   valueKey: "useAmt", rule: "value",  status: "진행", send: true },
+  { group: "기본입력", ntsCode: "8900", label: "총급여",       ytsCol: "TOT_PAY_AMT",   valueKey: "useAmt", rule: "value",  status: "완료", send: true },
 
   // ── 인적공제 (인원, incDdcNfpCnt) ──────────────────────────────────────────
   { group: "인적공제", ntsCode: "8001", label: "기본공제-본인",     ytsCol: null,                  resultCol: "BASC_SUB_SELF_AMT",  valueKey: "incDdcNfpCnt", rule: "const1", status: "완료", doneSeq: 14, send: true, note: "self ddcAmt=1,500,000(본인 150만). 인원(incDdcNfpCnt=1) 전송. 라이브 payload 캡처 실측(capture-io 2026-07-18, n=38)" },
