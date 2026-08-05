@@ -66,11 +66,11 @@ export const MAPPING_2025: MappingRow[] = [
   //   재현하게 해야 검증됨. 잔액 부족 시 공제=min(대상,잔액)<대상 — 국민연금 X2026 6명 OBJ≠AMT 실측
   //   (X202600049 대상329,220→공제0). 구: _AMT(공제금액,캡후)를 전송해 잔액로직이 검증 사각이던 것 교정(2026-07-21).
   //   OBJ/AMT 모두 PAY_WRK_CALC 컬럼(NP_INSU_OBJ_AMT=FN_PAY_GET_WRK_SOC_INSU_AMT 값과 동일 실측).
-  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_OBJ_AMT",        resultCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "진행", send: true },
-  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_OBJ_AMT",   resultCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "진행", send: true },
-  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_OBJ_AMT", resultCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "진행", send: true },
-  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_OBJ_AMT", resultCol: "ETC_PEN_SCHL_AMT",  valueKey: "useAmt", rule: "value", status: "진행", send: true },
-  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_OBJ_AMT",   resultCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "진행", send: true },
+  { group: "연금보험료", ntsCode: "8201", label: "국민연금",       ytsCol: "NP_INSU_OBJ_AMT",        resultCol: "NP_INSU_AMT",        valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 15, send: true },
+  { group: "연금보험료", ntsCode: "8205", label: "공무원연금",     ytsCol: "ETC_PEN_PUBL_OBJ_AMT",   resultCol: "ETC_PEN_PUBL_AMT",   valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 15, send: true },
+  { group: "연금보험료", ntsCode: "8208", label: "군인연금",       ytsCol: "ETC_PEN_MLTARY_OBJ_AMT", resultCol: "ETC_PEN_MLTARY_AMT", valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 15, send: true },
+  { group: "연금보험료", ntsCode: "8211", label: "사립학교교직원연금", ytsCol: "ETC_PEN_SCHL_OBJ_AMT", resultCol: "ETC_PEN_SCHL_AMT",  valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 15, send: true },
+  { group: "연금보험료", ntsCode: "8215", label: "별정우체국연금", ytsCol: "ETC_PEN_POST_OBJ_AMT",   resultCol: "ETC_PEN_POST_AMT",   valueKey: "useAmt", rule: "value", status: "완료", doneSeq: 15, send: true },
 
   // ── 특별소득공제 (useAmt) — 소계 OUT=8920 ──────────────────────────────────
   //   보험료공제(건강·고용)도 연금보험료와 동일 원칙: 대상금액(_OBJ_AMT, 캡 전) 전송 → NTS 잔액 재현 →
