@@ -2746,15 +2746,16 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
             ))}
           </ul>
         )}
-        {/* 대응관계 유형 범례 — 실행과정 송신:회신 카디널리티(자동 3유형). 1:N·0:1은 보류 */}
+        {/* 대응관계 유형 범례 — 실행과정 송신:회신 카디널리티(자동 파생 유형). 1:N(구간분해)만 보류 — 0:1은 8700로 파생 */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-2 text-[11px]">
-          <span className="font-semibold">대응관계:</span>
+          <span className="font-semibold">유형:</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1" />self(송신=대조)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="·N:1" />멤버(전송만)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="N:1·" />집계(대조점)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:1·N:1" />복합(self+멤버)</span>
           <span className="inline-flex items-center gap-1"><RelationBadge rel="1:0" />입력만</span>
-          <span className="text-muted-foreground">· 1:N(구간분해)·0:1(결과계)은 보류</span>
+          <span className="inline-flex items-center gap-1"><RelationBadge rel="0:1" />회신전용</span>
+          <span className="text-muted-foreground">· 1:N(구간분해)은 보류</span>
         </div>
         <table className="w-full border-collapse text-xs">
           <colgroup>

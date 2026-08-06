@@ -146,7 +146,7 @@ export const MAPPING_2026: MappingRow[] = [
   //   산출세액(8990)에서 국세청이 자체계산(min((산출세액−하한)×율+누진, 한도)). 8700을 IN(useAmt/ddcAmt/ddcTrgtAmt)에 담아 보내도
   //   국세청이 전부 무시·자체계산 실측(2026-08-05 docs/hometax-wia-8700-probe.mjs, 3필드 diff0). → send:false OUT-only self 대조
   //   (국세청 자체계산 ddcAmt ↔ RT_WIA). 우리가 안 보낸 값을 국세청이 독립계산하니 에코 사각 아님. 로스터 "근로소득세액"(PROC_LABEL_CODE:8700) 위치.
-  { group: "세액공제", ntsCode: "8700", label: "근로소득세액공제", ytsCol: null, resultCol: "RT_WIA", valueKey: "useAmt", rule: "value", status: "진행", send: false, note: "국세청 자체계산 순수 OUT(①표→③표 이동 2026-08-05). 8700 IN 전송해도 무시(wia-8700-probe). self 대조=국세청 ddcAmt ↔ RT_WIA" },
+  { group: "세액공제", ntsCode: "8700", label: "근로소득세액공제", ytsCol: null, resultCol: "RT_WIA", valueKey: "useAmt", rule: "value", status: "완료", send: false, note: "국세청 자체계산 순수 OUT(①표→③표 이동 2026-08-05). 8700 IN 전송해도 무시(wia-8700-probe). self 대조=국세청 ddcAmt ↔ RT_WIA" },
 
   // ── 세액공제: 자녀·출산입양 (인원) ─────────────────────────────────────────
   { group: "세액공제", ntsCode: "8790", label: "혼인세액공제",     ytsCol: "FAM_MRRG",            resultCol: "RT_MRRG", valueKey: "useAmt", rule: "flag",  status: "완료", doneSeq: 4, send: true, inSource: { table: "PAY_WRK_FMLY", where: "MRRG_TAX_SUB_YN='Y' AND FMLY_RELN='550-010'", agg: "count" }, note: "★국세청이 혼인 ddcAmt에 잔액 소진캡 독립적용(2026-07-25 실측: IN ddcAmt=500,000 → OUT 276,750 = 산출615,000−근로338,250). buildCompareBody 특수전송(incDdcNfpCnt=1 + ddcAmt=500,000 원본, 자격=FAM_MRRG>0=PAY_WRK_FMLY MRRG_TAX_SUB_YN 'Y'·배우자550-010 카운트). 원본전송→국세청이 소진 독립재현→YTS RT_MRRG(엔진캡)와 ③표 대조로 소진로직 교차검증. 구 RT_MRRG(소진후값) 전송 폐기: 검증 사각이었음" },
