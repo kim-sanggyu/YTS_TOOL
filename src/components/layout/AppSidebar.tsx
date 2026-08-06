@@ -33,6 +33,7 @@ interface NavGroup {
 }
 
 const navMain = [
+  { title: "시스템개요", href: "/overview", icon: Info },
   { title: "대시보드", href: "/", icon: LayoutDashboard },
 ]
 
@@ -194,7 +195,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   "h-8 gap-2 px-2 text-[13px] rounded-md",
                   pathname === item.href
                     ? "!bg-gray-300 !text-gray-900 font-semibold"
-                    : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+                    : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
               >
                 <item.icon className="h-3.5 w-3.5 shrink-0" />
@@ -216,7 +217,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
               {/* 그룹 라벨 — 접으면 숨김 */}
               <button
                 onClick={() => toggleGroup(group.label)}
-                className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
+                className="flex w-full items-center gap-2 px-4 py-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/80 transition-colors hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden"
               >
                 <span className="flex-1 text-left">{group.label}</span>
                 {group.label === "세액계산 검증" && (
@@ -256,7 +257,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                           "h-8 gap-2 px-2 text-[13px] rounded-md",
                           !item.disabled && pathname === item.href
                             ? "!bg-gray-300 !text-gray-900 font-semibold"
-                            : "text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent",
+                            : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent",
                           item.disabled && "pointer-events-none opacity-50"
                         )}
                       >

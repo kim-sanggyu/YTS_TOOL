@@ -28,9 +28,28 @@ const TOOL_META: Record<string, { group: string; label: string }> = {
   "task-archive":   { group: "과제관리", label: "자료실" },
 }
 
+// 최상위 단일 경로(툴이 아닌 페이지) 라벨
+const ROOT_META: Record<string, string> = {
+  overview: "시스템개요",
+}
+
 export function Breadcrumbs() {
   const pathname = usePathname()
   const segments = pathname.split("/").filter(Boolean)
+
+  if (segments.length === 1 && ROOT_META[segments[0]]) {
+    return (
+      <nav className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Link href="/" className="flex items-center hover:text-foreground transition-colors">
+          <Home className="h-3.5 w-3.5" />
+        </Link>
+        <span className="flex items-center gap-1">
+          <ChevronRight className="h-3 w-3" />
+          <span className="font-medium text-foreground">{ROOT_META[segments[0]]}</span>
+        </span>
+      </nav>
+    )
+  }
 
   if (segments.length === 0) {
     return (

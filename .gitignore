@@ -48,6 +48,7 @@ next-env.d.ts
 *.java
 *.png
 *.xlsx
+!public/**/*.png
 /.screenshots/
 dev-err.txt
 dev-out.txt
