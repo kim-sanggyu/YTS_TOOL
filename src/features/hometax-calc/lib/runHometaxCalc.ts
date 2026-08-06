@@ -232,7 +232,13 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping:
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
     // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용(현재 지정 행 없음 — 인프라 유지)
-    setAmt(m.sendCode ?? m.ntsCode, m.valueKey, mappingSentValue(m, vals, marriageCredit))
+    const code = m.sendCode ?? m.ntsCode
+    const val  = mappingSentValue(m, vals, marriageCredit)
+    setAmt(code, m.valueKey, val)
+    // ★세액감면: 국세청은 감면대상급여를 ddcTrgtAmt로 받고, ddcLmtAmt=-1(무제한 신호)이 있어야 감면세액을
+    //   산출한다(useAmt만/ddcLmtAmt=0이면 중소기업취업 감면 등이 0). 국세청 세액감면 팝업 캡처 실측(2026-08-06):
+    //   8603 useAmt=ddcTrgtAmt=1,111,111·ddcLmtAmt=-1 → ddcAmt(감면세액) 64,983. 조특법30조 NTS 0 교정.
+    if (m.group === "세액감면") { setAmt(code, "ddcTrgtAmt", val); setAmt(code, "ddcLmtAmt", -1) }
   }
 
   // 혼인세액공제(8790) 특수: 자격(FAM_MRRG>0=혼인세액공제대상 배우자)이면 원본 500,000 전송 → 국세청이 잔액 소진캡 독립적용.
