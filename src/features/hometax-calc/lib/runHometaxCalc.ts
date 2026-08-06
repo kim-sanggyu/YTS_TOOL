@@ -208,9 +208,11 @@ const ALL_CODES = [
 ]
 
 function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping: MappingRow[], marriageCredit: number, omitCodes: string[] = [], detailRowExtra: Record<string, string> = {}): { body: object; coveredCodes: string[] } {
-  // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑코드 (미래에 send flip 해도 항상 포함)
+  // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑의 실입력코드(sendCode 지정 시 그것, 없으면 ntsCode)
+  //   ★sendCode 필수 포함: 표시코드(ntsCode)와 국세청 실입력코드가 다른 행(예 8603→8607)은
+  //     sendCode 로 detail 행이 생겨야 setAmt 가 값을 주입한다. (표시코드는 ALL_CODES 에 있어 OUT 에코 대조 유지)
   // omitCodes: 계약 A/B 프로브용 — 특정 amtClusCd 를 payload 에서 아예 제외(0 전송조차 안 함)
-  const codes = Array.from(new Set([...ALL_CODES, ...mapping.filter(m => m.send).map(m => m.ntsCode)]))
+  const codes = Array.from(new Set([...ALL_CODES, ...mapping.filter(m => m.send).map(m => m.sendCode ?? m.ntsCode)]))
     .filter(c => !omitCodes.includes(c))
   // detailRowExtra: 연도 프로파일(PROFILE_2026 등)이 각 detail 행에 병합할 신규필드(ereClCd/yrsSrvcClCd/statusValue/ddcRtnId).
   //   2025는 detailRowExtra 없음(={}) → 스프레드가 no-op이라 동작 불변. 이것이 C 방식의 유일한 엔진 확장.
@@ -231,14 +233,13 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping:
   for (const m of mapping) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
-    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용(현재 지정 행 없음 — 인프라 유지)
+    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용.
+    //   ★조특법30조 70%: 표시 8603 / 실입력 8607(2026-08-07 라이브캡처+프로브 실측). 국세청은 8603 IN 을
+    //     받지 않고 8607 useAmt 로만 감면세액을 산출한다. 세액감면은 전부 useAmt 만으로 서버가 재계산
+    //     (ddcTrgtAmt·ddcLmtAmt=-1 은 화면 payload 에 없는 값이라 불필요 — 25e0030 추측 롤백).
     const code = m.sendCode ?? m.ntsCode
     const val  = mappingSentValue(m, vals, marriageCredit)
     setAmt(code, m.valueKey, val)
-    // ★세액감면: 국세청은 감면대상급여를 ddcTrgtAmt로 받고, ddcLmtAmt=-1(무제한 신호)이 있어야 감면세액을
-    //   산출한다(useAmt만/ddcLmtAmt=0이면 중소기업취업 감면 등이 0). 국세청 세액감면 팝업 캡처 실측(2026-08-06):
-    //   8603 useAmt=ddcTrgtAmt=1,111,111·ddcLmtAmt=-1 → ddcAmt(감면세액) 64,983. 조특법30조 NTS 0 교정.
-    if (m.group === "세액감면") { setAmt(code, "ddcTrgtAmt", val); setAmt(code, "ddcLmtAmt", -1) }
   }
 
   // 혼인세액공제(8790) 특수: 자격(FAM_MRRG>0=혼인세액공제대상 배우자)이면 원본 500,000 전송 → 국세청이 잔액 소진캡 독립적용.
