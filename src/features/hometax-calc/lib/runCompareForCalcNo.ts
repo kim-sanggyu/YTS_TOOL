@@ -392,13 +392,26 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
 
   // 코드별 YTS 자체 공제액(resultCol) — 상세뷰에서 NTS OUT(ddcAmt)과 대조.
   // outCode 로 키를 잡아야 소계형(카드8430/의료8726 등)이 자기 코드가 아니라 소계코드에서 대조된다.
+  // ★세액감면 공유컬럼(RT_R_LAW·RT_R_LAW_CLAUS30): 여러 국세청 코드가 YTS 한 합계컬럼을 공유한다.
+  //   감면유형은 한 사람당 하나만 존재(조특법30조 T12·T13 동시 불가 등)이므로, 합값을 전 멤버에 뿌리면
+  //   비활성 코드(IN=0)가 유령 YTS값을 얻어 NTS(0 또는 에코)와 ✗ 오탐이 난다 → 전송(IN>0)한 활성 코드에만
+  //   배정한다. 활성 한 코드 self 대조 = "nts(t12+t13) ↔ yts 합"(동시 불가라 동치). (2026-08-06 상규님 확정)
+  const cutSharedCol = new Set<string>()
+  {
+    const cnt = new Map<string, number>()
+    for (const m of cfg.mapping) if (m.group === "세액감면" && m.resultCol) cnt.set(m.resultCol, (cnt.get(m.resultCol) ?? 0) + 1)
+    for (const [rc, n] of cnt) if (n >= 2) cutSharedCol.add(rc)
+  }
   const ytsDdcMap: Record<string, number> = {}
   for (const m of cfg.mapping) {
     // 기부금은 resultCol 경로 제외 — giftDdc(GIFT_SUB_AMT)가 유형×연도 코드별로 전담한다.
     //   종교 8746 등의 resultCol(RT_PSA_RELGN)은 당해+이월 합산 총액이라, 전액 이월인 사람에서
     //   당해코드(8746)에 잔존→국세청 OUT 0 과 대비돼 ✗ 오탐이 났다(2026-07-28 규명, Y202500150/398).
     if (m.group === "기부금") continue
-    if (m.resultCol && vals[m.resultCol] != null) ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
+    if (!(m.resultCol && vals[m.resultCol] != null)) continue
+    // 세액감면 공유컬럼: 활성(전송 IN>0)인 코드에만 합값 배정 — 비활성 멤버 유령값 차단
+    if (m.group === "세액감면" && cutSharedCol.has(m.resultCol) && !(m.ytsCol && Number(vals[m.ytsCol] ?? 0) > 0)) continue
+    ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
   }
   // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) 주입 — 유일 소스(위 resultCol 제외와 짝).
   Object.assign(ytsDdcMap, input.giftDdc)

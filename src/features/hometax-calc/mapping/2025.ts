@@ -131,7 +131,7 @@ export const MAPPING_2025: MappingRow[] = [
 
   // ── 세액감면 (useAmt) ──────────────────────────────────────────────────────
   { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법(정부간협약)", ytsCol: "CUT_8601", resultCol: "RT_IT_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 MAIN.TAX_GOVM_AGREE→CUT_8601. OUT self ↔ RT_IT_LAW. X2026 대상자 0이라 원단위 미검증. 2026-07-22 원천확정(상규님 지정)" },
-  // ── 조특법30조제외(외국인기술자·성과공유·성과보상기금·우수인력) = 국세청 개별코드로 세분. 감면세액 합계는 RT_R_LAW 하나(개별 self 대조는 단일항목일 때만 정확). ──
+  // ── 조특법30조제외(외국인기술자·성과공유·성과보상기금·우수인력) = 국세청 개별코드로 세분. 감면세액 합계는 RT_R_LAW 하나 → 감면유형은 한 사람당 하나뿐이라 활성(IN>0) 코드에만 YTS 배정해 self 대조(2026-08-06). ──
   //    코드-화면 1:1은 라이브캡처 #2 useAmt 실측 확정. X2026 대상자 0이라 원단위 미검증. IN=FN_PAY_GET_WRK_NTAX Txx 합.
   { group: "세액감면", ntsCode: "8602", label: "조특법30조제외-외국인기술자 50%", ytsCol: "CUT_8602", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN Txx T01 합→CUT_8602. OUT self ↔ RT_R_LAW(조특법30조제외 감면세액 합). 대상 0 미검증. 2026-07-22 원천확정" },
   { group: "세액감면", ntsCode: "8612", label: "조특법30조제외-외국인기술자 70%", ytsCol: "CUT_8612", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T02 합→CUT_8612. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
@@ -147,8 +147,8 @@ export const MAPPING_2025: MappingRow[] = [
   //    ※구 8604(100%)·8605(50%)·8916(70%)은 전부 오류(조특법30조엔 100/50% 없음, 8916은 차감소득금액 중간계산코드)로 제거.
   //    ★국세청 통합처리 실측확정(2026-07-24 캡처 #3): 8608(90%)에만 감면대상급여 입력해도 국세청이 감면세액을 8603·8608·8924(세액감면계)에 "동일 값 에코"(중복계상 아님, 계도 단일값).
   //      → 전송0인 8603에 NTS공제 값이 오는 건 통합처리 탓(우리 도구 영향 0: 8603/8608 공유컬럼이라 대조 일치, 팬텀행은 getTaxCutItems filterByInput로 숨김).
-  { group: "세액감면", ntsCode: "8603", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8603", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8603. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정" },
-  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치)" },
+  { group: "세액감면", ntsCode: "8603", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8603", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8603. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정. ★공유컬럼 활성(IN>0) 코드에만 YTS 배정(2026-08-06)" },
+  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치). ★공유컬럼(8603·8608)은 활성(IN>0) 코드에만 YTS 배정 — T12·T13 동시 불가라 활성 self=합 대조(2026-08-06 상규님)" },
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약(교직자)", ytsCol: "CUT_8606", resultCol: "RT_TAX_TREATY", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN Txx T20 합(조세조약 교직자 감면대상급여)→CUT_8606. OUT self ↔ RT_TAX_TREATY. X2026 대상 0 미검증. 2026-07-22 원천확정" },
 
   // ── 세액공제: 근로소득세액공제(8700) = 국세청 자체계산 OUT 전용(우리 미전송) ──
