@@ -463,6 +463,7 @@ export function HometaxCalcPanel() {
       listLoaded.current.delete(`${tab}|${year}|${ntsYear}`)   // 현재 탭 목록 재조회
       cacheLoadedKey.current = null                            // NTS 결과 캐시 재읽기
       overwriteCacheRef.current = true                         // 재읽기 시 기존 행도 최신 캐시값으로 교체
+      setIoDetail({})                                          // 드로어 IN/OUT 캐시도 무효화 → 최신 재조회
       setRefreshNonce(n => n + 1)
       return
     }
@@ -608,6 +609,7 @@ export function HometaxCalcPanel() {
       await fetch(`/api/tools/hometax-calc/batch-results?year=${year}&ntsYear=${ntsYear}`, { method: "DELETE" })
     } catch { /* 무시 */ }
     setResults({})
+    setIoDetail({})   // 드로어 IN/OUT 캐시도 비움 → 지우기 후 최신 재조회
     setCachedAt(null)
   }
 
@@ -630,7 +632,7 @@ export function HometaxCalcPanel() {
 
   // year/ntsYear 변경 → 전 탭 목록·결과·캐시 무효화(탭 전환만으론 유지 = 재조회/재읽기 방지).
   useEffect(() => {
-    setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({})
+    setAllItems([]); setGiftItems([]); setCardItems([]); setMediItems([]); setPensionItems([]); setEtcItems([]); setGroupItems([]); setResults({}); setIoDetail({})
     listLoaded.current = new Set()
     cacheLoadedKey.current = null
   }, [year, ntsYear])
@@ -726,6 +728,7 @@ export function HometaxCalcPanel() {
       })
       const json = await res.json()
       setResults(prev => ({ ...prev, [calcNo]: buildRowResult(json, Date.now() - start) }))
+      setIoDetail(prev => { const n = { ...prev }; delete n[calcNo]; return n })   // 드로어 IN/OUT 캐시 무효화 → 재실행 후 최신 재조회(옛 스냅샷이 detailRes를 덮어쓰던 것 방지)
       // 재비교한 행의 list 원본(전송 사용액·YTS공제 등)도 최신 DB로 교체 — 대조결과만 갱신되고 list가 stale로 남던 것 방지.
       //   그 calcNo 1건만 재조회(list route calcNo 필터) → 해당 탭 items 상태의 그 행만 splice.
       try {
@@ -797,6 +800,7 @@ export function HometaxCalcPanel() {
     const startedAt = Date.now()       // 배치 시작 시각 — 완료 toast 소요시간 표시용
     setBatchRunning(true)
     setBatchProgress({ done: 0, total, skipped: 0 })
+    setIoDetail({})   // 전체실행 = 전 결과 교체 → 드로어 IN/OUT 캐시 초기화
     batchBufRef.current = []
     batchFlushRef.current = setInterval(flushBatchRows, 500)   // row는 버퍼에 쌓고 0.5초마다 반영
 
