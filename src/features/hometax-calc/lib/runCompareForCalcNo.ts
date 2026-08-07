@@ -326,9 +326,14 @@ export interface CompareInput {
   perCodeYtsDdc: Record<string, number> // 복합유형(1:1·N:1) per-code YTS 공제(PEN_SAVE_SUB_AMT) — 투자조합·ISA ③표 per-code 대조용(소계와 별개)
 }
 
-// 보낼 값(vals)을 이름순 정렬·직렬화 후 ntsYear 를 붙여 sha256. 같은 값=같은 지문(재현), 하나만 바뀌어도 달라짐.
+// ★출력 계산 로직(ytsDdcMap 등) 버전. inputHash 는 입력(vals) 지문이라 "코드만 바뀌고 입력은 그대로"인
+//   변경(self 재계산·소계 배선 등)을 못 잡아 배치 캐시가 stale 된다 → 출력 로직을 바꾸면 이 버전을 올려
+//   inputHash 를 흔들어 캐시를 전체 무효화(재실행 시 전건 재계산). 국세청 쪽 변화는 별개(수동 지우기).
+const CALC_LOGIC_VERSION = "2026-08-07-clause30-self"
+
+// 보낼 값(vals)을 이름순 정렬·직렬화 후 ntsYear·로직버전을 붙여 sha256. 같은 값+같은 로직=같은 지문(재현).
 function computeInputHash(vals: Record<string, number>, ntsYear: string): string {
-  const serial = Object.keys(vals).sort().map(k => `${k}:${vals[k]}`).join("|") + `|nts:${ntsYear}`
+  const serial = Object.keys(vals).sort().map(k => `${k}:${vals[k]}`).join("|") + `|nts:${ntsYear}|v:${CALC_LOGIC_VERSION}`
   return crypto.createHash("sha256").update(serial).digest("hex")
 }
 

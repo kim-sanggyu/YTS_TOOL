@@ -1975,7 +1975,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
               {row.lines.map((line, i) => {
                 const last   = i === row.lines.length - 1
                 const ntsVal = res ? (res.ntsMap[line.code] ?? 0) : null
-                const ldiff  = ntsVal != null ? ntsVal - line.ytsDdc : null
+                // YTS 공제 = self 재계산 포함 단일원천(res.ytsDdcMap) 우선. 조특30제외 등 공유컬럼(RT_R_LAW)은
+                //   SQL line.ytsDdc(합)가 아니라 코드별 self(ytsDdcMap)를 써야 함. 배치 전(res 없음)엔 SQL 폴백.
+                const ytsD   = res ? (res.ytsDdcMap[line.code] ?? line.ytsDdc) : line.ytsDdc
+                const ldiff  = ntsVal != null ? ntsVal - ytsD : null
                 // 세부행 강조색(라벨만, 금액은 본연): 8711=violet, 주택임차(8311/8312)=cyan,
                 //   부녀자(8103)·혼인세액공제(8790)=청, 한부모(8104)·출산입양(8761·8764~66)=녹. (적색계통은 오류 전용 회피)
                 //   (리터럴 클래스 유지 — Tailwind JIT 퍼지 안전)
@@ -1990,10 +1993,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                       {line.label}
                     </td>
                     {showInput && <td className="px-3 py-1 text-right tabular-nums text-muted-foreground">{line.birthBreakdown ?? (line.ytsInput != null ? won(line.ytsInput) : "—")}</td>}
-                    <td className="px-3 py-1 text-right tabular-nums">{won(line.ytsDdc)}</td>
+                    <td className="px-3 py-1 text-right tabular-nums">{won(ytsD)}</td>
                     <td className="px-3 py-1 text-right tabular-nums">{ntsVal != null ? won(ntsVal) : "—"}</td>
                     <td className="px-3 py-1 text-center">
-                      <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? line.ytsDdc : null} nts={ntsVal} /></span>
+                      <span className="inline-flex justify-center"><MatchIcon yts={ntsVal != null ? ytsD : null} nts={ntsVal} /></span>
                     </td>
                     <td className={`px-3 py-1 text-right tabular-nums ${ldiff != null && ldiff !== 0 ? "text-red-600 font-medium" : "text-muted-foreground/40"}`}>
                       {ldiff == null ? "—" : ldiff === 0 ? "0" : (ldiff > 0 ? "+" : "") + ldiff.toLocaleString("ko-KR")}
