@@ -13,7 +13,7 @@ export interface CardListItem {
 
 // 카드공제 발생 건(CALC_PROC_CARD 존재 + OTO_CARD_ETC>0)의 가~아 사용액 라인.
 // YTS 카드공제(비교 기준) = OTO_CARD_ETC(=최종공제금액), NTS 8430(카드소계)과 대조.
-export async function getCardItems(year: string): Promise<CardListItem[]> {
+export async function getCardItems(year: string, calcNo?: string): Promise<CardListItem[]> {
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number
     OTO_CARD_ETC: number; CALC_PROC_CARD: string | null
@@ -36,8 +36,9 @@ export async function getCardItems(year: string): Promise<CardListItem[]> {
       -- 소진 건은 대조 anchor가 망가져(국세청 8430 회신이 소진 전/후인지 미확정) 검증이 무의미 → 노이즈만 늘어남.
       -- 실측 근거(2026-07-29): CALC_PROC_CARD.최종공제금액>0인데 OTO_CARD_ETC=0인 건 존재(소진 전 산출 vs 소진 후 적용).
       AND NVL(c.OTO_CARD_ETC, 0) > 0
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return rows.map(r => {
     const parsed = parseCardProc(r.CALC_PROC_CARD)

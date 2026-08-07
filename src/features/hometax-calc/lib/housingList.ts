@@ -19,7 +19,7 @@ export interface HousingListItem {
 //   전송값(IN)>0 인 항목만 line 으로 남긴다(IN=0 인데 공유 공제액이 흘러드는 오표시 방지).
 async function getGroupItems(
   year: string, rows: MappingRow[], inputExpr?: (m: MappingRow) => string | null, kind: string = "소득공제",
-  filterByInput = false,
+  filterByInput = false, calcNo?: string,
 ): Promise<HousingListItem[]> {
   if (rows.length === 0) return []
   const ddcSel      = rows.map(m => `NVL(c.${m.resultCol}, 0) AS DDC_${m.ntsCode}`).join(", ")
@@ -40,8 +40,9 @@ async function getGroupItems(
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND (${anyPositive})
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return dbRows.map(r => {
     const lines: HousingLine[] = rows
@@ -76,44 +77,44 @@ const HOUSING_INPUT_COL: Record<string, string> = {
   "8324": "LH_LRSF10", "8325": "LH_LRSF20", "8326": "LH_LRSF30",
   "8327": "LH_LRSF40", "8328": "LH_LRSF50", "8329": "LH_LRSF60",
 }
-export const getHousingItems = (year: string) => getGroupItems(year, HOUSING_ROWS, m => {
+export const getHousingItems = (year: string, calcNo?: string) => getGroupItems(year, HOUSING_ROWS, m => {
   if (m.ntsCode === "8312")   // 주택임차 원리금 거주자 = PAY_WRK_RENT_HABT_SPEC B0 PNINT_SUM 합 (PAY_WRK_MAIN 아님)
     return `SELECT NVL(SUM(r.PNINT_SUM), 0) FROM YTS39.PAY_WRK_RENT_HABT_SPEC r WHERE r.CALC_NO = c.CALC_NO AND r.RENT_HABT_CLS = 'B0'`
   const col = HOUSING_INPUT_COL[m.ntsCode]
   return col ? `NVL(m.${col}, 0)` : null
-})
+}, "소득공제", false, calcNo)
 
 // 주택마련저축(그밖의소득공제) = 청약저축(8403)·주택청약종합저축(8407)·근로자주택마련저축(8404).
 // 전송 사용액(납입액) = PAY_WRK_PEN_SAVE_SPEC CLS별 합(562-050/060/080).
 const HOUSING_SAVINGS_ROWS = MAPPING_2025.filter(m => ["8403", "8404", "8407"].includes(m.ntsCode) && m.resultCol)
 const HS_PEN_CLS: Record<string, string> = { "8403": "562-050", "8404": "562-080", "8407": "562-060" }
-export const getHousingSavingsItems = (year: string) => getGroupItems(year, HOUSING_SAVINGS_ROWS, m => {
+export const getHousingSavingsItems = (year: string, calcNo?: string) => getGroupItems(year, HOUSING_SAVINGS_ROWS, m => {
   const cls = HS_PEN_CLS[m.ntsCode]
   return cls
     ? `SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '${cls}'`
     : null
-})
+}, "소득공제", false, calcNo)
 
 // 그밖의소득공제(잡) = 우리사주출연금(8452)·장기집합(8451)·청년형(8501)·고용유지중소기업(8453). self 대조(YTS OTO_* ↔ NTS 각 코드).
 // 전송 사용액 = 우리사주 MAIN.STOCK_URDM / 고용유지 MAIN.EMPL_MTN_WAGE_CUT / 장기집합 PEN 562-100 합 / 청년형 PEN 562-140 합.
 const OTHER_INCOME_ROWS = MAPPING_2025.filter(m => ["8451", "8452", "8453", "8501"].includes(m.ntsCode) && m.resultCol)
 const OI_PEN_CLS:  Record<string, string> = { "8451": "562-100", "8501": "562-140" }
 const OI_MAIN_COL: Record<string, string> = { "8452": "STOCK_URDM", "8453": "EMPL_MTN_WAGE_CUT" }
-export const getOtherIncomeItems = (year: string) => getGroupItems(year, OTHER_INCOME_ROWS, m => {
+export const getOtherIncomeItems = (year: string, calcNo?: string) => getGroupItems(year, OTHER_INCOME_ROWS, m => {
   const cls = OI_PEN_CLS[m.ntsCode]
   if (cls) return `SELECT NVL(SUM(s.PEN_SAVE_PMT_AMT), 0) FROM YTS39.PAY_WRK_PEN_SAVE_SPEC s WHERE s.CALC_NO = c.CALC_NO AND s.PEN_SAVE_CLS = '${cls}'`
   const col = OI_MAIN_COL[m.ntsCode]
   return col ? `NVL(m.${col}, 0)` : null
-})
+}, "소득공제", false, calcNo)
 
 // 기타세액공제(잡) = 외국납부(8751)·주택차입금이자(8752)·납세조합(8753). self 대조(YTS RT_* ↔ NTS 각 코드).
 // 전송 사용액(대상금액) = PAY_WRK_MAIN 원천. 8754(국외총급여)는 동반입력·결과없음이라 제외(resultCol 없음).
 const ETC_CREDIT_ROWS = MAPPING_2025.filter(m => ["8751", "8752", "8753"].includes(m.ntsCode) && m.resultCol)
 const EC_MAIN_COL: Record<string, string> = { "8751": "FRGN_PAY_TAX", "8752": "HOUSE_ALR", "8753": "ASSO_SUB_TAX_AMT" }
-export const getEtcCreditItems = (year: string) => getGroupItems(year, ETC_CREDIT_ROWS, m => {
+export const getEtcCreditItems = (year: string, calcNo?: string) => getGroupItems(year, ETC_CREDIT_ROWS, m => {
   const col = EC_MAIN_COL[m.ntsCode]
   return col ? `NVL(m.${col}, 0)` : null
-}, "세액공제")
+}, "세액공제", false, calcNo)
 
 // 세액감면 = 소득세법(8601)·조특법30조(8607 70%/8608 90%)·조특법30조제외(8602 등)·조세조약(8606). self 대조(YTS RT_* ↔ NTS 각 코드).
 // 전송 사용액(감면대상급여) = 8601 MAIN.TAX_GOVM_AGREE / 나머지 FN_PAY_GET_WRK_NTAX(MAIN+SUB, Txx) 합.
@@ -123,24 +124,24 @@ const TC_TXX: Record<string, string> = {
   "8607": "T12", "8608": "T13", "8602": "T01", "8612": "T02", "8609": "T30",
   "8611": "T50", "8606": "T20", "8617": "T42", "8610": "T40", "8616": "T43", "8614": "T41",
 }
-export const getTaxCutItems = (year: string) => getGroupItems(year, TAX_CUT_ROWS, m => {
+export const getTaxCutItems = (year: string, calcNo?: string) => getGroupItems(year, TAX_CUT_ROWS, m => {
   if (m.ntsCode === "8601") return `NVL(m.TAX_GOVM_AGREE, 0)`
   const t = TC_TXX[m.ntsCode]
   return t ? `FN_PAY_GET_WRK_NTAX(c.CALC_NO,'MAIN',NULL,'${t}') + FN_PAY_GET_WRK_NTAX(c.CALC_NO,'SUB',NULL,'${t}')` : null
-}, "세액감면", true)   // resultCol 공유(RT_R_LAW/RT_R_LAW_CLAUS30) → 전송사용액>0 항목만 표시
+}, "세액감면", true, calcNo)   // resultCol 공유(RT_R_LAW/RT_R_LAW_CLAUS30) → 전송사용액>0 항목만 표시
 
 // 보험료 세액공제 = 보장성(8710, 12%)·장애인전용 보장성(8711, 15%). self 대조(YTS RT_IF_* ↔ NTS 각 코드).
 // 전송 사용액 = 원본 지출총액(PAY_WRK_FMLY_DTL 합) — 국세청이 100만 self cap(2026-07-25 실측). resultCol(RT_IF_*) 고유.
 const INSURANCE_ROWS = MAPPING_2025.filter(m => ["8710", "8711"].includes(m.ntsCode) && m.resultCol)
 const INS_SRC_COL: Record<string, string> = { "8710": "GRT_INSU", "8711": "HDC_PERS_INSU" }
-export const getInsuranceItems = (year: string) => getGroupItems(year, INSURANCE_ROWS, m => {
+export const getInsuranceItems = (year: string, calcNo?: string) => getGroupItems(year, INSURANCE_ROWS, m => {
   const col = INS_SRC_COL[m.ntsCode]
   return col ? `(SELECT NVL(SUM(${col}),0) FROM YTS39.PAY_WRK_FMLY_DTL d WHERE d.CALC_NO=c.CALC_NO)` : null
-}, "세액공제")
+}, "세액공제", false, calcNo)
 
 // 교육비 = 소계형(8735). 8730에 공제대상 총액(SPCL_EDU_AMT, 한도후) 전송 → 서버 ×15% → 8735 소계 ↔ RT_EDU_AMT.
 // 구분(8731~34)은 서버 무시라 1항목(8735)만 대조. getGroupItems(resultCol 기반)를 못 쓰고 전용 조회.
-export async function getEducationItems(year: string): Promise<HousingListItem[]> {
+export async function getEducationItems(year: string, calcNo?: string): Promise<HousingListItem[]> {
   const dbRows = await ytsDb.query<Record<string, unknown>>(`
     SELECT c.CALC_NO,
            SUBSTR(f.NM, 1, 4) AS NM,
@@ -153,8 +154,9 @@ export async function getEducationItems(year: string): Promise<HousingListItem[]
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND NVL(c.RT_EDU_AMT, 0) > 0
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return dbRows.map(r => {
     const ex = exhaustInfo(r.EXHAUSTED_POINT as string | null)

@@ -17,8 +17,9 @@ export interface PensionListItem {
 // ★국세청이 항목별 self ddcAmt(8701~8708) 반환(2026-07-15 실측확정) → 항목별 1:1 대조.
 //   YTS 항목별 세액공제액 = 계좌별 PEN_SAVE_SUB_AMT 를 NTS 코드로 합산(=세액공제액, 한도·세율 반영).
 //   (개별합 == 국세청 8706 총합 == Σ RT_RSIGN_PEN_* 전건 원단위 일치.)
-export async function getPensionItems(year: string): Promise<PensionListItem[]> {
+export async function getPensionItems(year: string, calcNo?: string): Promise<PensionListItem[]> {
   const clsIn = PENSION_CLS_LIST.map((_, i) => `:${i + 2}`).join(", ")
+  const calcNoBind = `:${PENSION_CLS_LIST.length + 2}`   // year(:1) + cls(:2..) 다음 자리
 
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string; TOT_PAY_AMT: number; EXHAUSTED_POINT: string | null
@@ -39,8 +40,9 @@ export async function getPensionItems(year: string): Promise<PensionListItem[]> 
     JOIN YTS39.PAY_WRK_PEN_SAVE_SPEC p ON p.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND p.PEN_SAVE_CLS IN (${clsIn})
+      ${calcNo ? `AND c.CALC_NO = ${calcNoBind}` : ""}
     ORDER BY c.CALC_NO
-  `, [year, ...PENSION_CLS_LIST])
+  `, calcNo ? [year, ...PENSION_CLS_LIST, calcNo] : [year, ...PENSION_CLS_LIST])
 
   const map = new Map<string, PensionListItem>()
 

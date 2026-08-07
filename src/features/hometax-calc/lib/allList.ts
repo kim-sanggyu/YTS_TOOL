@@ -16,7 +16,7 @@ export interface AllListItem {
 }
 
 // 전체 비교(종합) 대상 = 해당 연도 전 직원. 산출·결정세액 대조 + 인력정보(사번/표준특별/계속퇴사/계산과정).
-export async function getAllItems(year: string): Promise<AllListItem[]> {
+export async function getAllItems(year: string, calcNo?: string): Promise<AllListItem[]> {
   const rows = await ytsDb.query<{
     CALC_NO: string; NM: string
     TOT_PAY_AMT: number; PROD_TAX_AMT: number; RES_INCM_TAX: number; EFFCTV_TAX_RATE: number
@@ -34,8 +34,9 @@ export async function getAllItems(year: string): Promise<AllListItem[]> {
     JOIN YTS39.PAY_WRK_FMLY f ON f.CALC_NO = c.CALC_NO AND f.FMLY_SEQ = 1
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return rows.map(r => {
     const ex = exhaustInfo(r.EXHAUSTED_POINT)

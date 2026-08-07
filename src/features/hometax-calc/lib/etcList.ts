@@ -19,7 +19,7 @@ export interface EtcListItem {
 //   그 외 항목이 추가되면 아래 RENT_INPUT 처럼 원천 조회를 확장한다(없으면 공제액으로 대체 표시).
 const ETC_ROWS = MAPPING_2025.filter(m => m.tab === "기타" && m.send && m.resultCol)
 
-export async function getEtcItems(year: string): Promise<EtcListItem[]> {
+export async function getEtcItems(year: string, calcNo?: string): Promise<EtcListItem[]> {
   if (ETC_ROWS.length === 0) return []
 
   const ddcSel      = ETC_ROWS.map(m => `NVL(c.${m.resultCol}, 0) AS DDC_${m.ntsCode}`).join(", ")
@@ -41,8 +41,9 @@ export async function getEtcItems(year: string): Promise<EtcListItem[]> {
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND (${anyPositive})
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return rows.map(r => {
     const lines: EtcLine[] = ETC_ROWS

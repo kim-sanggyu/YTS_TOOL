@@ -15,7 +15,7 @@ export interface GiftListItem {
 
 // 세액계산된 건(PAY_WRK_CALC 존재)의 기부금 유형×연도별 라인.
 // YTS 공제금액 = GIFT_SUB_AMT, 보낼 대상금액 = GIFT_ABLE_SUB_AMT.
-export async function getGiftItems(year: string, ntsYear: string): Promise<GiftListItem[]> {
+export async function getGiftItems(year: string, ntsYear: string, calcNo?: string): Promise<GiftListItem[]> {
   const dataYear = Number(year)
   const ntsBase  = Number(ntsYear)   // 국세청 귀속연도(이월 연차 기준)
 
@@ -38,8 +38,9 @@ export async function getGiftItems(year: string, ntsYear: string): Promise<GiftL
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     JOIN YTS39.PAY_WRK_GIFT_ADJ g ON g.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   // CALC_NO 단위로 그룹핑
   const map = new Map<string, GiftListItem>()

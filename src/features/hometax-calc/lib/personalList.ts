@@ -16,7 +16,7 @@ export interface PersonalListItem {
 // 인적공제 그룹(본인 제외) 사람별 YTS 공제액. 값(>0) 있는 항목만 line 으로.
 // kind 지정 시 그 성격(소득공제=인적공제 / 세액공제=혼인·자녀·출산)만 필터.
 // NTS 대조값은 화면에서 results.ntsMap[code] 로 조인(코드 전부 이미 send/요청됨).
-export async function getPersonalItems(year: string, kind?: PersonalKind): Promise<PersonalListItem[]> {
+export async function getPersonalItems(year: string, kind?: PersonalKind, calcNo?: string): Promise<PersonalListItem[]> {
   const cols      = kind ? PERSONAL_ROWS.filter(r => r.kind === kind) : PERSONAL_ROWS
   const ddcSel    = cols.map(r => `NVL(c.${r.ytsCol}, 0) AS DDC_${r.code}`).join(", ")
   // 전송값(IN): flag 항목은 공제액컬럼>0 을 1명으로 환산, 나머지는 인원/금액 컬럼값 그대로
@@ -49,8 +49,9 @@ export async function getPersonalItems(year: string, kind?: PersonalKind): Promi
     JOIN YTS39.PAY_WRK_MAIN m ON m.CALC_NO = c.CALC_NO
     WHERE m.YY = :1
       AND (${anyPositive})
+      ${calcNo ? "AND c.CALC_NO = :2" : ""}
     ORDER BY c.CALC_NO
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   return rows.map(r => {
     // 출산입양 순번별 표시("첫째 1·둘째 1") — 있는 순번만. 없으면 undefined(→ 기존 총인원 표시로 폴백).
