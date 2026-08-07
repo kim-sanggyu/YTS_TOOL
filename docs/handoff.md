@@ -4,7 +4,48 @@
 
 ---
 
-## 최신: 2026-08-05 — 맵현황 그룹별 완료 처리 + yts in inSource 구조화 + 국민연금 소진 교차검증 실측 + UI 손질 (9커밋, **미push**)
+## 최신: 2026-08-07 — 세액감면 조특법30조/제외 완결 + 단건 refresh 성능 + UI 손질 (9커밋, **전부 push 완료**)
+
+### 이번 세션 한 것 (9커밋, push 완료 `083930e..8a59e0c`)
+| 커밋 | 내용 |
+|---|---|
+| `19d6d5d` | fix: 조특법30조 70% 실입력코드 8603→8607 교정 |
+| `d0a67df` | fix: 8607 정식화 + 세액감면 세부 로스터 편입 |
+| `4752b90` | feat: 조특법30조/제외 복합유형(1:1·N:1) — 코드별 self 재계산 + 소계 대조점 |
+| `4c97acf` | fix: 계산과정 세액감면 대조를 소계코드(8603/8620)로 |
+| `7865e77` | fix: 리스트 YTS공제 self 재계산 + 배치캐시 로직버전 무효화 |
+| `b729013` | style: 리스트 UI(아이콘 흐림·스피너 적색) |
+| `747b2c9` | perf: 단건 refresh calcNo SQL 필터 (전 함수) |
+| `11b3978` | perf: 의료비 자체집계도 calcNo 필터 |
+| `8a59e0c` | style: UI 손질 + 전체실행 현재 행 스피너(A) |
+
+### 핵심 결과물
+- **★조특법30조 70% 실입력코드 = 8607**([[project_hometax_taxcut_shared_column]]): 라이브캡처(hometax-capture-io.mjs 2026)+프로브(hometax-clause30-70-probe.mjs)로 확정 — 국세청은 70%를 **8607 useAmt**로 받고 산출(8603은 IN 미수신·OUT 에코만). 당초 8603 배당이 감면0·IN빈칸·에코유령의 뿌리. **8607 정식 ntsCode화**(sendCode 폐지, 8603 매핑제외). 90%=8608 원래맞음. 25e0030(ddcTrgtAmt/ddcLmtAmt=-1) 롤백.
+- **★조특30제외 코드별 self 재계산**(`selfCutClaus30Excl` runCompareForCalcNo): RT_R_LAW 공유 동일값 오탐을 YTS 엔진 공식 `(int)(base×감면대상급여/총급여×율)`(T30만 base−CLAUS30)으로 코드별 재계산 → 국세청 코드별 회신과 원단위 대조. 8610·8614만 floor 절사 −1(YTS floor vs 국세청 반올림, 개정무관).
+- **★복합유형 1:1·N:1**: 개별(8602~8617·8607/8608) selfComparable+displaySubtotal, 소계 **8603(조특법30조)·8620(조특30제외)** SUBTOTAL_CODES 대조점. 국세청이 개별만 받아도 8620/8615 자동 집계회신(hometax-clause30-excl-agg-probe.mjs V0/V1/V2 확정). 소계 위치=드로어③표 상단(proc_label)/맵현황 하단(매핑순). 8615(성과보상 중간소계) 제외, 8620/8603 둘 다 대조점.
+- **계산과정 대조 정합**: procLineClass가 "조특법(30조)"·"(30조제외)" 라벨을 개별코드(8608·8602)로 봐서 적색오탐 → PROC_LABEL_CODE에서 소계코드(8603·8620)로 remap.
+- **리스트 self 반영 + 배치캐시 로직버전**: 리스트(PersonalTable)가 SQL RT_R_LAW 합(line.ytsDdc) 대신 res.ytsDdcMap(self) 우선 표시. `CALC_LOGIC_VERSION`(runCompareForCalcNo) 을 inputHash에 섞어 출력로직 변경 시 배치캐시 자동 무효화("코드 고쳤는데 리스트 옛값" 방지).
+- **단건 refresh 성능**: 재비교 후 그 행 refresh가 전 인원 SQL 조회(수십초)였던 것을 get*Items 전 함수에 optional calcNo(SQL WHERE c.CALC_NO)로 1건만 조회. mediList 자체집계(getMediSelfAggByYear)도 calcNo 필터.
+- **UI**: 실행과정 미생성 행 분석아이콘 흐림(disabled:opacity-100+opacity-25), 실행 스피너 text-red-600, 전체실행 현재 행 스피너(A, streamCompareBatch running 이벤트). 자동스크롤(B)은 상규님 요청으로 미채택.
+
+### ⚠ 미해결 / 주의 — 근로소득세액공제(8700) ±1 (조사만, 엔진 Java 쪽)
+- **±1 = 두 절사 지점**. 검증도구는 batch에서 RT_WIA(YTS DB) ↔ 국세청 8700 대조.
+  1. **한도(get_EITCCeiling)**: YTS `std−(int)(점감)` vs 국세청 `(int)(std−점감)`. **상규님 엔진 최종절사 수정=정확**(확정).
+  2. **감면 반영(조특30조)**: ★**원래 코드 `(int)(entered×(1−RT_R_LAW_CLAUS30/PROD))`가 국세청과 9/9 일치**(전수 검산). Claude가 제안한 `entered−(int)(차감)`는 0/9 오류 → **상규님 엔진에서 원래 코드로 원복 필요**(Claude 제안 철회).
+  3. 엔진 수정분은 **YTS가 RT_WIA 재계산·DB 저장**해야 검증도구(DB값 읽음)에 반영. 재계산+검증도구 재실행하면 8700 ±1 해소 예상.
+- 유의미 차이(−33,000/−16,500)는 2026 개정 미반영(관심 밖).
+- `npx tsc` 기존 에러(tax-insight·hwp-layout route) 무관. vitest 89 통과.
+
+### ▶ 다음 할 일 (우선순위)
+1. **근로세액공제 엔진 마무리**(상규님): 감면 반영 **원래 코드 원복** + 한도 최종절사 유지 → RT_WIA 재계산 → 검증도구 재실행 → 8700 ±1 해소 확인.
+2. **카드(8430) ±1 절사 28건** — 전체 ±1 중 최다. 카드 소득공제 절사(YTS vs 국세청) 조사 미착수.
+3. **T12·T13(70%·90%) 동시 발송건** — 국세청 배타 vs YTS 둘 다 입력(버그). 8607+8608 동시전송 국세청 반응 프로브 + YTS 실태.
+4. **`-1` 열(OUT 한도)** 표시 정리 — 국세청이 한도없는 항목에 ddcLmtAmt=-1(무제한) 회신. `-1`→`무제한`/`—` 표시 정리 보류중.
+5. 백로그: 근로세액공제/조특30제외 원천검증 화면, 절사 정책 일반화.
+
+---
+
+## 2026-08-05 — 맵현황 그룹별 완료 처리 + yts in inSource 구조화 + 국민연금 소진 교차검증 실측 + UI 손질 (9커밋, **미push**)
 
 ### 이번 세션 한 것 (9커밋, 미push)
 | 커밋 | 내용 |
