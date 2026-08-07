@@ -112,7 +112,7 @@ export async function getMediSelfAggregate(calcNo: string): Promise<MediSelfAgg>
  * ★대상을 목록과 동일 필터(CALC_PROC_MEDI 존재·RT_MEDI_AMT>0)로 좁힘 — year 전체
  *   FMLY_DTL 스캔(1.2s·1074행) 대신 목록 대상만(0.6s·540행). 목록에 없는 사람은 자체집계 불필요.
  */
-export async function getMediSelfAggByYear(year: string): Promise<Map<string, MediSelfAgg>> {
+export async function getMediSelfAggByYear(year: string, calcNo?: string): Promise<Map<string, MediSelfAgg>> {
   const rows = await ytsDb.query<{
     CALC_NO: string; FMLY_SEQ: number; FMLY_RELN: string
     MEDI_AMT: number; MEDI_HDC_MC_AMT: number; MEDI_CA_AMT: number
@@ -131,11 +131,12 @@ export async function getMediSelfAggByYear(year: string): Promise<Map<string, Me
     WHERE M.YY = :1
       AND c.CALC_PROC_MEDI IS NOT NULL
       AND NVL(c.RT_MEDI_AMT, 0) > 0
+      ${calcNo ? "AND A.CALC_NO = :2" : ""}
       AND NVL(B.MEDI_AMT, 0) + NVL(B.MEDI_HDC_MC_AMT, 0) + NVL(B.MEDI_CA_AMT, 0)
         + NVL(B.MEDI_ISA_AMT, 0) + NVL(B.MEDI_LOSS_INSU, 0) > 0
     GROUP BY A.CALC_NO, A.FMLY_SEQ, A.FMLY_RELN
     ORDER BY A.CALC_NO, A.FMLY_SEQ
-  `, [year])
+  `, calcNo ? [year, calcNo] : [year])
 
   // calcNo별 원천 행 묶음 → aggregateMedi
   const byCalcNo = new Map<string, MediFmlyRaw[]>()

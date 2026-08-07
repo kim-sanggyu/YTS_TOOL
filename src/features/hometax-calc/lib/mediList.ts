@@ -43,7 +43,7 @@ export async function getMediItems(year: string, calcNo?: string): Promise<MediL
         ${calcNo ? "AND c.CALC_NO = :2" : ""}
       ORDER BY c.CALC_NO
     `, calcNo ? [year, calcNo] : [year]),
-    getMediSelfAggByYear(year),   // 원천 독립 재집계(대조a용) — 1쿼리 배치
+    getMediSelfAggByYear(year, calcNo),   // 원천 독립 재집계(대조a용) — 1쿼리 배치. calcNo 지정 시 1건만(단건 refresh 최적화)
   ])
 
   return rows.map(r => {
