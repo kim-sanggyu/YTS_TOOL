@@ -813,12 +813,18 @@ export function HometaxCalcPanel() {
       setBatchProgress({ done: 0, total, skipped: 0 })
     })
 
+    es.addEventListener("running", (e) => {   // ★행 처리 시작 — 그 행에 스피너(running)
+      const { calcNo } = JSON.parse((e as MessageEvent).data) as { calcNo: string }
+      setRunning(prev => new Set(prev).add(calcNo))
+    })
+
     es.addEventListener("row", (e) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = JSON.parse((e as MessageEvent).data) as { calcNo: string; ok: boolean; result?: any; error?: string; duration: number; cached?: boolean }
       doneCount++; if (data.cached) skipCount++
       batchBufRef.current.push({ calcNo: data.calcNo, ok: data.ok, result: data.result, duration: data.duration })   // flush는 타이머가(0.5초)
       setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1, skipped: prev.skipped + (data.cached ? 1 : 0) } : prev)
+      setRunning(prev => { const s = new Set(prev); s.delete(data.calcNo); return s })   // 그 행 스피너 해제(결과는 buffer flush)
     })
 
     es.addEventListener("blocked", (e) => {
@@ -829,7 +835,7 @@ export function HometaxCalcPanel() {
     es.addEventListener("done", () => {
       stopBatchFlush()   // 타이머 정지 + 남은 버퍼 최종 반영
       setCachedAt(new Date().toISOString())   // 방금 돌린 결과도 캐시에 저장됨 → "저장된 결과 한 벌"로 통일 표시
-      setBatchRunning(false)
+      setBatchRunning(false); setRunning(new Set())
       es.close()
       batchEsRef.current = null
       const secs = (Date.now() - startedAt) / 1000
@@ -851,14 +857,14 @@ export function HometaxCalcPanel() {
         message = (JSON.parse((e as MessageEvent).data) as { message: string }).message
       } catch { /* 기본 메시지 유지 */ }
       toast.error(message, { duration: Infinity })
-      setBatchRunning(false)
+      setBatchRunning(false); setRunning(new Set())
       es.close()
       batchEsRef.current = null
     })
 
     es.onerror = () => {
       stopBatchFlush()
-      setBatchRunning(false)
+      setBatchRunning(false); setRunning(new Set())
       es.close()
       batchEsRef.current = null
     }

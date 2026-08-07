@@ -68,6 +68,7 @@ export function streamCompareBatch<T extends { calcNo: string }>(
             continue
           }
 
+          send("running", { calcNo: item.calcNo })   // ★행 처리 시작 신호 — 클라가 그 행에 스피너+자동스크롤(현재 실행 커서)
           const startedAt = Date.now()
           let skipped = false
           try {
