@@ -1336,10 +1336,10 @@ function AllTable({ items, loading, results, running, onRun, onDetail, onShowPro
               <td className="px-3 py-2 text-center whitespace-nowrap">
                 <div className="flex items-center justify-center gap-1">
                   <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                    {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                    <FileSearch className="h-3.5 w-3.5" />
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                    <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                   </Button>
                 </div>
               </td>
@@ -1424,10 +1424,10 @@ function GiftTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
@@ -1532,10 +1532,10 @@ function CardTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
@@ -1634,10 +1634,10 @@ function MediTable({ items, loading, results, running, onRun, onDetail, onShowPr
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
@@ -1742,10 +1742,10 @@ function EtcTable({ items, loading, results, running, onRun, onDetail, onShowPro
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
@@ -1848,10 +1848,10 @@ function PensionTable({ items, loading, results, running, onRun, onDetail, onSho
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
@@ -1954,10 +1954,10 @@ function PersonalTable({ items, title, loading, results, running, onRun, onDetai
                 <td className="px-3 py-2 text-center whitespace-nowrap">
                   <div className="flex items-center justify-center gap-1">
                     <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={isRunning} title="실행" onClick={() => onRun(row.calcNo)}>
-                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                      {isRunning ? <Loader2 className="h-3 w-3 animate-spin text-red-600" /> : <Play className="h-3 w-3" />}
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
-                      <FileSearch className="h-3.5 w-3.5" />
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs disabled:opacity-100" disabled={!res} title="분석" onClick={() => onDetail(row.calcNo)}>
+                      <FileSearch className={`h-3.5 w-3.5 ${res ? "" : "opacity-25"}`} />
                     </Button>
                   </div>
                 </td>
