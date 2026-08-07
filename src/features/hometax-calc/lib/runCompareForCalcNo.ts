@@ -260,6 +260,25 @@ const TXX_TO_CODE: Record<string, string> = {
   T12: "8607", T13: "8608", T01: "8602", T02: "8612", T30: "8609", T50: "8611", T20: "8606",
   T42: "8617", T40: "8610", T43: "8616", T41: "8614",   // 성과보상기금(율 2026-07-22 상규님 확정)
 }
+
+// ★조특법30조제외 코드별 감면세액 self 재계산(YTS 엔진 공식, 상규님 제공 2026-08-07).
+//   감면세액 = (int)(base × 감면대상급여(CUT_code)/총급여 × 율). YTS RT_R_LAW 는 이 8개 코드의 합이라
+//   코드별로 못 쪼갠다(동일값 오탐) → 각 코드를 독립 재계산해 국세청 코드별 회신(ntsMap[code])과 self 대조
+//   = 합만 있던 사각을 메우는 독립 재집계. base = 산출세액(PROD_TAX_AMT). 단 T30(성과공유 경영성과급)만
+//   조특법30조 감면(RT_R_LAW_CLAUS30)을 뺀 잔여 산출세액 기준. 율: T01 50·T02 70·T30 50·T40 50·T41 30·T42 90·T43 50·T50 50%.
+const CLAUS30_EXCL_RATE: Record<string, number> = {
+  "8602": 0.5, "8612": 0.7, "8609": 0.5, "8610": 0.5, "8614": 0.3, "8617": 0.9, "8616": 0.5, "8611": 0.5,
+}
+const CLAUS30_EXCL_MINUS_BASE = new Set(["8609"])   // T30(성과공유 경영성과급)만 base = 산출세액 − 조특법30조감면(RT_R_LAW_CLAUS30)
+function selfCutClaus30Excl(code: string, ytsCol: string | null | undefined, vals: Record<string, number>): number {
+  const rate   = CLAUS30_EXCL_RATE[code]
+  const totPay = Number(vals.TOT_PAY_AMT ?? 0)
+  if (!rate || !totPay) return 0
+  const prod = Number(vals.PROD_TAX_AMT ?? 0)
+  const base = CLAUS30_EXCL_MINUS_BASE.has(code) ? prod - Number(vals.RT_R_LAW_CLAUS30 ?? 0) : prod
+  const amt  = ytsCol ? Number(vals[ytsCol] ?? 0) : 0   // 감면대상급여(CUT_code, injectTaxCutVals 주입)
+  return Math.floor(base * (amt / totPay * rate))
+}
 async function injectTaxCutVals(calcNo: string, mainRow: Record<string, number> | undefined, vals: Record<string, number>) {
   // 소득세법(정부간협약) = MAIN.TAX_GOVM_AGREE 직접
   const gov = Number(mainRow?.TAX_GOVM_AGREE ?? 0)
@@ -409,10 +428,19 @@ export async function runCompareForInput(input: CompareInput, ntsYear: string): 
     //   당해코드(8746)에 잔존→국세청 OUT 0 과 대비돼 ✗ 오탐이 났다(2026-07-28 규명, Y202500150/398).
     if (m.group === "기부금") continue
     if (!(m.resultCol && vals[m.resultCol] != null)) continue
+    const cutCode = m.outCode ?? m.ntsCode
+    // ★조특법30조제외(RT_R_LAW 합 공유): 코드별로 못 쪼개 동일값 오탐 → 감면세액 공식으로 self 재계산해
+    //   국세청 코드별 회신과 대조(합만 있던 사각 메움). 조특법30조(8607/8608, RT_R_LAW_CLAUS30)는 아래 공유컬럼 경로.
+    if (CLAUS30_EXCL_RATE[cutCode] != null) { ytsDdcMap[cutCode] = selfCutClaus30Excl(cutCode, m.ytsCol, vals); continue }
     // 세액감면 공유컬럼: 활성(전송 IN>0)인 코드에만 합값 배정 — 비활성 멤버 유령값 차단
     if (m.group === "세액감면" && cutSharedCol.has(m.resultCol) && !(m.ytsCol && Number(vals[m.ytsCol] ?? 0) > 0)) continue
-    ytsDdcMap[m.outCode ?? m.ntsCode] = Number(vals[m.resultCol] ?? 0)
+    ytsDdcMap[cutCode] = Number(vals[m.resultCol] ?? 0)
   }
+  // ★조특법30조·조특30제외 소계 배선: 개별 self 가 코드별 판정, 소계는 YTS 합 배정해 계산과정↔실행과정 대조점으로.
+  //   8620=조특30제외 합(RT_R_LAW, 8개 floor 절사 누적차 있으면 ✗). 8603=조특법30조 합(RT_R_LAW_CLAUS30,
+  //   배타라 활성 하나값). 국세청은 개별만 받아도 8620/8603 자동 집계·에코 회신(2026-08-07 프로브).
+  if (vals.RT_R_LAW != null) ytsDdcMap["8620"] = Number(vals.RT_R_LAW ?? 0)
+  if (vals.RT_R_LAW_CLAUS30 != null) ytsDdcMap["8603"] = Number(vals.RT_R_LAW_CLAUS30 ?? 0)
   // 기부금 코드별 YTS 공제(GIFT_SUB_AMT) 주입 — 유일 소스(위 resultCol 제외와 짝).
   Object.assign(ytsDdcMap, input.giftDdc)
   // 복합유형(투자조합·ISA) per-code YTS 공제(PEN_SAVE_SUB_AMT) 주입 — 소계(8410/8705)와 별개인 per-code 대조축.

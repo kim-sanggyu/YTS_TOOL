@@ -38,7 +38,14 @@ export const SUBTOTAL_CODES = new Map<string, { label: string; ytsOut: string }>
   ["8735",             { label: "교육비 세액공제 소계", ytsOut: "RT_EDU_AMT" }],           // 8730(outCode 8735)에 공제대상 총액 전송, 8735=결과전용 소계(2026-07-17 실측)
   ["8410",             { label: "투자조합출자 소계", ytsOut: "OTO_IU_ETC" }],               // self-subtotal(매핑행 8410 자체가 소계). 개별 8415~8423은 self OUT도 반환(하이브리드) → 멤버 아닌 결과전용행으로 렌더(2026-07-21 프로브)
   ["8705",             { label: "ISA 연금계좌 추가납입 소계", ytsOut: "RT_ISA_PEN_AMT" }],   // 8707/8708(outCode 8705)의 소계 OUT. 복합유형이라 per-code(PEN_SAVE_SUB_AMT)도 함께 판정 + 이 소계도 대조(2026-08-04 통일). RT_ISA_PEN_AMT 합산은 이 소계행 몫
+  ["8620",             { label: "조특법30조제외 소계", ytsOut: "RT_R_LAW" }],                  // 조특30제외 개별(8602~8617) 감면세액 합. 국세청이 개별만 받아 자동 집계 회신(2026-08-07 프로브). 대조점(계산과정↔실행과정 매칭). ※8개 floor 절사 누적차 있으면 ✗
+  ["8603",             { label: "조특법30조 소계", ytsOut: "RT_R_LAW_CLAUS30" }],               // 조특법30조 70%(8607)·90%(8608) 소계. 배타라 활성 하나 에코(70%자=8607값·90%자=8608값). 대조점(계산과정↔실행과정 매칭)
 ])
+
+// 참고 소계(REFERENCE) = SUBTOTAL_CODES 이지만 소계 판정을 제외하고 싶을 때 등록. 현재 없음 —
+//   조특법30조(8603)·조특30제외(8620) 소계 모두 대조점(계산과정↔실행과정 매칭, 2026-08-07 상규님).
+//   8620 은 개별 floor 절사 누적차(개별 합 vs 국세청)가 있으면 ✗로 드러난다(참고 아닌 비교). 인프라 유지.
+export const REFERENCE_SUBTOTAL = new Set<string>([])
 
 // 계산흐름(①결과비교)에 나오는 코드 — ③ 항목대조에서 제외(중복). compareRows 코드셋과 동일.
 //   ※ 8700(근로소득세액공제)은 ①→③ 이동(2026-08-05): 국세청 자체계산 OUT ↔ RT_WIA self 대조로 ③에서 판정. FLOW 제외.
@@ -100,6 +107,7 @@ export function makeYearVerdict(mapping: MappingRow[]): YearVerdict {
   //   둘 다 0/없음 → 대조 없음(none). 둘 다 값 → 원단위 일치 판정.
   const ddcVerdict = (res: DdcCells, code: string): Verdict => {
     if (FLOW_CODES.has(code)) return null
+    if (REFERENCE_SUBTOTAL.has(code)) return null   // 참고 소계(조특30제외 8620) — 판정은 개별 self가 함
     if (!MAP_ORDER.has(code) && !SUBTOTAL_CODES.has(code)) return null
     if (SUBTOTAL_OF.has(code) && !COMPOSITE_MEMBERS.has(code)) return null   // 순수 멤버는 소계서만 대조. 복합멤버(투자조합·ISA)는 per-code 대조함(ytsDdcMap에 per-code YTS 배선 필요)
     const nts = res.ntsMap[code] as number | undefined

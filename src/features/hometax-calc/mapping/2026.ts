@@ -124,22 +124,27 @@ export const MAPPING_2026: MappingRow[] = [
   { group: "세액감면", ntsCode: "8601", label: "세액감면-소득세법(정부간협약)", ytsCol: "CUT_8601", resultCol: "RT_IT_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 MAIN.TAX_GOVM_AGREE→CUT_8601. OUT self ↔ RT_IT_LAW. X2026 대상자 0이라 원단위 미검증. 2026-07-22 원천확정(상규님 지정)" },
   // ── 조특법30조제외(외국인기술자·성과공유·성과보상기금·우수인력) = 국세청 개별코드로 세분. 감면세액 합계는 RT_R_LAW 하나 → 감면유형은 한 사람당 하나뿐이라 활성(IN>0) 코드에만 YTS 배정해 self 대조(2026-08-06). ──
   //    코드-화면 1:1은 라이브캡처 #2 useAmt 실측 확정. X2026 대상자 0이라 원단위 미검증. IN=FN_PAY_GET_WRK_NTAX Txx 합.
-  { group: "세액감면", ntsCode: "8602", label: "조특법30조제외-외국인기술자 50%", ytsCol: "CUT_8602", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN Txx T01 합→CUT_8602. OUT self ↔ RT_R_LAW(조특법30조제외 감면세액 합). 대상 0 미검증. 2026-07-22 원천확정" },
-  { group: "세액감면", ntsCode: "8612", label: "조특법30조제외-외국인기술자 70%", ytsCol: "CUT_8612", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T02 합→CUT_8612. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
-  { group: "세액감면", ntsCode: "8609", label: "조특법30조제외-성과공유 경영성과급", ytsCol: "CUT_8609", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T30 합→CUT_8609. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
-  { group: "세액감면", ntsCode: "8611", label: "조특법30조제외-내국인 우수인력 국내복귀", ytsCol: "CUT_8611", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T50 합→CUT_8611. OUT self ↔ RT_R_LAW. 대상 0 미검증" },
-  { group: "세액감면", ntsCode: "8617", label: "조특법30조제외-중소기업 성과보상기금 90%", ytsCol: "CUT_8617", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T42 합→CUT_8617. OUT self ↔ RT_R_LAW. 대상 0 미검증. 2026-07-22 율확정(상규님: T42=90%)" },
-  { group: "세액감면", ntsCode: "8610", label: "조특법30조제외-중소기업 성과보상기금 50%", ytsCol: "CUT_8610", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T40 합→CUT_8610. 대상 0 미검증. T40=50%" },
-  { group: "세액감면", ntsCode: "8616", label: "조특법30조제외-중견기업 성과보상기금 50%", ytsCol: "CUT_8616", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T43 합→CUT_8616. 대상 0 미검증. T43=50%" },
-  { group: "세액감면", ntsCode: "8614", label: "조특법30조제외-중견기업 성과보상기금 30%", ytsCol: "CUT_8614", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T41 합→CUT_8614. 대상 0 미검증. T41=30%" },
+  // ★조특법30조제외(8602~8617): RT_R_LAW 공유 합이나 selfCutClaus30Excl 로 코드별 self 재계산 → 개별 self(1:1) 판정.
+  //   displaySubtotal 8620 = 조특30제외 소계(참고). (2026-08-07 프로브: 개별만 보내도 국세청이 8620 자동 집계 회신)
+  //   ★8620 소계 매핑은 개별 아래(맵현황 하단)에 위치. 드로어 ③표는 proc_label 로 개별 위(접기 헤더), 맵현황은 매핑순이라 개별 아래 — 위치 정책 분리.
+  { group: "세액감면", ntsCode: "8602", label: "조특법30조제외-외국인기술자 50%", ytsCol: "CUT_8602", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN Txx T01 합→CUT_8602. 감면세액=(int)(산출세액×대상급여/총급여×50%) self 재계산 ↔ NTS 8602. 소계=8620(참고). 2026-07-22 원천확정·2026-08-07 self화" },
+  { group: "세액감면", ntsCode: "8612", label: "조특법30조제외-외국인기술자 70%", ytsCol: "CUT_8612", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T02 합→CUT_8612. self 재계산(70%) ↔ NTS 8612. 소계=8620(참고)" },
+  { group: "세액감면", ntsCode: "8609", label: "조특법30조제외-성과공유 경영성과급", ytsCol: "CUT_8609", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T30 합→CUT_8609. self 재계산(50%, base=산출세액−조특법30조감면) ↔ NTS 8609. 소계=8620(참고)" },
+  { group: "세액감면", ntsCode: "8611", label: "조특법30조제외-내국인 우수인력 국내복귀", ytsCol: "CUT_8611", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T50 합→CUT_8611. self 재계산(50%) ↔ NTS 8611. 소계=8620(참고)" },
+  { group: "세액감면", ntsCode: "8617", label: "조특법30조제외-중소기업 성과보상기금 90%", ytsCol: "CUT_8617", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T42 합→CUT_8617. self 재계산(90%) ↔ NTS 8617. 소계=8620(참고). 2026-07-22 율확정(T42=90%)" },
+  { group: "세액감면", ntsCode: "8610", label: "조특법30조제외-중소기업 성과보상기금 50%", ytsCol: "CUT_8610", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T40 합→CUT_8610. self 재계산(50%) ↔ NTS 8610. 소계=8620(참고). T40=50%" },
+  { group: "세액감면", ntsCode: "8616", label: "조특법30조제외-중견기업 성과보상기금 50%", ytsCol: "CUT_8616", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T43 합→CUT_8616. self 재계산(50%) ↔ NTS 8616. 소계=8620(참고). T43=50%" },
+  { group: "세액감면", ntsCode: "8614", label: "조특법30조제외-중견기업 성과보상기금 30%", ytsCol: "CUT_8614", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8620", note: "IN=FN T41 합→CUT_8614. self 재계산(30%) ↔ NTS 8614. 소계=8620(참고). T41=30%" },
+  { group: "세액감면", ntsCode: "8620", label: "조특법30조제외 소계", ytsCol: null, resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: false, note: "조특30제외(8602~8617) 감면세액 합=RT_R_LAW. 국세청이 개별만 받아도 자동 집계 회신(전송 안 함 send:false). 대조점(계산과정↔실행과정 매칭, 8개 floor 절사 누적 있으면 ✗), 관계유형 N:1·. 개별 아래=맵현황 하단(③표는 proc_label 로 상단). 2026-08-07 프로브 확정" },
   // ★ 조특법30조(중소기업 취업자 소득세 감면) = 율 70%(8607)·90%(8608) 두 가지뿐. 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"
   //    (감면세액 = 산출세액 × (감면대상급여/총급여) × 율). IN=감면대상급여 useAmt = FN_PAY_GET_WRK_NTAX(MAIN)+FN_PAY_GET_WRK_NTAX(SUB) T12/T13 → CUT_8607/CUT_8608 주입.
   //    OUT self ddcAmt ↔ RT_R_LAW_CLAUS30. 근로소득세액공제(8700) 연쇄축소도 국세청이 재현. (2026-07-22 라이브캡처 실측 + 원단위 검증)
   //    ※구 8604(100%)·8605(50%)·8916(70%)은 전부 오류(조특법30조엔 100/50% 없음, 8916은 차감소득금액 중간계산코드)로 제거.
   //    ★70% 실입력·산출코드=8607(8603 아님, 2026-08-07 라이브캡처+프로브 확정). 8603은 국세청이 에코만 하는 표시코드라 매핑서 제외.
   //      국세청은 8607/8608 각각 self 회신 + 8603에도 에코(무시). 8607/8608 공유컬럼(RT_R_LAW_CLAUS30)은 활성(IN>0) 코드에만 YTS 배정.
-  { group: "세액감면", ntsCode: "8607", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8607", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8607. ★국세청 실입력·산출코드=8607(8603 아님) — 8607 useAmt 전송, 8607 self OUT ↔ RT_R_LAW_CLAUS30. 8603은 국세청 에코 표시코드라 매핑서 제외(sendCode 우회 폐지, 8607 정식화). 2026-08-07 라이브캡처(70% 단독 #9)+프로브(V2 8607=64,983)+실대상자 원단위 일치 실측확정. ★공유컬럼 활성(IN>0) 코드에만 YTS 배정(2026-08-06)" },
-  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치). ★공유컬럼(8607·8608)은 활성(IN>0) 코드에만 YTS 배정 — T12·T13 동시 불가라 활성 self=합 대조(2026-08-06 상규님)" },
+  { group: "세액감면", ntsCode: "8607", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8607", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8603", note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8607. ★국세청 실입력·산출코드=8607(8603 아님) — 8607 useAmt 전송, 8607 self OUT ↔ RT_R_LAW_CLAUS30. 8603은 조특법30조 소계코드(참고 N:1·)로 8607/8608 에코받음(8620과 대칭). 2026-08-07 라이브캡처(70% 단독 #9)+프로브(V2 8607=64,983)+실대상자 원단위 일치 실측확정. ★공유컬럼 활성(IN>0) 코드에만 YTS 배정(2026-08-06)" },
+  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, selfComparable: true, displaySubtotal: "8603", note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치). ★공유컬럼(8607·8608)은 활성(IN>0) 코드에만 YTS 배정 — T12·T13 동시 불가라 활성 self=합 대조(2026-08-06 상규님). 소계=8603(참고)" },
+  { group: "세액감면", ntsCode: "8603", label: "조특법30조 소계", ytsCol: null, resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: false, note: "조특법30조 70%(8607)·90%(8608) 소계=RT_R_LAW_CLAUS30. 배타라 활성 하나 에코(70%자=8607값·90%자=8608값). 국세청 자동 회신(전송 안 함 send:false). 대조점(판정, 배타라 절사무해) — 계산과정 조특법30조 ↔ 실행과정 8603 매칭, 관계유형 N:1·. 개별 아래=맵현황 하단(③표는 proc_label 상단). 8620과 대칭(둘 다 대조점). 2026-08-07 프로브 확정" },
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약(교직자)", ytsCol: "CUT_8606", resultCol: "RT_TAX_TREATY", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN Txx T20 합(조세조약 교직자 감면대상급여)→CUT_8606. OUT self ↔ RT_TAX_TREATY. X2026 대상 0 미검증. 2026-07-22 원천확정" },
 
   // ── 세액공제: 근로소득세액공제(8700) = 국세청 자체계산 OUT 전용(우리 미전송) ──
@@ -351,8 +356,10 @@ export const PROC_LABEL_CODE_2026: Record<string, string> = {
   // ★세액감면 세부코드 로스터 편입(2026-08-07 상규님): 실행과정(③표)이 계산과정 순서와 어긋나 "기타"로
   //   빠지던 세부 8건을 대표 옆에 넣어 로스터 안으로. 계산과정(국세청)은 유형합(RT_R_LAW_CLAUS30 등)으로만
   //   내므로 세부행의 계산과정 값은 대표에 몰려 비어 보일 수 있음 → 차이는 육안(집계 안 함, 있는 그대로).
+  "조특법30조 소계": "8603",              // N:1· 집계 헤더 — 개별 8607·8608 이 아래로 그룹(드로어 상단, 맵현황은 하단)
   "조특법(30조)": "8608",   // 조특법30조 대표=8608(90%, 흔함), 70%=8607. 계산과정 "조특법(30조)"=RT_R_LAW_CLAUS30 합
   "조특법30조-중소기업취업 70%": "8607",
+  "조특법30조제외 소계": "8620",            // N:1· 집계 헤더 — 개별 8602~8614 가 이 아래로 그룹
   "조특법(30조제외)": "8602",
   "조특법30조제외-외국인기술자 70%": "8612",
   "조특법30조제외-성과공유 경영성과급": "8609",
