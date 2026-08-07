@@ -15,7 +15,7 @@ export interface HousingListItem {
 
 // 소득공제 그룹 공용: 매핑 rows(resultCol=YTS 공제액)로 사람별 항목 대조 조회. 값(>0) 있는 항목만 line.
 // NTS 대조값은 화면에서 results.ntsMap[code] 로 조인. inputExpr(옵션): 각 행의 전송값(납입액 등) SQL 표현식.
-// filterByInput=true: 여러 코드가 resultCol 을 공유(세액감면 8603/8608 등)해 공제액으로 항목을 못 가릴 때,
+// filterByInput=true: 여러 코드가 resultCol 을 공유(세액감면 8607/8608 등)해 공제액으로 항목을 못 가릴 때,
 //   전송값(IN)>0 인 항목만 line 으로 남긴다(IN=0 인데 공유 공제액이 흘러드는 오표시 방지).
 async function getGroupItems(
   year: string, rows: MappingRow[], inputExpr?: (m: MappingRow) => string | null, kind: string = "소득공제",
@@ -115,12 +115,12 @@ export const getEtcCreditItems = (year: string) => getGroupItems(year, ETC_CREDI
   return col ? `NVL(m.${col}, 0)` : null
 }, "세액공제")
 
-// 세액감면 = 소득세법(8601)·조특법30조(8603/8608)·조특법30조제외(8602 등)·조세조약(8606). self 대조(YTS RT_* ↔ NTS 각 코드).
+// 세액감면 = 소득세법(8601)·조특법30조(8607 70%/8608 90%)·조특법30조제외(8602 등)·조세조약(8606). self 대조(YTS RT_* ↔ NTS 각 코드).
 // 전송 사용액(감면대상급여) = 8601 MAIN.TAX_GOVM_AGREE / 나머지 FN_PAY_GET_WRK_NTAX(MAIN+SUB, Txx) 합.
-// ⚠조특법30조제외(8602·8612·8609·8611·8617·8610·8616·8614)는 YTS 공제액이 RT_R_LAW 한 컬럼에 합산돼 개별 대조 불가(합 표시). 8601/8606/8603/8608은 개별.
+// ⚠조특법30조제외(8602·8612·8609·8611·8617·8610·8616·8614)는 YTS 공제액이 RT_R_LAW 한 컬럼에 합산돼 개별 대조 불가(합 표시). 8601/8606/8607/8608은 개별.
 const TAX_CUT_ROWS = MAPPING_2025.filter(m => m.group === "세액감면" && m.resultCol)
 const TC_TXX: Record<string, string> = {
-  "8603": "T12", "8608": "T13", "8602": "T01", "8612": "T02", "8609": "T30",
+  "8607": "T12", "8608": "T13", "8602": "T01", "8612": "T02", "8609": "T30",
   "8611": "T50", "8606": "T20", "8617": "T42", "8610": "T40", "8616": "T43", "8614": "T41",
 }
 export const getTaxCutItems = (year: string) => getGroupItems(year, TAX_CUT_ROWS, m => {

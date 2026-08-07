@@ -194,7 +194,7 @@ const ALL_CODES = [
   "8410","8415","8416","8417","8418","8419","8420","8421","8422","8423",
   "8430","8431","8432","8433","8434","8435","8438","8440","8442","8464","8465","8466","8467",
   "8450","8451","8452","8453","8461","8462","8463","8501",
-  "8601","8602","8603","8606","8608","8609","8610","8611","8612","8614","8616","8617","8916",
+  "8601","8602","8606","8607","8608","8609","8610","8611","8612","8614","8616","8617","8916",
   "8701","8702","8703","8705","8706","8707","8708",
   "8710","8711",
   "8720","8721","8725","8726","8729",
@@ -209,8 +209,8 @@ const ALL_CODES = [
 
 function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping: MappingRow[], marriageCredit: number, omitCodes: string[] = [], detailRowExtra: Record<string, string> = {}): { body: object; coveredCodes: string[] } {
   // 요청 코드셋 = 검증된 ALL_CODES ∪ 전송대상(send) 매핑의 실입력코드(sendCode 지정 시 그것, 없으면 ntsCode)
-  //   ★sendCode 필수 포함: 표시코드(ntsCode)와 국세청 실입력코드가 다른 행(예 8603→8607)은
-  //     sendCode 로 detail 행이 생겨야 setAmt 가 값을 주입한다. (표시코드는 ALL_CODES 에 있어 OUT 에코 대조 유지)
+  //   ★sendCode: 표시코드(ntsCode)와 국세청 실입력코드가 다른 행이 있으면 sendCode 로 detail 행이 생겨야
+  //     setAmt 가 값을 주입한다. (현재 지정행 없음 — 조특법30조 70%는 8607 정식화로 sendCode 폐지, 인프라 유지)
   // omitCodes: 계약 A/B 프로브용 — 특정 amtClusCd 를 payload 에서 아예 제외(0 전송조차 안 함)
   const codes = Array.from(new Set([...ALL_CODES, ...mapping.filter(m => m.send).map(m => m.sendCode ?? m.ntsCode)]))
     .filter(c => !omitCodes.includes(c))
@@ -233,10 +233,10 @@ function buildCompareBody(vals: Record<string, number>, attrYr: string, mapping:
   for (const m of mapping) {
     if (!m.send) continue
     if (m.ntsCode === "8790") continue          // 혼인공제만 아래 특수전송
-    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용.
-    //   ★조특법30조 70%: 표시 8603 / 실입력 8607(2026-08-07 라이브캡처+프로브 실측). 국세청은 8603 IN 을
-    //     받지 않고 8607 useAmt 로만 감면세액을 산출한다. 세액감면은 전부 useAmt 만으로 서버가 재계산
-    //     (ddcTrgtAmt·ddcLmtAmt=-1 은 화면 payload 에 없는 값이라 불필요 — 25e0030 추측 롤백).
+    // sendCode: 표시코드(ntsCode)와 실제 국세청 입력코드가 다를 때 전송코드로 사용(현재 지정행 없음 — 인프라 유지).
+    //   ★조특법30조 70%는 8607 을 정식 ntsCode 로 삼아 8607 self 로 전송·산출·대조한다(2026-08-07 라이브캡처+
+    //     프로브 실측, sendCode 우회 폐지). 세액감면은 전부 useAmt 만으로 서버가 재계산(ddcTrgtAmt·ddcLmtAmt=-1
+    //     은 화면 payload 에 없어 불필요 — 25e0030 롤백).
     const code = m.sendCode ?? m.ntsCode
     const val  = mappingSentValue(m, vals, marriageCredit)
     setAmt(code, m.valueKey, val)

@@ -132,14 +132,14 @@ export const MAPPING_2026: MappingRow[] = [
   { group: "세액감면", ntsCode: "8610", label: "조특법30조제외-중소기업 성과보상기금 50%", ytsCol: "CUT_8610", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T40 합→CUT_8610. 대상 0 미검증. T40=50%" },
   { group: "세액감면", ntsCode: "8616", label: "조특법30조제외-중견기업 성과보상기금 50%", ytsCol: "CUT_8616", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T43 합→CUT_8616. 대상 0 미검증. T43=50%" },
   { group: "세액감면", ntsCode: "8614", label: "조특법30조제외-중견기업 성과보상기금 30%", ytsCol: "CUT_8614", resultCol: "RT_R_LAW", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN T41 합→CUT_8614. 대상 0 미검증. T41=30%" },
-  // ★ 조특법30조(중소기업 취업자 소득세 감면) = 율 70%(8603)·90%(8608) 두 가지뿐. 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"
-  //    (감면세액 = 산출세액 × (감면대상급여/총급여) × 율). IN=감면대상급여 useAmt = FN_PAY_GET_WRK_NTAX(MAIN)+FN_PAY_GET_WRK_NTAX(SUB) T12/T13 → CUT_8603/CUT_8608 주입.
-  //    OUT self ddcAmt ↔ RT_R_LAW_CLAUS30. 근로소득세액공제(8700) 연쇄축소도 국세청이 재현. (2026-07-22 라이브캡처 실측 #3/#4 + 9명 원단위 검증)
+  // ★ 조특법30조(중소기업 취업자 소득세 감면) = 율 70%(8607)·90%(8608) 두 가지뿐. 국세청 화면 "감면대상급여 입력 → 감면세액 자동계산"
+  //    (감면세액 = 산출세액 × (감면대상급여/총급여) × 율). IN=감면대상급여 useAmt = FN_PAY_GET_WRK_NTAX(MAIN)+FN_PAY_GET_WRK_NTAX(SUB) T12/T13 → CUT_8607/CUT_8608 주입.
+  //    OUT self ddcAmt ↔ RT_R_LAW_CLAUS30. 근로소득세액공제(8700) 연쇄축소도 국세청이 재현. (2026-07-22 라이브캡처 실측 + 원단위 검증)
   //    ※구 8604(100%)·8605(50%)·8916(70%)은 전부 오류(조특법30조엔 100/50% 없음, 8916은 차감소득금액 중간계산코드)로 제거.
-  //    ★국세청 통합처리 실측확정(2026-07-24 캡처 #3): 8608(90%)에만 감면대상급여 입력해도 국세청이 감면세액을 8603·8608·8924(세액감면계)에 "동일 값 에코"(중복계상 아님, 계도 단일값).
-  //      → 전송0인 8603에 NTS공제 값이 오는 건 통합처리 탓(우리 도구 영향 0: 8603/8608 공유컬럼이라 대조 일치, 팬텀행은 getTaxCutItems filterByInput로 숨김).
-  { group: "세액감면", ntsCode: "8603", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8603", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, sendCode: "8607", note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8603. ★국세청 실입력코드=8607(8603 아님) — sendCode=8607 useAmt 전송, OUT은 8603 에코로 self 대조(RT_R_LAW_CLAUS30). 2026-08-07 라이브캡처(70% 단독 #9)+프로브 실측확정(V1 코드8603=0·V2 코드8607=64,983). ★공유컬럼 활성(IN>0) 코드에만 YTS 배정(2026-08-06)" },
-  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치). ★공유컬럼(8603·8608)은 활성(IN>0) 코드에만 YTS 배정 — T12·T13 동시 불가라 활성 self=합 대조(2026-08-06 상규님)" },
+  //    ★70% 실입력·산출코드=8607(8603 아님, 2026-08-07 라이브캡처+프로브 확정). 8603은 국세청이 에코만 하는 표시코드라 매핑서 제외.
+  //      국세청은 8607/8608 각각 self 회신 + 8603에도 에코(무시). 8607/8608 공유컬럼(RT_R_LAW_CLAUS30)은 활성(IN>0) 코드에만 YTS 배정.
+  { group: "세액감면", ntsCode: "8607", label: "조특법30조-중소기업취업 70%", ytsCol: "CUT_8607", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T12') 합→CUT_8607. ★국세청 실입력·산출코드=8607(8603 아님) — 8607 useAmt 전송, 8607 self OUT ↔ RT_R_LAW_CLAUS30. 8603은 국세청 에코 표시코드라 매핑서 제외(sendCode 우회 폐지, 8607 정식화). 2026-08-07 라이브캡처(70% 단독 #9)+프로브(V2 8607=64,983)+실대상자 원단위 일치 실측확정. ★공유컬럼 활성(IN>0) 코드에만 YTS 배정(2026-08-06)" },
+  { group: "세액감면", ntsCode: "8608", label: "조특법30조-중소기업취업 90%", ytsCol: "CUT_8608", resultCol: "RT_R_LAW_CLAUS30", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=감면대상급여 FN_PAY_GET_WRK_NTAX(,'MAIN'/'SUB',,'T13') 합→CUT_8608. OUT self ↔ RT_R_LAW_CLAUS30. 2026-07-22 실측확정(9명 원단위 일치). ★공유컬럼(8607·8608)은 활성(IN>0) 코드에만 YTS 배정 — T12·T13 동시 불가라 활성 self=합 대조(2026-08-06 상규님)" },
   { group: "세액감면", ntsCode: "8606", label: "세액감면-조세조약(교직자)", ytsCol: "CUT_8606", resultCol: "RT_TAX_TREATY", valueKey: "useAmt", rule: "value", status: "진행", send: true, note: "IN=FN Txx T20 합(조세조약 교직자 감면대상급여)→CUT_8606. OUT self ↔ RT_TAX_TREATY. X2026 대상 0 미검증. 2026-07-22 원천확정" },
 
   // ── 세액공제: 근로소득세액공제(8700) = 국세청 자체계산 OUT 전용(우리 미전송) ──
@@ -263,7 +263,7 @@ export const COVERAGE_2026: Record<string, Coverage> = {
   "8461": { verdict: "안전", review: "확정" }, "8462": { verdict: "안전", review: "확정" }, "8463": { verdict: "안전", review: "확정" },   // 신용카드 원본 지출(PAY_WRK_FMLY_DTL SUM, 로직A無)→국세청 소계 8430 자체계산. SQL SUM↔CALC_PROC_CARD↔8430 원단위 일치 확인(2026-07-31)
   "8452": { verdict: "미검증", review: "검토중" }, "8451": { verdict: "미검증", review: "검토중" }, "8501": { verdict: "미검증", review: "검토중" }, "8453": { verdict: "미검증", review: "검토중" },   // 실데이터 0명(대상 미발생)
   // 세액감면 — 감면대상급여(원본) 전송, 국세청이 감면세액 자동계산
-  "8603": { verdict: "안전", review: "검토중" }, "8608": { verdict: "안전", review: "검토중" },   // 조특법30조, 9명 원단위 검증
+  "8607": { verdict: "안전", review: "검토중" }, "8608": { verdict: "안전", review: "검토중" },   // 조특법30조(70%=8607·90%=8608) 원단위 검증
   "8601": { verdict: "미검증", review: "검토중" }, "8602": { verdict: "미검증", review: "검토중" }, "8612": { verdict: "미검증", review: "검토중" },
   "8609": { verdict: "미검증", review: "검토중" }, "8611": { verdict: "미검증", review: "검토중" }, "8617": { verdict: "미검증", review: "검토중" },
   "8610": { verdict: "미검증", review: "검토중" }, "8616": { verdict: "미검증", review: "검토중" }, "8614": { verdict: "미검증", review: "검토중" }, "8606": { verdict: "미검증", review: "검토중" },   // status 추정·대상 0명
@@ -348,8 +348,19 @@ export const PROC_LABEL_CODE_2026: Record<string, string> = {
   "청년형장기집합투자증권저축": "8501",
   // 세액감면
   "소득세법": "8601",
-  "조특법(30조)": "8608",   // 조특법30조 대표=8608(90%, 흔함), 70%=8603. 계산과정 "조특법(30조)"=RT_R_LAW_CLAUS30 합
+  // ★세액감면 세부코드 로스터 편입(2026-08-07 상규님): 실행과정(③표)이 계산과정 순서와 어긋나 "기타"로
+  //   빠지던 세부 8건을 대표 옆에 넣어 로스터 안으로. 계산과정(국세청)은 유형합(RT_R_LAW_CLAUS30 등)으로만
+  //   내므로 세부행의 계산과정 값은 대표에 몰려 비어 보일 수 있음 → 차이는 육안(집계 안 함, 있는 그대로).
+  "조특법(30조)": "8608",   // 조특법30조 대표=8608(90%, 흔함), 70%=8607. 계산과정 "조특법(30조)"=RT_R_LAW_CLAUS30 합
+  "조특법30조-중소기업취업 70%": "8607",
   "조특법(30조제외)": "8602",
+  "조특법30조제외-외국인기술자 70%": "8612",
+  "조특법30조제외-성과공유 경영성과급": "8609",
+  "조특법30조제외-내국인 우수인력 국내복귀": "8611",
+  "조특법30조제외-중소기업 성과보상기금 90%": "8617",
+  "조특법30조제외-중소기업 성과보상기금 50%": "8610",
+  "조특법30조제외-중견기업 성과보상기금 50%": "8616",
+  "조특법30조제외-중견기업 성과보상기금 30%": "8614",
   "조세조약": "8606",
   // 세액공제
   "근로소득세액": "8700",

@@ -70,7 +70,7 @@ const ETC_GROUPS: Record<string, { label: string; listQs: string; batchEndpoint:
   INVESTMENT:      { label: "투자조합출자", listQs: "type=investment",            batchEndpoint: "investment-batch" },            // 3연도×3종류(벤처100/70/30%·조합10%)
   OTHER_INCOME:    { label: "그밖의소득공제", listQs: "type=otherincome",          batchEndpoint: "otherincome-batch" },           // 우리사주(8452)·장기집합(8451)·청년형(8501)·고용유지(8453)
   ETC_CREDIT:      { label: "기타세액공제",   listQs: "type=etccredit",             batchEndpoint: "etccredit-batch" },             // 외국납부(8751)·주택차입금이자(8752)·납세조합(8753)
-  TAX_CUT:         { label: "세액감면",       listQs: "type=taxcut",                batchEndpoint: "cut-batch" },                   // 소득세법(8601)·조특법30조(8603/8608)·조특법30조제외·조세조약(8606)
+  TAX_CUT:         { label: "세액감면",       listQs: "type=taxcut",                batchEndpoint: "cut-batch" },                   // 소득세법(8601)·조특법30조(8607/8608)·조특법30조제외·조세조약(8606)
   INSURANCE:       { label: "보장성보험료",   listQs: "type=insurance",             batchEndpoint: "insurance-batch" },             // 보장성(8710, 12%)·장애인전용 보장성(8711, 15%)
   EDUCATION:       { label: "교육비",         listQs: "type=education",             batchEndpoint: "education-batch" },             // 소계형(8735, ×15%) — SPCL_EDU_AMT 총액↔RT_EDU_AMT
 }
