@@ -12,6 +12,7 @@ import { MEDI_SUBTOTAL_CODE } from "@/features/hometax-calc/mapping/medi"
 import { type MappingRow, type Coverage } from "@/features/hometax-calc/mapping/2025"
 import { coverageOf } from "@/features/hometax-calc/mapping/engine"
 import { checkMappingConsistency, type ConsistencyResult } from "@/features/hometax-calc/mapping/consistency"
+import { checkTabCoverage, type TabCoverageResult } from "@/features/hometax-calc/mapping/tabCoverage"
 import { availableYears, getYearConfig } from "@/features/hometax-calc/mapping/registry"
 import { GIFT_CARRY_BASE, GIFT_CODES, giftSourceOf } from "@/features/hometax-calc/mapping/gift"
 import { PROC_ROW_RE, procCodeOrder } from "@/features/hometax-calc/lib/procOrder"
@@ -2684,6 +2685,9 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
   // 정합성 검사 결과(파생매핑↔MAPPING 코드셋). 검사한 연도를 함께 기록해, 연도가 바뀌면 렌더에서 자동 무효화.
   const [consistency, setConsistency] = useState<{ year: string; result: ConsistencyResult } | null>(null)
   const consResult = consistency && consistency.year === ntsYear ? consistency.result : null
+  // 탭 커버리지 검사 결과(드로어 판정대상 ⊆ 전용 탭 ∪ whitelist). 연도 바뀌면 렌더에서 자동 무효화.
+  const [tabCov, setTabCov] = useState<{ year: string; result: TabCoverageResult } | null>(null)
+  const tabCovResult = tabCov && tabCov.year === ntsYear ? tabCov.result : null
   const toggleP = (k: "mapping" | "roster") => { setFocused(null); setCollapsed(c => ({ ...c, [k]: !c[k] })) }
   const expandOnlyP = (k: "mapping" | "roster") => setFocused(p => (p === k ? null : k))
   const isCollP = (k: "mapping" | "roster") => (focused ? k !== focused : collapsed[k])
@@ -2751,11 +2755,28 @@ export function MappingStatusView({ ntsYear }: { ntsYear: string }) {
           {consResult && (consResult.ok
             ? <span className="inline-flex items-center gap-1 font-semibold text-green-700"><CheckCircle2 className="w-3.5 h-3.5" />일치</span>
             : <span className="inline-flex items-center gap-1 font-semibold text-red-600"><XCircle className="w-3.5 h-3.5" />불일치 {consResult.issues.length}건</span>)}
+          {/* 탭 커버리지 검사 — 드로어 ③표가 판정할 수 있는 코드가 어느 전용 탭에도 안 실리는 사각(vitest 와 동일 순수함수 공유) */}
+          <button
+            type="button"
+            onClick={() => setTabCov({ year: ntsYear, result: checkTabCoverage(mapping) })}
+            className="px-2 py-0.5 rounded border text-[10px] font-semibold hover:bg-muted"
+            title="드로어 ③표가 ✗로 판정할 수 있는 코드가 전용 탭 리스트 어디에도 안 실리는지(사람이 목록에서 못 찾는 사각) 대조"
+          >탭 커버리지</button>
+          {tabCovResult && (tabCovResult.ok
+            ? <span className="inline-flex items-center gap-1 font-semibold text-green-700"><CheckCircle2 className="w-3.5 h-3.5" />사각 없음{tabCovResult.whitelisted.length > 0 ? ` (알려진 ${tabCovResult.whitelisted.length})` : ""}</span>
+            : <span className="inline-flex items-center gap-1 font-semibold text-red-600"><XCircle className="w-3.5 h-3.5" />사각 {tabCovResult.gaps.length}건</span>)}
         </div>
         {consResult && !consResult.ok && (
           <ul className="px-1 pb-2 -mt-1 text-[10px] text-red-600 space-y-0.5">
             {consResult.issues.map((iss, i) => (
               <li key={i}><span className="font-mono font-semibold">{iss.code}</span> · {iss.direction} · {iss.detail}</li>
+            ))}
+          </ul>
+        )}
+        {tabCovResult && !tabCovResult.ok && (
+          <ul className="px-1 pb-2 -mt-1 text-[10px] text-red-600 space-y-0.5">
+            {tabCovResult.gaps.map((g, i) => (
+              <li key={i}><span className="font-mono font-semibold">{g.code}</span> · {g.label} — 전용 탭 리스트에 안 실림(사각)</li>
             ))}
           </ul>
         )}
